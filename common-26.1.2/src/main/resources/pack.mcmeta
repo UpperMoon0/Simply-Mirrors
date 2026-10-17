@@ -1,6 +1,10 @@
 {
   "pack": {
-    "pack_format": 84,
-    "description": "Simply Mirrors resources"
+    "description": "Simply Mirrors resources",
+    "min_format": 84,
+    "max_format": [
+      101,
+      1
+    ]
   }
 }

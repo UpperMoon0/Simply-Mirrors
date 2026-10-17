@@ -13,6 +13,11 @@ def verify(path, target):
     with zipfile.ZipFile(path) as jar:
         names = set(jar.namelist())
         assert "pack.mcmeta" in names, "Mod resource pack metadata missing"
+        pack = json.loads(jar.read("pack.mcmeta"))["pack"]
+        if target["minecraft"] == "26.1.2":
+            assert pack["min_format"] == 84 and pack["max_format"] == [101, 1], "Modern resource/data pack format range incorrect"
+        else:
+            assert pack["pack_format"] == {"1.16.5": 6, "1.20.1": 15, "1.21.1": 34}[target["minecraft"]]
         assert "LICENSE" in names, "License missing"
         assert "NOTICE" in names and "licenses/Immersive-Portals-CE-Apache-2.0.txt" in names, "CE attribution missing"
         for cl in ["block/MirrorBlock", "block/MirrorBlockEntity", "client/MirrorRenderer", "math/ImmersiveMirrorTransform"]:
