@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.nstut.simplymirrors.client.mixin",
+  "client": [
+    "CameraAccessor",
+    "MinecraftMixin",
+    "LevelRendererAccessor",
+    "LevelRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

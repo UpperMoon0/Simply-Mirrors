@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "SIS",
+    "IGI",
+    "SIS"
+  ],
+  "key": {
+    "S": "minecraft:stick",
+    "I": "minecraft:iron_ingot",
+    "G": "minecraft:glass"
+  },
+  "result": {
+    "id": "simply_mirrors:mirror",
+    "count": 1
+  }
+}

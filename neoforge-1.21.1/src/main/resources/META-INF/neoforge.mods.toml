@@ -1,13 +1,13 @@
 modLoader = "javafml"
 loaderVersion = "[4,)"
-license = "MIT"
+license = "MIT AND Apache-2.0"
 issueTrackerURL = "https://github.com/UpperMoon0/Simply-Mirrors/issues"
 [[mods]]
 modId = "simply_mirrors"
 version = "${version}"
 displayName = "Simply Mirrors"
 authors = "NsTut"
-description = "Development foundation. Reflective mirror gameplay is under development."
+description = "Craftable wall-mounted mirrors with live world reflections and a dedicated creative tab."
 [[dependencies.simply_mirrors]]
 modId = "neoforge"
 type = "required"
@@ -20,3 +20,6 @@ type = "required"
 versionRange = "[1.21.1]"
 ordering = "NONE"
 side = "BOTH"
+
+[[mixins]]
+config = "simplymirrors.mixins.json"

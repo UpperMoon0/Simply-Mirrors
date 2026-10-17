@@ -2,7 +2,11 @@
 
 A standalone Minecraft mod project for placeable mirrors that reflect the surrounding world.
 
-**Status: initial development foundation.** This repository currently contains loader bootstraps, the eight-target build matrix, and a tested version-independent reflection-math core. A placeable mirror block, world-reflection renderer, configuration screen, and crafting gameplay are not implemented yet. Build artifacts are development scaffolds, not playable mirror releases.
+**Status: experimental development build.** Includes a craftable wall-mounted mirror, a dedicated Simply Mirrors creative tab, and native reflection adapters for all four Minecraft versions. Reflection geometry is adapted from Immersive Portals CE; no portal mod is required. Runtime and visual acceptance are in progress.
+
+Mirrors face the wall surface you click, or face you when placed from above/below. Place a block from the Simply Mirrors tab or craft one using sticks in the corners, iron ingots on the edges, and glass in the center. The oak frame surrounds a live reflective glass opening.
+
+The first renderer is bounded to two visible mirror planes per frame within 32 blocks. Coplanar mirrors share a reflection render. Reflections show loaded terrain and entities; recursive mirror reflections and shader-pack compatibility are not yet supported. The 26.1.2 compositor currently targets Minecraft's OpenGL renderer.
 
 ## Target matrix
 
@@ -13,7 +17,7 @@ A standalone Minecraft mod project for placeable mirrors that reflect the surrou
 | 1.21.1 | Fabric | NeoForge 21.1.228 | 21 |
 | 26.1.2 | Fabric | NeoForge 26.1.2.76 | 25 |
 
-Each row produces two separate jars; install only the artifact matching your Minecraft version and loader. Forge is used for the older versions, NeoForge for the newer versions. The initial bootstrap requires no Architectury API or Fabric API runtime dependency.
+Each row produces two separate jars; install only the artifact matching your Minecraft version and loader. Forge is used for the older versions, NeoForge for the newer versions. Fabric builds require Fabric API. Forge and NeoForge builds need only their matching loader; Architectury API and Immersive Portals are not runtime dependencies.
 
 ## Build
 
@@ -43,16 +47,14 @@ The root wrapper is Gradle 8.14. Each 26.1.2 module has an independent Gradle 9.
 - `tools/targets.json`: complete eight-target packaging matrix.
 - `.github/workflows/build.yml`: shared tests and separate artifact builds for every target on pushes and pull requests.
 
-## Rendering milestones
+## Validation
 
-1. Register a wall-mounted mirror block and item on every target, including placement, rotation, crafting, and drops.
-2. Implement bounded offscreen planar reflections with correct camera transformation, clipping, depth occlusion, and guaranteed state restoration.
-3. Group coplanar connected mirrors to reuse reflection passes; cap distance, resolution, and reflection count.
-4. Validate entities, the local player, dimension changes, chunk unloads, resource reloads, and GPU resource disposal.
-5. Capture rendered evidence on all eight targets, then evaluate Sodium, Iris, Embeddium, and Oculus compatibility explicitly.
+Shared tests cover CE vector/matrix parity, inverse transforms, glass projection alignment, oblique wall clipping, and coplanar grouping. Every production artifact is checked for version/loader identity, Java level, block/item resources, mixin metadata, and license notices. Compilation alone does not establish visual correctness; rendered acceptance evidence is tracked separately.
 
-No shader compatibility or in-game visual verification is claimed by this initial commit. CI build success verifies packaging and reflection math, not a working visual renderer. No automatic CurseForge or Modrinth publication is configured.
+## Rendering implementation
+
+The mirror plane follows the block's facing. The camera position and view are reflected using Immersive Portals CE's vector reflection and reflection matrix. A version adapter renders the same world to an offscreen target with an oblique near plane at the glass, then projects that texture onto the glass opening with world depth testing. This excludes blocks behind the mirror and prevents the wall from obscuring the reflected room. Render targets and projection resources are released on world unload and shutdown.
 
 ## License
 
-MIT. Copyright 2026 NsTut. Part of the Simply series alongside [Simply Speakers](https://github.com/UpperMoon0/Simply-Speakers) and [Simply Screens](https://github.com/UpperMoon0/Simply-Screens).
+Original Simply Mirrors code is MIT, copyright 2026 NsTut. Adapted Immersive Portals CE reflection-transform code remains Apache-2.0, copyright qouteall and contributors; see [NOTICE](NOTICE) and [the bundled license](licenses/Immersive-Portals-CE-Apache-2.0.txt). Part of the Simply series alongside [Simply Speakers](https://github.com/UpperMoon0/Simply-Speakers) and [Simply Screens](https://github.com/UpperMoon0/Simply-Screens).

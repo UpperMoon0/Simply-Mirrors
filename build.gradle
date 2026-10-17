@@ -30,7 +30,7 @@ subprojects { p ->
         else if (target.loader == 'forge') forge()
         else neoForge()
     }
-    loom { silentMojangMappingsLicense() }
+    loom { silentMojangMappingsLicense(); mixin { defaultRefmapName = 'simplymirrors.refmap.json' } }
     dependencies {
         minecraft "net.minecraft:minecraft:${target.mc}"
         mappings loom.officialMojangMappings()
@@ -43,7 +43,9 @@ subprojects { p ->
         withSourcesJar()
     }
     sourceSets.main.java.srcDir rootProject.file('common/src/main/java')
+    sourceSets.main.java.srcDir rootProject.file('common-client/src/main/java')
     sourceSets.main.java.srcDir rootProject.file("common-${target.mc}/src/main/java")
+    sourceSets.main.resources.srcDir rootProject.file("common-${target.mc}/src/main/resources")
     tasks.withType(JavaCompile).configureEach {
         options.encoding = 'UTF-8'
         if (target.java >= 9) options.release = target.java
@@ -55,7 +57,7 @@ subprojects { p ->
             expand version: project.version
         }
     }
-    tasks.withType(Jar).configureEach { from(rootProject.file('LICENSE')) }
+    tasks.withType(Jar).configureEach { from(rootProject.file('LICENSE')); from(rootProject.file('NOTICE')); from(rootProject.file('licenses')) { into 'licenses' } }
     publishing {
         publications {
             mavenJava(MavenPublication) { from components.java }

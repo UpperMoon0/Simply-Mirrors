@@ -13,6 +13,19 @@ def verify(path, target):
     with zipfile.ZipFile(path) as jar:
         names = set(jar.namelist())
         assert "LICENSE" in names, "License missing"
+        assert "NOTICE" in names and "licenses/Immersive-Portals-CE-Apache-2.0.txt" in names, "CE attribution missing"
+        for cl in ["block/MirrorBlock", "block/MirrorBlockEntity", "client/MirrorRenderer", "math/ImmersiveMirrorTransform"]:
+            assert f"com/nstut/simplymirrors/{cl}.class" in names, f"Missing implementation: {cl}"
+        assert "simplymirrors.mixins.json" in names, "Client rendering mixins missing"
+        mixins = json.loads(jar.read("simplymirrors.mixins.json"))
+        assert mixins.get("client") and not mixins.get("mixins"), "Renderer mixins must remain client-only"
+        for resource in ["blockstates/mirror.json", "models/block/mirror.json", "models/item/mirror.json", "lang/en_us.json"]:
+            json.loads(jar.read(f"assets/simply_mirrors/{resource}"))
+        singular = target["minecraft"] in ["1.21.1", "26.1.2"]
+        folder = "recipe" if singular else "recipes"
+        recipe = json.loads(jar.read(f"data/simply_mirrors/{folder}/mirror.json"))
+        assert recipe["result"].get("id", recipe["result"].get("item")) == "simply_mirrors:mirror"
+        assert not any("VisualProbe" in name or "/visualtest/" in name for name in names), "Visual test code packaged"
         assert "com/nstut/simplymirrors/SimplyMirrors.class" in names, "Shared bootstrap missing"
         assert "com/nstut/simplymirrors/math/MirrorPlane.class" in names, "Shared reflection core missing"
         expected_java = int(target["java"]) + 44

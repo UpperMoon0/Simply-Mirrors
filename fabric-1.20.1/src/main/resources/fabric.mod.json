@@ -3,11 +3,14 @@
   "id": "simply_mirrors",
   "version": "${version}",
   "name": "Simply Mirrors",
-  "description": "Simply Mirrors development foundation. Reflective mirror gameplay is under development.",
+  "description": "Craftable wall-mounted mirrors with live world reflections and a dedicated creative tab.",
   "authors": [
     "NsTut"
   ],
-  "license": "MIT",
+  "license": [
+    "MIT",
+    "Apache-2.0"
+  ],
   "environment": "*",
   "contact": {
     "sources": "https://github.com/UpperMoon0/Simply-Mirrors",
@@ -21,6 +24,10 @@
   "depends": {
     "fabricloader": ">=0.16.14",
     "minecraft": "1.20.1",
-    "java": ">=17"
-  }
+    "java": ">=17",
+    "fabric-api": "*"
+  },
+  "mixins": [
+    "simplymirrors.mixins.json"
+  ]
 }
