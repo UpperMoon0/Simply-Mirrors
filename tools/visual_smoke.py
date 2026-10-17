@@ -72,24 +72,27 @@ def main():
     with (evidence/"server.log").open("w") as server_log,(evidence/"client.log").open("w") as client_log:
         try:
             server=subprocess.Popen(command+[task_prefix+"runVisualServer"],cwd=cwd,stdout=server_log,stderr=subprocess.STDOUT,**creation)
-            deadline=time.monotonic()+900
+            print("Starting disposable server",args.target,flush=True)
+            deadline=time.monotonic()+360
             while time.monotonic()<deadline:
                 if server.poll() is not None:raise RuntimeError(f"Server exited: {evidence/'server.log'}")
                 try:rcon=Rcon(rcon_port);break
                 except (OSError,ConnectionError):time.sleep(1)
-            else:raise TimeoutError("Server startup timeout")
+            else:raise TimeoutError("Server startup timeout: "+(evidence/"server.log").read_text(errors="replace")[-8000:])
+            print("Server and RCON ready",args.target,flush=True)
             commands=["forceload add -16 -16 16 16","time set noon","weather clear","fill -12 64 -12 12 64 12 stone","fill -5 65 1 5 70 1 white_concrete","fill -4 65 -8 -2 69 -8 red_concrete","fill -1 65 -8 1 69 -8 lime_concrete","fill 2 65 -8 4 69 -8 blue_concrete","setworldspawn 0 65 -4"]
             for x in range(-1,2):
                 for y in range(65,68):commands.append(f"setblock {x} {y} 0 simply_mirrors:mirror[facing=north]")
             for text in commands:
                 reply=rcon.command(text)
                 if "Unknown" in reply or "Incorrect" in reply:raise RuntimeError(f"Fixture command failed: {text}: {reply}")
+            print("Fixture ready; starting client",args.target,flush=True)
             client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,stderr=subprocess.STDOUT,**creation)
             result=module/"run/visual-client/visual-evidence/result.json";deadline=time.monotonic()+600
             while time.monotonic()<deadline and not result.exists():
                 if client.poll() is not None:raise RuntimeError(f"Client exited before capture: {evidence/'client.log'}")
                 time.sleep(1)
-            if not result.exists():raise TimeoutError("Client visual probe timed out")
+            if not result.exists():raise TimeoutError("Client visual probe timed out: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
             data=json.loads(result.read_text());assert data["passes"]>=30,data;assert data["creativeTab"],data;assert data["glError"]==0,data
             data.update(image_check(result.with_name("mirror.png")));(evidence/"verified.json").write_text(json.dumps(data,indent=2)+"\n")
             print("SIMPLY_MIRRORS_VISUAL_PASS",args.target,json.dumps(data),flush=True)
