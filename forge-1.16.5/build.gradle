@@ -11,7 +11,7 @@ version = props.mod_version
 base { archivesName = 'simply_mirrors-forge-1.16.5' }
 repositories { mavenCentral(); maven { url 'https://repo.spongepowered.org/repository/maven-public/' } }
 java { toolchain.languageVersion = JavaLanguageVersion.of(8); withSourcesJar() }
-sourceSets.main.java.srcDirs '../common/src/main/java', '../common-client/src/main/java', '../common-1.16.5/src/main/java'
+apply from: file('../tools/forge16-sources.gradle')
 sourceSets.main.resources.srcDir '../common-1.16.5/src/main/resources'
 minecraft {
     mappings channel: 'official', version: '1.16.5'
