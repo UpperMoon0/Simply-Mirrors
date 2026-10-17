@@ -12,7 +12,7 @@ plugins {
 }
 rootProject.name = 'simply_mirrors'
 include 'common'
-def targets = ['fabric-1.16.5', 'forge-1.16.5', 'fabric-1.20.1', 'forge-1.20.1', 'fabric-1.21.1', 'neoforge-1.21.1']
+def targets = ['fabric-1.16.5', 'fabric-1.20.1', 'forge-1.20.1', 'fabric-1.21.1', 'neoforge-1.21.1']
 def selected = providers.gradleProperty('target').orNull
 if (selected != null && selected != 'common' && !targets.contains(selected)) {
     throw new GradleException("Unknown legacy target: ${selected}. Use tools/build.py for the complete eight-target matrix.")

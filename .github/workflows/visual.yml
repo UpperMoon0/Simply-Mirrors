@@ -43,7 +43,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libopenal1 libxrandr2 libxcursor1 libxi6 libxinerama1
           python -m pip install pillow
-          chmod +x gradlew fabric-26.1.2/gradlew neoforge-26.1.2/gradlew
+          chmod +x gradlew forge-1.16.5/gradlew fabric-26.1.2/gradlew neoforge-26.1.2/gradlew
       - name: Render and verify a mirrored room
         env:
           LIBGL_ALWAYS_SOFTWARE: 'true'

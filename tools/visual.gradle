@@ -20,7 +20,25 @@ processResources {
         if (neo.exists()) neo.append('\n[[mixins]]\nconfig = "simplymirrors.visual.mixins.json"\n')
     }
 }
-if (mc == '26.1.2' && loader == 'neoforge') {
+if (mc == '1.16.5' && loader == 'forge') {
+    minecraft.runs {
+        visualClient {
+            taskName 'runVisualClient'
+            workingDirectory project.file('run/visual-client')
+            property 'simplymirrors.visualPort', port
+            jvmArgs '-Xmx1024m'
+            args '--width', '960', '--height', '540', '--mixin', 'simplymirrors.visual.mixins.json'
+            mods { simply_mirrors { source sourceSets.main } }
+        }
+        visualServer {
+            taskName 'runVisualServer'
+            workingDirectory project.file('run/visual-server')
+            jvmArgs '-Xmx1024m'
+            args '--nogui'
+            mods { simply_mirrors { source sourceSets.main } }
+        }
+    }
+} else if (mc == '26.1.2' && loader == 'neoforge') {
     neoForge.runs {
         visualClient {
             client()
