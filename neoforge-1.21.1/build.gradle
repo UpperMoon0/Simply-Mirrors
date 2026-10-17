@@ -1,1 +1,1 @@
-// Platform configuration is defined by the root build.
+repositories { maven { url = 'https://maven.neoforged.net/releases/' } }
