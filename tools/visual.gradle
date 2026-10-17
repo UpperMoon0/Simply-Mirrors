@@ -3,6 +3,7 @@ if (!providers.gradleProperty('visualTest').isPresent()) return
 def mc = providers.gradleProperty('visualMc').get()
 def loader = providers.gradleProperty('visualLoader').get()
 def port = providers.gradleProperty('visualPort').get()
+logger.lifecycle("Visual target: ${mc}/${loader}")
 layout.buildDirectory = file('build/visual')
 sourceSets.main.java.srcDir(rootProject.file(rootProject == project ? '../visual-tests/common/java' : 'visual-tests/common/java'))
 sourceSets.main.java.srcDir(rootProject.file(rootProject == project ? "../visual-tests/${mc}/java" : "visual-tests/${mc}/java"))

@@ -1,7 +1,5 @@
 name: Mirror visual acceptance
 on:
-  push:
-    branches: ['codex/**']
   pull_request:
   workflow_dispatch:
 permissions:
