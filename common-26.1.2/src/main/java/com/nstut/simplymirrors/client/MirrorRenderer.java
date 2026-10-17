@@ -75,7 +75,8 @@ public final class MirrorRenderer {
         ProjectionType savedType=RenderSystem.getProjectionType();
         GpuBuffer savedGlobals=RenderSystem.getGlobalSettingsUniform();
         int passes=0;
-        boolean oldSmartCull=mc.smartCull;
+        var visible=mc.levelRenderer.getVisibleSections();
+        var savedVisible=new ArrayList<>(visible);
         try {
             if(target==null||target.width!=main.width||target.height!=main.height) {
                 if(target!=null)target.destroyBuffers();target=new TextureTarget("Simply Mirrors reflection",main.width,main.height,true);
@@ -88,12 +89,16 @@ public final class MirrorRenderer {
                 Matrix4f reflectedView=new Matrix4f().set(MirrorMatrices.multiply(view,ImmersiveMirrorTransform.matrix(s.nx,0,s.nz)));
                 Matrix4f projection=new Matrix4f().set(MirrorMatrices.oblique(proj,reflectedView.get(new float[16]),s.nx,0,s.nz,
                         s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],RenderSystem.getDevice().isZZeroToOne()));
-                Camera virtual=new Camera();virtual.setLevel(mc.level);virtual.setEntity(mc.getCameraEntity());virtual.update(delta);
+                Camera virtual=new ReflectionCamera(reflectedView);virtual.setLevel(mc.level);virtual.setEntity(mc.getCameraEntity());virtual.update(delta);
                 CameraAccessor ca=(CameraAccessor)(Object)virtual;ca.simplymirrors$position(reflectedEye);
                 ca.simplymirrors$rotation(s.nz!=0?180-mc.gameRenderer.getMainCamera().yRot():-mc.gameRenderer.getMainCamera().yRot(),mc.gameRenderer.getMainCamera().xRot());
                 ca.simplymirrors$detached(true);virtual.tick();ca.simplymirrors$frustum(reflectedView,projection,reflectedEye);
-                access.simplymirrors$frustum(virtual.getCullFrustum());
-                mc.smartCull=false;
+                // Use loaded section geometry directly: the main camera's occlusion graph may
+                // omit a sealed room on the opposite side of the mirror wall.
+                visible.clear();
+                var area=access.simplymirrors$viewArea();
+                if(area!=null)for(var section:area.sections)
+                    if(virtual.getCullFrustum().isVisible(section.getBoundingBox()))visible.add(section);
                 state.reset();mc.levelRenderer.extractLevel(delta,virtual,partial);virtual.extractRenderState(state.cameraRenderState,partial);
                 state.cameraRenderState.viewRotationMatrix.set(reflectedView);state.cameraRenderState.projectionMatrix.set(projection);
                 state.weatherRenderState.reset();state.particlesRenderState.reset();
@@ -123,13 +128,18 @@ public final class MirrorRenderer {
         } catch(RuntimeException exception) {
             failed=true;java.util.logging.Logger.getLogger("simply_mirrors").log(java.util.logging.Level.SEVERE,"Mirror reflection disabled for this world after a rendering error",exception);
         } finally {
-            mc.smartCull=oldSmartCull;
+            visible.clear();visible.addAll(savedVisible);
             redirect=null;RenderSystem.setGlobalSettingsUniform(savedGlobals);RenderSystem.setProjectionMatrix(savedProj,savedType);RenderSystem.setShaderFog(savedFog);
-            access.simplymirrors$frustum(mc.gameRenderer.getMainCamera().getCullFrustum());
             state.reset();mc.levelRenderer.extractLevel(delta,mc.gameRenderer.getMainCamera(),partial);
             mc.gameRenderer.getMainCamera().extractRenderState(state.cameraRenderState,partial);
             state.cameraRenderState.viewRotationMatrix.set(savedView);state.cameraRenderState.projectionMatrix.set(savedProjection);
         }
+    }
+    /** Terrain draw extraction queries the Camera directly instead of the renderLevel matrix. */
+    private static final class ReflectionCamera extends Camera {
+        private final Matrix4f reflectedView;
+        ReflectionCamera(Matrix4f reflectedView) { this.reflectedView=new Matrix4f(reflectedView); }
+        @Override public Matrix4f getViewRotationMatrix(Matrix4f destination) { return destination.set(reflectedView); }
     }
     private static GpuBuffer globals(Vec3 eye,int width,int height,Minecraft mc,float partial) {
         int x=Mth.floor(eye.x),y=Mth.floor(eye.y),z=Mth.floor(eye.z);

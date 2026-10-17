@@ -2,11 +2,15 @@
 
 A standalone Minecraft mod project for placeable mirrors that reflect the surrounding world.
 
-**Status: experimental development build.** Includes a craftable wall-mounted mirror, a dedicated Simply Mirrors creative tab, and native reflection adapters for all four Minecraft versions. Reflection geometry is adapted from Immersive Portals CE; no portal mod is required. Runtime and visual acceptance are in progress.
+**Status: experimental development build.** Includes a craftable wall-mounted mirror, a dedicated Simply Mirrors creative tab, and native reflection adapters for all four Minecraft versions. Reflection geometry is adapted from Immersive Portals CE; no portal mod is required. Runtime acceptance is tracked per target; the first verified capture is shown below.
 
 Mirrors face the wall surface you click, or face you when placed from above/below. Place a block from the Simply Mirrors tab or craft one using sticks in the corners, iron ingots on the edges, and glass in the center. The oak frame surrounds a live reflective glass opening.
 
 The first renderer is bounded to two visible mirror planes per frame within 32 blocks. Coplanar mirrors share a reflection render. Reflections show loaded terrain and entities; recursive mirror reflections and shader-pack compatibility are not yet supported. The 26.1.2 compositor currently targets Minecraft's OpenGL renderer.
+
+![Live reflections in the Fabric 1.16.5 acceptance scene](docs/images/mirror-fabric-1.16.5.png)
+
+The capture shows the player and colored blocks behind the camera reflected in a 3 x 3 mirror panel, with a solid wall behind the glass.
 
 ## Target matrix
 
@@ -49,7 +53,9 @@ The root wrapper is Gradle 8.14. Forge 1.16.5 uses its own Gradle 8.14 build wit
 
 ## Validation
 
-Shared tests cover CE vector/matrix parity, inverse transforms, glass projection alignment, oblique wall clipping, and coplanar grouping. Every production artifact is checked for version/loader identity, Java level, block/item resources, mixin metadata, and license notices. Compilation alone does not establish visual correctness; rendered acceptance evidence is tracked separately.
+Shared tests cover CE vector/matrix parity, inverse transforms, glass projection alignment, oblique wall clipping, and coplanar grouping. Every production artifact is checked for version/loader identity, Java level, block/item resources, mixin metadata, and license notices. The isolated visual workflow launches a disposable dedicated server and client, places an asymmetric red/green/blue fixture behind the player and an opaque wall behind the mirrors, then checks the captured reflection's colors, handedness, completed render passes, creative tab, and OpenGL error state. Artifacts include the capture and logs for each target. The initial fixture covers north-facing coplanar panels.
+
+To run one target locally, install Pillow and use `python tools/visual_smoke.py --target fabric-1.20.1`. Linux CI supplies Xvfb and Mesa software rendering. The script refuses to reuse an existing test world. Test probes are compiled into a separate build directory and are rejected by the production packaging check.
 
 ## Rendering implementation
 

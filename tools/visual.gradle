@@ -27,6 +27,7 @@ if (mc == '1.16.5' && loader == 'forge') {
     minecraft.runs {
         visualClient {
             taskName 'runVisualClient'
+            parent project.minecraft.runs.getByName('client')
             workingDirectory project.file('run/visual-client')
             property 'simplymirrors.visualPort', port
             jvmArgs '-Xmx1024m'
@@ -35,6 +36,7 @@ if (mc == '1.16.5' && loader == 'forge') {
         }
         visualServer {
             taskName 'runVisualServer'
+            parent project.minecraft.runs.getByName('server')
             workingDirectory project.file('run/visual-server')
             jvmArgs '-Xmx1024m'
             args '--nogui'
