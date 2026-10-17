@@ -75,6 +75,7 @@ public final class MirrorRenderer {
         ProjectionType savedType=RenderSystem.getProjectionType();
         GpuBuffer savedGlobals=RenderSystem.getGlobalSettingsUniform();
         int passes=0;
+        boolean oldSmartCull=mc.smartCull;
         try {
             if(target==null||target.width!=main.width||target.height!=main.height) {
                 if(target!=null)target.destroyBuffers();target=new TextureTarget("Simply Mirrors reflection",main.width,main.height,true);
@@ -92,6 +93,7 @@ public final class MirrorRenderer {
                 ca.simplymirrors$rotation(s.nz!=0?180-mc.gameRenderer.getMainCamera().yRot():-mc.gameRenderer.getMainCamera().yRot(),mc.gameRenderer.getMainCamera().xRot());
                 ca.simplymirrors$detached(true);virtual.tick();ca.simplymirrors$frustum(reflectedView,projection,reflectedEye);
                 access.simplymirrors$frustum(virtual.getCullFrustum());
+                mc.smartCull=false;
                 state.reset();mc.levelRenderer.extractLevel(delta,virtual,partial);virtual.extractRenderState(state.cameraRenderState,partial);
                 state.cameraRenderState.viewRotationMatrix.set(reflectedView);state.cameraRenderState.projectionMatrix.set(projection);
                 state.weatherRenderState.reset();state.particlesRenderState.reset();
@@ -121,6 +123,7 @@ public final class MirrorRenderer {
         } catch(RuntimeException exception) {
             failed=true;java.util.logging.Logger.getLogger("simply_mirrors").log(java.util.logging.Level.SEVERE,"Mirror reflection disabled for this world after a rendering error",exception);
         } finally {
+            mc.smartCull=oldSmartCull;
             redirect=null;RenderSystem.setGlobalSettingsUniform(savedGlobals);RenderSystem.setProjectionMatrix(savedProj,savedType);RenderSystem.setShaderFog(savedFog);
             access.simplymirrors$frustum(mc.gameRenderer.getMainCamera().getCullFrustum());
             state.reset();mc.levelRenderer.extractLevel(delta,mc.gameRenderer.getMainCamera(),partial);

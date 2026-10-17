@@ -72,13 +72,16 @@ public final class MirrorRenderer {
                 accessor.simplymirrors$rotation(surface.nz!=0?180-camera.getYRot():-camera.getYRot(),camera.getXRot());
                 PoseStack pose=new PoseStack();pose.last().pose().multiply(reflectedView);pose.last().normal().load(new com.mojang.math.Matrix3f(reflectedView));
                 int oldFront=glGetInteger(GL_FRONT_FACE);
+                boolean oldSmartCull=mc.smartCull;
+                // The virtual camera is behind the wall; portal clipping replaces ordinary wall occlusion.
+                mc.smartCull=false;
                 redirect=target;
                 try {
                     target.bindWrite(true);game.resetProjectionMatrix(projection);glFrontFace(GL_CW);
                     
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
                 } finally {
-                    glFrontFace(oldFront);redirect=null;main.bindWrite(true);game.resetProjectionMatrix(mainProjectionMatrix);
+                    mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);game.resetProjectionMatrix(mainProjectionMatrix);
                     
                     mc.getEntityRenderDispatcher().prepare(mc.level,camera,mc.crosshairPickEntity);
                 }

@@ -38,6 +38,20 @@ public class MirrorMatricesTest {
         assertTrue("Wall must fail the oblique near plane",wall[2]+wall[3]<0);
         assertTrue("Room must survive the oblique near plane",room[2]+room[3]>0);
     }
+    @Test public void zeroToOneProjectionClipsWallAndPreservesGlassAlignment() {
+        float[] projection=PROJECTION.clone();
+        for(int col=0;col<4;col++)projection[col*4+2]=(PROJECTION[col*4+2]+PROJECTION[col*4+3])*.5f;
+        float[] view=MirrorMatrices.multiply(VIEW,ImmersiveMirrorTransform.matrix(0,0,-1));
+        float[] clipped=MirrorMatrices.oblique(projection,view,0,0,-1,0,0,-3.875,true);
+        float[] vp=MirrorMatrices.multiply(clipped,view);
+        double[] wall=MirrorMatrices.transform(vp,0,0,-3.25,1),room=MirrorMatrices.transform(vp,0,0,-4.75,1);
+        assertTrue("Wall fails zero-to-one near plane",wall[2]<0);
+        assertTrue("Room survives zero-to-one near plane",room[2]>0);
+        double[] main=MirrorMatrices.transform(MirrorMatrices.multiply(projection,VIEW),.25,.5,3.875,1);
+        double[] mirror=MirrorMatrices.transform(vp,.25,.5,-3.875,1);
+        assertEquals(main[0]/main[3],mirror[0]/mirror[3],1e-6);
+        assertEquals(main[1]/main[3],mirror[1]/mirror[3],1e-6);
+    }
     @Test public void horizontalPlaneKeysMergeOnlyCoplanarSameFacingCells() {
         assertEquals(new MirrorSurface(0,0,0,0,-1).planeKey(),new MirrorSurface(1,1,0,0,-1).planeKey());
         assertNotEquals(new MirrorSurface(0,0,0,0,-1).planeKey(),new MirrorSurface(0,0,1,0,-1).planeKey());

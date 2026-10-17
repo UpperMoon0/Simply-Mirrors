@@ -72,13 +72,16 @@ public final class MirrorRenderer {
                 accessor.simplymirrors$rotation(surface.nz!=0?180-camera.getYRot():-camera.getYRot(),camera.getXRot());
                 PoseStack pose=new PoseStack();pose.last().pose().set(reflectedView);pose.last().normal().set(new org.joml.Matrix3f(reflectedView));
                 int oldFront=glGetInteger(GL_FRONT_FACE);
+                boolean oldSmartCull=mc.smartCull;
+                // The virtual camera is behind the wall; portal clipping replaces ordinary wall occlusion.
+                mc.smartCull=false;
                 redirect=target;
                 try {
                     target.bindWrite(true);RenderSystem.setProjectionMatrix(projection,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);glFrontFace(GL_CW);
                     mc.levelRenderer.prepareCullFrustum(pose,reflectedEye,projection);
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
                 } finally {
-                    glFrontFace(oldFront);redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);
+                    mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);
                     mc.levelRenderer.prepareCullFrustum(mainPose,eye,mainProjectionMatrix);
                     mc.getEntityRenderDispatcher().prepare(mc.level,camera,mc.crosshairPickEntity);
                 }
