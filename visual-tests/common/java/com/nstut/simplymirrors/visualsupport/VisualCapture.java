@@ -1,4 +1,4 @@
-package com.nstut.simplymirrors.visualtest;
+package com.nstut.simplymirrors.visualsupport;
 import org.lwjgl.BufferUtils;
 import java.nio.ByteBuffer;
 import java.awt.image.BufferedImage;

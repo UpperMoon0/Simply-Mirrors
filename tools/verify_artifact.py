@@ -12,6 +12,7 @@ TARGETS = {t["target"]: t for t in json.loads((ROOT / "tools/targets.json").read
 def verify(path, target):
     with zipfile.ZipFile(path) as jar:
         names = set(jar.namelist())
+        assert "pack.mcmeta" in names, "Mod resource pack metadata missing"
         assert "LICENSE" in names, "License missing"
         assert "NOTICE" in names and "licenses/Immersive-Portals-CE-Apache-2.0.txt" in names, "CE attribution missing"
         for cl in ["block/MirrorBlock", "block/MirrorBlockEntity", "client/MirrorRenderer", "math/ImmersiveMirrorTransform"]:
@@ -25,7 +26,7 @@ def verify(path, target):
         folder = "recipe" if singular else "recipes"
         recipe = json.loads(jar.read(f"data/simply_mirrors/{folder}/mirror.json"))
         assert recipe["result"].get("id", recipe["result"].get("item")) == "simply_mirrors:mirror"
-        assert not any("VisualProbe" in name or "/visualtest/" in name for name in names), "Visual test code packaged"
+        assert not any("VisualProbe" in name or "/visualtest/" in name or "/visualsupport/" in name for name in names), "Visual test code packaged"
         assert "com/nstut/simplymirrors/SimplyMirrors.class" in names, "Shared bootstrap missing"
         assert "com/nstut/simplymirrors/math/MirrorPlane.class" in names, "Shared reflection core missing"
         expected_java = int(target["java"]) + 44

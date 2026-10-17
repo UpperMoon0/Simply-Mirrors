@@ -26,8 +26,9 @@ if (mc == '26.1.2' && loader == 'neoforge') {
             client()
             gameDirectory = project.file('run/visual-client')
             systemProperty 'simplymirrors.visualTest', 'true'
+            systemProperty 'simplymirrors.visualPort', port
             jvmArguments.addAll '-Xmx1024m'
-            programArguments.addAll '--quickPlayMultiplayer', "127.0.0.1:${port}", '--width', '960', '--height', '540'
+            programArguments.addAll '--width', '960', '--height', '540'
         }
         visualServer {
             server()
@@ -42,9 +43,8 @@ if (mc == '26.1.2' && loader == 'neoforge') {
             client()
             runDir('run/visual-client')
             property 'simplymirrors.visualTest', 'true'
+            property 'simplymirrors.visualPort', port
             vmArg '-Xmx1024m'
-            if (mc == '1.16.5') programArgs '--server', '127.0.0.1', '--port', port
-            else programArgs '--quickPlayMultiplayer', "127.0.0.1:${port}"
             programArgs '--width', '960', '--height', '540'
         }
         visualServer {

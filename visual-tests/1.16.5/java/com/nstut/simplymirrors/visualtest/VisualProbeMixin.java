@@ -1,5 +1,9 @@
 package com.nstut.simplymirrors.visualtest;
 import com.nstut.simplymirrors.client.MirrorRenderer;
+import com.nstut.simplymirrors.visualsupport.VisualCapture;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.core.Registry;
@@ -14,11 +18,19 @@ import static org.lwjgl.opengl.GL33.*;
 public abstract class VisualProbeMixin {
     @Unique private int simplymirrors$frames;
     @Unique private boolean simplymirrors$done;
+    @Unique private boolean simplymirrors$joining;
     @Inject(method="runTick",at=@At("TAIL"))
     private void simplymirrors$probe(CallbackInfo ci) throws Exception {
         if(simplymirrors$done)return;Minecraft mc=Minecraft.getInstance();
-        if(simplymirrors$frames++==0) {GLFW.glfwHideWindow(mc.getWindow().getWindow());mc.options.pauseOnLostFocus=false;mc.options.renderDistance=4;mc.options.bobView=false;mc.options.framerateLimit=30;mc.options.hideGui=true;}
-        if(mc.player==null||mc.level==null)return;
+        if(simplymirrors$frames++==0) {mc.options.pauseOnLostFocus=false;mc.options.renderDistance=4;mc.options.bobView=false;mc.options.framerateLimit=30;mc.options.hideGui=true;}
+        if(mc.player==null||mc.level==null) {
+            if(simplymirrors$frames%300==0)System.out.println("SIMPLY_MIRRORS_VISUAL_STAGE "+(mc.screen==null?"none":mc.screen.getClass().getName()));
+            if(!simplymirrors$joining&&mc.getOverlay()==null&&mc.screen instanceof TitleScreen) {
+                simplymirrors$joining=true;String port=System.getProperty("simplymirrors.visualPort");String address="127.0.0.1:"+port;
+                System.out.println("SIMPLY_MIRRORS_VISUAL_CONNECT "+address);mc.setScreen(new ConnectScreen(new TitleScreen(),mc,"127.0.0.1",Integer.parseInt(port)));
+            }
+            return;
+        }
         mc.player.setPos(.5,65,-3.5);mc.player.xo=.5;mc.player.yo=65;mc.player.zo=-3.5;
         mc.player.yRot=0;mc.player.xRot=0;mc.player.yRotO=0;mc.player.xRotO=0;mc.player.yBodyRot=0;mc.player.yHeadRot=0;
         if(MirrorRenderer.completedPasses<30&&simplymirrors$frames<1800)return;

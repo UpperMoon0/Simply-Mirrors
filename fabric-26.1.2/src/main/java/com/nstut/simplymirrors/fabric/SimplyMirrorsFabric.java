@@ -23,7 +23,7 @@ public final class SimplyMirrorsFabric implements ModInitializer {
         Registry.register(BuiltInRegistries.ITEM, id("mirror"), MIRROR_ITEM);
         BlockEntityType<MirrorBlockEntity> type = Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, id("mirror"), FabricBlockEntityTypeBuilder.create(MirrorBlockEntity::new, MIRROR).build());
         MirrorContent.blockEntityType = () -> type;
-        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, id("main"), CreativeModeTab.builder(CreativeModeTab.Row.TOP, 0)
+        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, id("main"), net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab.builder()
             .title(Component.translatable("itemGroup.simply_mirrors")).icon(() -> new ItemStack(MIRROR_ITEM))
             .displayItems((parameters, output) -> output.accept(MIRROR_ITEM)).build());
         SimplyMirrors.initialize();

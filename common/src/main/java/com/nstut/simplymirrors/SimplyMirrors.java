@@ -8,6 +8,6 @@ public final class SimplyMirrors {
     private SimplyMirrors() { }
 
     public static void initialize() {
-        java.util.logging.Logger.getLogger(MOD_ID).info(NAME + " development bootstrap loaded");
+        java.util.logging.Logger.getLogger(MOD_ID).info(NAME + " loaded");
     }
 }
