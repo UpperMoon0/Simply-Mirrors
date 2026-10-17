@@ -1,0 +1,16 @@
+# Build outputs and local runtimes
+.gradle/
+**/.gradle/
+**/build/
+**/run/
+**/runs/
+.idea/
+*.iml
+.vscode/
+local.properties
+.env
+.env.*
+__pycache__/
+*.pyc
+artifacts/
+*.log

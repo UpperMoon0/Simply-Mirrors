@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "simply_mirrors",
+  "version": "${version}",
+  "name": "Simply Mirrors",
+  "description": "Simply Mirrors development foundation. Reflective mirror gameplay is under development.",
+  "authors": [
+    "NsTut"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "contact": {
+    "sources": "https://github.com/UpperMoon0/Simply-Mirrors",
+    "issues": "https://github.com/UpperMoon0/Simply-Mirrors/issues"
+  },
+  "entrypoints": {
+    "main": [
+      "com.nstut.simplymirrors.fabric.SimplyMirrorsFabric"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "minecraft": "1.21.1",
+    "java": ">=21"
+  }
+}

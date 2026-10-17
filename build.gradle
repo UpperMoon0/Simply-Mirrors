@@ -1,0 +1,71 @@
+plugins {
+    id 'dev.architectury.loom' version '1.11-SNAPSHOT' apply false
+    id 'architectury-plugin' version '3.4-SNAPSHOT'
+    id 'base'
+}
+architectury { minecraft = '1.21.1' }
+allprojects {
+    group = rootProject.maven_group
+    version = rootProject.mod_version
+    repositories { mavenCentral() }
+}
+def matrix = [
+    'fabric-1.16.5': [mc: '1.16.5', java: 8, loader: 'fabric', loaderVersion: '0.16.14'],
+    'forge-1.16.5': [mc: '1.16.5', java: 8, loader: 'forge', loaderVersion: '1.16.5-36.2.42'],
+    'fabric-1.20.1': [mc: '1.20.1', java: 17, loader: 'fabric', loaderVersion: '0.16.14'],
+    'forge-1.20.1': [mc: '1.20.1', java: 17, loader: 'forge', loaderVersion: '1.20.1-47.4.0'],
+    'fabric-1.21.1': [mc: '1.21.1', java: 21, loader: 'fabric', loaderVersion: '0.17.2'],
+    'neoforge-1.21.1': [mc: '1.21.1', java: 21, loader: 'neoforge', loaderVersion: '21.1.228']
+]
+subprojects { p ->
+    if (p.name == 'common') return
+    def target = matrix[p.name]
+    apply plugin: 'dev.architectury.loom'
+    apply plugin: 'architectury-plugin'
+    apply plugin: 'maven-publish'
+    base { archivesName = "${rootProject.archives_name}-${p.name}" }
+    architectury {
+        platformSetupLoomIde()
+        if (target.loader == 'fabric') fabric()
+        else if (target.loader == 'forge') forge()
+        else neoForge()
+    }
+    loom { silentMojangMappingsLicense() }
+    dependencies {
+        minecraft "net.minecraft:minecraft:${target.mc}"
+        mappings loom.officialMojangMappings()
+        if (target.loader == 'fabric') modImplementation "net.fabricmc:fabric-loader:${target.loaderVersion}"
+        else if (target.loader == 'forge') forge "net.minecraftforge:forge:${target.loaderVersion}"
+        else neoForge "net.neoforged:neoforge:${target.loaderVersion}"
+    }
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(target.java)
+        withSourcesJar()
+    }
+    sourceSets.main.java.srcDir rootProject.file('common/src/main/java')
+    sourceSets.main.java.srcDir rootProject.file("common-${target.mc}/src/main/java")
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        if (target.java >= 9) options.release = target.java
+        else { sourceCompatibility = '1.8'; targetCompatibility = '1.8' }
+    }
+    processResources {
+        inputs.property 'version', project.version
+        filesMatching(['fabric.mod.json', 'META-INF/mods.toml', 'META-INF/neoforge.mods.toml']) {
+            expand version: project.version
+        }
+    }
+    tasks.withType(Jar).configureEach { from(rootProject.file('LICENSE')) }
+    publishing {
+        publications {
+            mavenJava(MavenPublication) { from components.java }
+        }
+    }
+}
+tasks.register('testAllVersions') {
+    group = 'verification'
+    description = 'Runs version-independent reflection contracts (shared across all eight targets).'
+    dependsOn ':common:test'
+}
+
+tasks.named('build') { dependsOn subprojects.collect { it.tasks.named('build') } }

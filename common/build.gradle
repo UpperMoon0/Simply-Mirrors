@@ -1,0 +1,5 @@
+plugins { id 'java-library' }
+java { toolchain.languageVersion = JavaLanguageVersion.of(8); withSourcesJar() }
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+dependencies { testImplementation 'junit:junit:4.13.2' }
+test { useJUnit(); testLogging { events 'failed', 'skipped' } }

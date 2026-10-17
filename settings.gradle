@@ -1,0 +1,21 @@
+pluginManagement {
+    repositories {
+        maven { url 'https://maven.fabricmc.net/' }
+        maven { url 'https://maven.architectury.dev/' }
+        maven { url 'https://maven.minecraftforge.net/' }
+        maven { url 'https://maven.neoforged.net/releases/' }
+        gradlePluginPortal()
+    }
+}
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
+}
+rootProject.name = 'simply_mirrors'
+include 'common'
+def targets = ['fabric-1.16.5', 'forge-1.16.5', 'fabric-1.20.1', 'forge-1.20.1', 'fabric-1.21.1', 'neoforge-1.21.1']
+def selected = providers.gradleProperty('target').orNull
+if (selected != null && selected != 'common' && !targets.contains(selected)) {
+    throw new GradleException("Unknown legacy target: ${selected}. Use tools/build.py for the complete eight-target matrix.")
+}
+(selected == null ? targets : targets.findAll { it == selected }).each { include it }
+// Minecraft 26.1.2 uses Java 25 / Gradle 9 and independent settings in its two target directories.
