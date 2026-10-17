@@ -6,7 +6,8 @@
     "CameraAccessor",
     "MinecraftMixin",
     "LevelRendererAccessor",
-    "LevelRendererMixin"
+    "LevelRendererMixin",
+    "GameRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

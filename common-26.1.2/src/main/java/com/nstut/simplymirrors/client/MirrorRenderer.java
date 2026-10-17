@@ -30,6 +30,7 @@ import static org.lwjgl.opengl.GL33.*;
 public final class MirrorRenderer {
     public static RenderTarget redirect;
     public static long completedPasses;
+    public static final Matrix4f mainProjection=new Matrix4f();
     private static TextureTarget target;
     private static ProjectionMatrixBuffer projectionBuffer;
     private static final GlMirrorComposite COMPOSITE=new GlMirrorComposite();
@@ -52,9 +53,10 @@ public final class MirrorRenderer {
         if(cached.isEmpty()||failed)return;
         float partial=delta.getGameTimeDeltaPartialTick(false);
         Matrix4f savedView=new Matrix4f(mainViewMatrix);
-        // The GPU projection also includes camera bobbing; preserve it for surface placement.
+        // Use the exact world projection captured before the GPU upload.
         Matrix4f savedProjection=new Matrix4f(camera.projectionMatrix);
-        float[] view=savedView.get(new float[16]),proj=savedProjection.get(new float[16]);
+        Matrix4f renderedProjection=new Matrix4f(mainProjection);
+        float[] view=savedView.get(new float[16]),proj=renderedProjection.get(new float[16]);
         float[] vp=MirrorMatrices.multiply(proj,view);
         Map<String,List<MirrorSurface>> groups=new LinkedHashMap<>();
         cached.sort(Comparator.comparingDouble(s->distance(s,eye)));
