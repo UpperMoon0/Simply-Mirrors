@@ -6,7 +6,8 @@
   "client": [
     "CameraAccessor",
     "MinecraftMixin",
-    "LevelRendererMixin"
+    "LevelRendererMixin",
+    "MatrixAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

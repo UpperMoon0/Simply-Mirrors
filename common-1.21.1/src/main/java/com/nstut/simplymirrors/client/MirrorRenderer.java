@@ -25,6 +25,7 @@ import static org.lwjgl.opengl.GL33.*;
 /** CE reflection transform adapted to a bounded, same-dimension vanilla world render. */
 public final class MirrorRenderer {
     public static RenderTarget redirect;
+    public static long completedPasses;
     private static TextureTarget target;
     private static final GlMirrorComposite COMPOSITE=new GlMirrorComposite();
     private static Level lastLevel;
@@ -82,6 +83,7 @@ public final class MirrorRenderer {
                     mc.getEntityRenderDispatcher().prepare(mc.level,camera,mc.crosshairPickEntity);
                 }
                 for(MirrorSurface cell:surfaces)COMPOSITE.draw(target.getColorTextureId(),main.width,main.height,vp,eye.x,eye.y,eye.z,cell);
+                completedPasses++;
             }
         } catch(RuntimeException exception) {
             failed=true;java.util.logging.Logger.getLogger("simply_mirrors").log(java.util.logging.Level.SEVERE,"Mirror reflection disabled for this world after a rendering error",exception);

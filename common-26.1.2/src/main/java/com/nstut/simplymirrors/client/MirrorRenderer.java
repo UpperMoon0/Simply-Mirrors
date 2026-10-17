@@ -29,6 +29,7 @@ import static org.lwjgl.opengl.GL33.*;
 /** CE's reflection transform on the 26.1.2 extracted-state renderer. OpenGL compositor, no portal runtime. */
 public final class MirrorRenderer {
     public static RenderTarget redirect;
+    public static long completedPasses;
     private static TextureTarget target;
     private static ProjectionMatrixBuffer projectionBuffer;
     private static final GlMirrorComposite COMPOSITE=new GlMirrorComposite();
@@ -112,6 +113,7 @@ public final class MirrorRenderer {
                     if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)throw new IllegalStateException("Mirror composite framebuffer incomplete");
                     glViewport(0,0,main.width,main.height);
                     for(MirrorSurface cell:surfaces)COMPOSITE.draw(((GlTexture)target.getColorTexture()).glId(),main.width,main.height,vp,eye.x,eye.y,eye.z,cell);
+                    completedPasses++;
                 } finally { glBindFramebuffer(GL_DRAW_FRAMEBUFFER,oldDraw); }
             }
         } catch(RuntimeException exception) {

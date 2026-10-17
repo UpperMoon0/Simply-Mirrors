@@ -20,8 +20,8 @@ public final class SimplyMirrorsNeoforge {
     public static final DeferredHolder<Block, Block> MIRROR = BLOCKS.register("mirror", () -> new MirrorBlock(BlockBehaviour.Properties.of().strength(0.8F).sound(SoundType.WOOD).noOcclusion()));
     private static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, SimplyMirrors.MOD_ID);
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> TAB = TABS.register("main", () -> CreativeModeTab.builder(CreativeModeTab.Row.TOP, 0)
-        .title(Component.translatable("itemGroup.simply_mirrors")).icon(() -> new ItemStack(MIRROR_ITEM.get()))
-        .displayItems((parameters, output) -> output.accept(MIRROR_ITEM.get())).build());
+        .title(Component.translatable("itemGroup.simply_mirrors")).icon(() -> new ItemStack(SimplyMirrorsNeoforge.MIRROR_ITEM.get()))
+        .displayItems((parameters, output) -> output.accept(SimplyMirrorsNeoforge.MIRROR_ITEM.get())).build());
     public static final DeferredHolder<Item, BlockItem> MIRROR_ITEM = ITEMS.register("mirror", () -> new BlockItem(MIRROR.get(), new Item.Properties()));
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<MirrorBlockEntity>> MIRROR_ENTITY = ENTITIES.register("mirror", () -> BlockEntityType.Builder.of(MirrorBlockEntity::new, MIRROR.get()).build(null));
     public SimplyMirrorsNeoforge(net.neoforged.bus.api.IEventBus bus) {

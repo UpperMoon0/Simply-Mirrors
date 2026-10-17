@@ -30,7 +30,10 @@ subprojects { p ->
         else if (target.loader == 'forge') forge()
         else neoForge()
     }
-    loom { silentMojangMappingsLicense(); mixin { defaultRefmapName = 'simplymirrors.refmap.json' } }
+    loom {
+        silentMojangMappingsLicense()
+        if (target.loader != 'neoforge') mixin { defaultRefmapName = 'simplymirrors.refmap.json' }
+    }
     dependencies {
         minecraft "net.minecraft:minecraft:${target.mc}"
         mappings loom.officialMojangMappings()
@@ -53,11 +56,18 @@ subprojects { p ->
     }
     processResources {
         inputs.property 'version', project.version
+        if (target.loader == 'neoforge') doLast {
+            def mixinsFile = new File(destinationDir, 'simplymirrors.mixins.json')
+            def json = new groovy.json.JsonSlurper().parse(mixinsFile)
+            json.remove('refmap')
+            mixinsFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(json))
+        }
         filesMatching(['fabric.mod.json', 'META-INF/mods.toml', 'META-INF/neoforge.mods.toml']) {
             expand version: project.version
         }
     }
     tasks.withType(Jar).configureEach { from(rootProject.file('LICENSE')); from(rootProject.file('NOTICE')); from(rootProject.file('licenses')) { into 'licenses' } }
+    apply from: rootProject.file('tools/visual.gradle')
     publishing {
         publications {
             mavenJava(MavenPublication) { from components.java }

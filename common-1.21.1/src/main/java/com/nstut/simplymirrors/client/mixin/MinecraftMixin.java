@@ -15,6 +15,6 @@ public abstract class MinecraftMixin {
     }
     @Inject(method="runTick",at=@At("HEAD"))
     private void simplymirrors$unload(CallbackInfo ci) { if(Minecraft.getInstance().level==null)MirrorRenderer.release(); }
-    @Inject(method="close",at=@At("HEAD"))
+    @Inject(method="close",at=@At("HEAD"),remap=false)
     private void simplymirrors$close(CallbackInfo ci) { MirrorRenderer.release(); }
 }

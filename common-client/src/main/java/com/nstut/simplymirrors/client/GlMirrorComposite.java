@@ -13,6 +13,9 @@ public final class GlMirrorComposite implements AutoCloseable {
         if(program==0) initialize();
         int oldProgram=glGetInteger(GL_CURRENT_PROGRAM),oldVao=glGetInteger(GL_VERTEX_ARRAY_BINDING),oldBuffer=glGetInteger(GL_ARRAY_BUFFER_BINDING);
         int oldActive=glGetInteger(GL_ACTIVE_TEXTURE);glActiveTexture(GL_TEXTURE0);int oldTexture=glGetInteger(GL_TEXTURE_BINDING_2D);
+        boolean samplers=org.lwjgl.opengl.GL.getCapabilities().OpenGL33||org.lwjgl.opengl.GL.getCapabilities().GL_ARB_sampler_objects;
+        int oldSampler=samplers?glGetInteger(GL_SAMPLER_BINDING):0;
+        if(samplers)glBindSampler(0,0);
         boolean depth=glIsEnabled(GL_DEPTH_TEST),cull=glIsEnabled(GL_CULL_FACE),blend=glIsEnabled(GL_BLEND);
         boolean depthMask=glGetBoolean(GL_DEPTH_WRITEMASK);int depthFunc=glGetInteger(GL_DEPTH_FUNC);
         try {
@@ -28,7 +31,7 @@ public final class GlMirrorComposite implements AutoCloseable {
             glDrawArrays(GL_TRIANGLES,0,6);
         } finally {
             glBindBuffer(GL_ARRAY_BUFFER,oldBuffer);glBindVertexArray(oldVao);glUseProgram(oldProgram);
-            glBindTexture(GL_TEXTURE_2D,oldTexture);glActiveTexture(oldActive);glDepthMask(depthMask);glDepthFunc(depthFunc);
+            glBindTexture(GL_TEXTURE_2D,oldTexture);if(samplers)glBindSampler(0,oldSampler);glActiveTexture(oldActive);glDepthMask(depthMask);glDepthFunc(depthFunc);
             set(GL_DEPTH_TEST,depth);set(GL_CULL_FACE,cull);set(GL_BLEND,blend);
         }
     }

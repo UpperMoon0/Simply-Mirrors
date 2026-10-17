@@ -27,3 +27,5 @@ processResources {
 }
 tasks.withType(Jar).configureEach { from('../LICENSE'); from('../NOTICE'); from('../licenses') { into 'licenses' } }
 publishing { publications { mavenJava(MavenPublication) { from components.java } } }
+
+apply from: file('../tools/visual.gradle')

@@ -25,7 +25,8 @@ import static org.lwjgl.opengl.GL33.*;
 /** CE reflection transform adapted to a bounded, same-dimension vanilla world render. */
 public final class MirrorRenderer {
     public static RenderTarget redirect;
-    private static TextureTarget target;
+    public static long completedPasses;
+    private static RenderTarget target;
     private static final GlMirrorComposite COMPOSITE=new GlMirrorComposite();
     private static Level lastLevel;
     private static List<MirrorSurface> cached=new ArrayList<>();
@@ -56,7 +57,7 @@ public final class MirrorRenderer {
         RenderTarget main=mc.getMainRenderTarget();int passes=0;
         try {
             if(target==null||target.width!=main.width||target.height!=main.height) {
-                if(target!=null)target.destroyBuffers();target=new TextureTarget(main.width,main.height,true,Minecraft.ON_OSX);
+                if(target!=null)target.destroyBuffers();target=new RenderTarget(main.width,main.height,true,Minecraft.ON_OSX);
             }
             for(List<MirrorSurface> surfaces:groups.values()) {
                 if(passes++>=2)break;
@@ -82,6 +83,7 @@ public final class MirrorRenderer {
                     mc.getEntityRenderDispatcher().prepare(mc.level,camera,mc.crosshairPickEntity);
                 }
                 for(MirrorSurface cell:surfaces)COMPOSITE.draw(target.getColorTextureId(),main.width,main.height,vp,eye.x,eye.y,eye.z,cell);
+                completedPasses++;
             }
         } catch(RuntimeException exception) {
             failed=true;java.util.logging.Logger.getLogger("simply_mirrors").log(java.util.logging.Level.SEVERE,"Mirror reflection disabled for this world after a rendering error",exception);
@@ -109,8 +111,25 @@ public final class MirrorRenderer {
         if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;COMPOSITE.close();
     }
     private static float[] array(Matrix4f matrix) { FloatBuffer buffer=BufferUtils.createFloatBuffer(16);matrix.store(buffer);float[] result=new float[16];for(int i=0;i<16;i++)result[i]=buffer.get(i);return result; }
-    private static Matrix4f matrix(float[] values) { return new NativeMatrix(values); }
-    private static final class NativeMatrix extends Matrix4f {
-        NativeMatrix(float[] a) { m00=a[0];m10=a[1];m20=a[2];m30=a[3];m01=a[4];m11=a[5];m21=a[6];m31=a[7];m02=a[8];m12=a[9];m22=a[10];m32=a[11];m03=a[12];m13=a[13];m23=a[14];m33=a[15]; }
+    private static Matrix4f matrix(float[] a) {
+        Matrix4f result=new Matrix4f();
+        com.nstut.simplymirrors.client.mixin.MatrixAccessor fields=(com.nstut.simplymirrors.client.mixin.MatrixAccessor)(Object)result;
+        fields.simplymirrors$m00(a[0]);
+        fields.simplymirrors$m01(a[4]);
+        fields.simplymirrors$m02(a[8]);
+        fields.simplymirrors$m03(a[12]);
+        fields.simplymirrors$m10(a[1]);
+        fields.simplymirrors$m11(a[5]);
+        fields.simplymirrors$m12(a[9]);
+        fields.simplymirrors$m13(a[13]);
+        fields.simplymirrors$m20(a[2]);
+        fields.simplymirrors$m21(a[6]);
+        fields.simplymirrors$m22(a[10]);
+        fields.simplymirrors$m23(a[14]);
+        fields.simplymirrors$m30(a[3]);
+        fields.simplymirrors$m31(a[7]);
+        fields.simplymirrors$m32(a[11]);
+        fields.simplymirrors$m33(a[15]);
+        return result;
     }
 }

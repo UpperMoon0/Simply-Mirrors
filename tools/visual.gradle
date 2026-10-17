@@ -1,0 +1,58 @@
+if (!providers.gradleProperty('visualTest').isPresent()) return
+
+def mc = providers.gradleProperty('visualMc').get()
+def loader = providers.gradleProperty('visualLoader').get()
+def port = providers.gradleProperty('visualPort').get()
+layout.buildDirectory = file('build/visual')
+sourceSets.main.java.srcDir(rootProject.file(rootProject == project ? '../visual-tests/common/java' : 'visual-tests/common/java'))
+sourceSets.main.java.srcDir(rootProject.file(rootProject == project ? "../visual-tests/${mc}/java" : "visual-tests/${mc}/java"))
+sourceSets.main.resources.srcDir(rootProject.file(rootProject == project ? '../visual-tests/resources' : 'visual-tests/resources'))
+processResources {
+    inputs.property 'visualTest', true
+    doLast {
+        def fabric = new File(destinationDir, 'fabric.mod.json')
+        if (fabric.exists()) {
+            def json = new groovy.json.JsonSlurper().parse(fabric)
+            json.mixins.add('simplymirrors.visual.mixins.json')
+            fabric.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(json))
+        }
+        def neo = new File(destinationDir, 'META-INF/neoforge.mods.toml')
+        if (neo.exists()) neo.append('\n[[mixins]]\nconfig = "simplymirrors.visual.mixins.json"\n')
+    }
+}
+if (mc == '26.1.2' && loader == 'neoforge') {
+    neoForge.runs {
+        visualClient {
+            client()
+            gameDirectory = project.file('run/visual-client')
+            systemProperty 'simplymirrors.visualTest', 'true'
+            jvmArguments.addAll '-Xmx1024m'
+            programArguments.addAll '--quickPlayMultiplayer', "127.0.0.1:${port}", '--width', '960', '--height', '540'
+        }
+        visualServer {
+            server()
+            gameDirectory = project.file('run/visual-server')
+            jvmArguments.addAll '-Xmx1024m'
+            programArgument '--nogui'
+        }
+    }
+} else {
+    loom.runs {
+        visualClient {
+            client()
+            runDir('run/visual-client')
+            property 'simplymirrors.visualTest', 'true'
+            vmArg '-Xmx1024m'
+            if (mc == '1.16.5') programArgs '--server', '127.0.0.1', '--port', port
+            else programArgs '--quickPlayMultiplayer', "127.0.0.1:${port}"
+            programArgs '--width', '960', '--height', '540'
+        }
+        visualServer {
+            server()
+            runDir('run/visual-server')
+            vmArg '-Xmx1024m'
+            programArg 'nogui'
+        }
+    }
+    if (loader == 'forge') loom.forge.mixinConfig('simplymirrors.visual.mixins.json')
+}

@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "com.nstut.simplymirrors.visualtest",
+  "refmap": "simplymirrors.refmap.json",
+  "client": [
+    "VisualProbeMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

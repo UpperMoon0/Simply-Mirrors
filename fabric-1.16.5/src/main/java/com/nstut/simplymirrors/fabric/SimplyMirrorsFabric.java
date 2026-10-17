@@ -13,7 +13,7 @@ import net.fabricmc.fabric.api.client.itemgroup.FabricItemGroupBuilder;
 
 public final class SimplyMirrorsFabric implements ModInitializer {
     public static final Block MIRROR = new MirrorBlock(BlockBehaviour.Properties.of(net.minecraft.world.level.material.Material.WOOD).strength(0.8F).sound(SoundType.WOOD).noOcclusion());
-    public static final CreativeModeTab TAB = FabricItemGroupBuilder.create(id("main")).icon(() -> new ItemStack(MIRROR_ITEM)).build();
+    public static final CreativeModeTab TAB = FabricItemGroupBuilder.create(id("main")).icon(() -> new ItemStack(SimplyMirrorsFabric.MIRROR_ITEM)).build();
     public static final Item MIRROR_ITEM = new BlockItem(MIRROR, new Item.Properties().tab(TAB));
     @Override public void onInitialize() {
         Registry.register(Registry.BLOCK, id("mirror"), MIRROR);

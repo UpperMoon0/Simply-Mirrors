@@ -21,8 +21,8 @@ public final class SimplyMirrorsForge {
     public static final RegistryObject<Block> MIRROR = BLOCKS.register("mirror", () -> new MirrorBlock(BlockBehaviour.Properties.of().strength(0.8F).sound(SoundType.WOOD).noOcclusion()));
     private static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, SimplyMirrors.MOD_ID);
     public static final RegistryObject<CreativeModeTab> TAB = TABS.register("main", () -> CreativeModeTab.builder(CreativeModeTab.Row.TOP, 0)
-        .title(Component.translatable("itemGroup.simply_mirrors")).icon(() -> new ItemStack(MIRROR_ITEM.get()))
-        .displayItems((parameters, output) -> output.accept(MIRROR_ITEM.get())).build());
+        .title(Component.translatable("itemGroup.simply_mirrors")).icon(() -> new ItemStack(SimplyMirrorsForge.MIRROR_ITEM.get()))
+        .displayItems((parameters, output) -> output.accept(SimplyMirrorsForge.MIRROR_ITEM.get())).build());
     public static final RegistryObject<BlockItem> MIRROR_ITEM = ITEMS.register("mirror", () -> new BlockItem(MIRROR.get(), new Item.Properties()));
     public static final RegistryObject<BlockEntityType<MirrorBlockEntity>> MIRROR_ENTITY = ENTITIES.register("mirror", () -> BlockEntityType.Builder.of(MirrorBlockEntity::new, MIRROR.get()).build(null));
     public SimplyMirrorsForge() { net.minecraftforge.eventbus.api.IEventBus bus = FMLJavaModLoadingContext.get().getModEventBus();
