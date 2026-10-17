@@ -88,7 +88,7 @@ public final class MirrorRenderer {
                 Matrix4f reflectedView=new Matrix4f().set(MirrorMatrices.multiply(view,ImmersiveMirrorTransform.matrix(s.nx,0,s.nz)));
                 Matrix4f projection=new Matrix4f().set(MirrorMatrices.oblique(proj,reflectedView.get(new float[16]),s.nx,0,s.nz,
                         s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],RenderSystem.getDevice().isZZeroToOne()));
-                Camera virtual=new Camera();virtual.setLevel(mc.level);virtual.setEntity(mc.player);
+                Camera virtual=new Camera();virtual.setLevel(mc.level);virtual.setEntity(mc.getCameraEntity());virtual.update(delta);
                 CameraAccessor ca=(CameraAccessor)(Object)virtual;ca.simplymirrors$position(reflectedEye);
                 ca.simplymirrors$rotation(s.nz!=0?180-mc.gameRenderer.getMainCamera().yRot():-mc.gameRenderer.getMainCamera().yRot(),mc.gameRenderer.getMainCamera().xRot());
                 ca.simplymirrors$detached(true);virtual.tick();ca.simplymirrors$frustum(reflectedView,projection,reflectedEye);
