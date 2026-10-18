@@ -80,6 +80,11 @@ if (stackDirectory.isPresent()) {
                             nativeMod = true
                         } else nativeMod = nested.getEntry('META-INF/mods.toml') != null || nested.getEntry('META-INF/neoforge.mods.toml') != null
                     }
+                    // Loader 0.16's KnotClassLoader.getResources returns only preloaded
+                    // logging-jar resources when one exists. Iris's generated SLF4J
+                    // fabric.mod.json then hides every development mod, including Loader.
+                    // Use the unmodified upstream library at the same version below.
+                    if (stackTarget == 'fabric-1.16.5' && id == 'org_slf4j_slf4j-api') return
                     // The Fabric API dependency already supplies these components.
                     if (stackTarget.startsWith('fabric-') && id.startsWith('fabric-')) return
                     if (selected.containsKey(id)) {
@@ -99,6 +104,10 @@ if (stackDirectory.isPresent()) {
             }
         }
         jars.each { expand(it) }
+    }
+    if (stackTarget == 'fabric-1.16.5') {
+        dependencies { localRuntime 'org.slf4j:slf4j-api:1.7.12' }
+        project.ext.set('fabric.loom.runtimeJavaCompatibilityVersion', '8')
     }
     if (stackTarget == 'fabric-1.20.1') {
         // Sodium 0.5 requires Minecraft's LWJGL 3.3.1. Run the game on Java17,

@@ -36,4 +36,33 @@ class SceneActivationTests(unittest.TestCase):
             rcon.command.assert_not_called()
             self.assertEqual("-1",(directory/"visual-scene.txt").read_text())
 
+class ShaderImageTests(unittest.TestCase):
+    def image(self,path,colors):
+        from PIL import Image,ImageDraw
+        image=Image.new("RGB",(960,540),(160,183,204));draw=ImageDraw.Draw(image)
+        for index,color in enumerate(colors):draw.rectangle((335+index*96,160,430+index*96,320),fill=color)
+        image.save(path)
+
+    def test_shadowed_and_sunlit_shader_bands(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"reflection.png"
+            for colors in [[(32,35,77),(38,71,35),(48,31,36)],[(77,72,161),(145,195,37),(191,53,47)]]:
+                self.image(path,colors)
+                result=visual_smoke.image_check(path,shaders=True)
+                self.assertGreater(result["redMeanX"],result["blueMeanX"]+100)
+
+    def test_flat_texture_and_missing_marker_fail(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"reflection.png"
+            for colors in [[(176,204,255)]*3,[(32,35,77),(38,71,35),(160,183,204)]]:
+                self.image(path,colors)
+                with self.assertRaises(AssertionError):visual_smoke.image_check(path,shaders=True)
+
+    def test_unmirrored_band_order_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"reflection.png"
+            self.image(path,[(191,53,47),(145,195,37),(77,72,161)])
+            with self.assertRaisesRegex(AssertionError,"handedness"):
+                visual_smoke.image_check(path,shaders=True)
+
 if __name__=="__main__":unittest.main()
