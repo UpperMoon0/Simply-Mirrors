@@ -1,4 +1,4 @@
-"""Launch an isolated server/client scene and verify actual mirror pixels and creative-tab registration."""
+"""Verify actual reflections on all six block faces with one isolated server/client session."""
 from __future__ import annotations
 import argparse, json, math, os, signal, socket, struct, subprocess, sys, time
 from pathlib import Path
