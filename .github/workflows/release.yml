@@ -119,6 +119,7 @@ jobs:
           [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
           gh run download "$SOURCE_RUN" -n simply-mirrors-release-bundle -D release-output
           gh run download "$SOURCE_RUN" -n curseforge-upload-receipts -D release-output
+          python -m pip install pillow
           python -m unittest discover -s tools -p 'test_*.py'
           python tools/verify_recovery.py "$SOURCE_RUN" release-output
       - name: Resume only missing CurseForge uploads
