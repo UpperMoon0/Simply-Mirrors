@@ -80,7 +80,7 @@ if (stackDirectory.isPresent()) {
                         } else nativeMod = nested.getEntry('META-INF/mods.toml') != null || nested.getEntry('META-INF/neoforge.mods.toml') != null
                     }
                     // The Fabric API dependency already supplies these components.
-                    if (project.name.startsWith('fabric-') && id.startsWith('fabric-')) return
+                    if (stackTarget.startsWith('fabric-') && id.startsWith('fabric-')) return
                     if (selected.containsKey(id)) {
                         def old = selected[id]
                         if (old.version == version) return
@@ -99,7 +99,7 @@ if (stackDirectory.isPresent()) {
         }
         jars.each { expand(it) }
     }
-    if (project.name == 'fabric-1.20.1') {
+    if (stackTarget == 'fabric-1.20.1') {
         // Sodium 0.5 requires Minecraft's LWJGL 3.3.1. Run the game on Java17,
         // not Gradle's Java21, so Loom does not substitute LWJGL3.3.2-snapshot.
         project.ext.set('fabric.loom.runtimeJavaCompatibilityVersion', '17')
@@ -108,11 +108,11 @@ if (stackDirectory.isPresent()) {
         }
     }
     dependencies {
-        if (plugins.hasPlugin('net.neoforged.moddev')) localRuntime files(jars)
-        else if (project.name == 'fabric-26.1.2') runtimeOnly files(jars + nestedMods + nestedLibraries)
+        if (plugins.hasPlugin('net.neoforged.moddev')) runtimeOnly files(jars)
+        else if (stackTarget == 'fabric-26.1.2') runtimeOnly files(jars + nestedMods + nestedLibraries)
         else {
             modLocalRuntime files(jars + nestedMods)
-            if (project.name.startsWith('fabric-')) localRuntime files(nestedLibraries)
+            if (stackTarget.startsWith('fabric-')) localRuntime files(nestedLibraries)
             else forgeRuntimeLibrary files(nestedLibraries) // FML bootstrap discovery requires this classpath.
         }
     }

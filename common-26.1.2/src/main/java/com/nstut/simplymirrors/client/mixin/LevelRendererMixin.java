@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-@Mixin(LevelRenderer.class)
+@Mixin(value=LevelRenderer.class,priority=900)
 public abstract class LevelRendererMixin {
     @Inject(method="renderLevel",at=@At("TAIL"))
     private void simplymirrors$reflect(GraphicsResourceAllocator allocator,DeltaTracker delta,boolean outline,
