@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0
+
+- First Release: six-sided frameless mirrors on all eight supported targets.
+- Set MIT as the project license while preserving third-party attribution.
+- Fix visual CI camera corrections by authorizing scene teleports on the server.
+
+
 ## 0.1.0-dev.5
 
 - Make all six block faces reflective, including floors and ceilings, independently of placement direction.

@@ -2,11 +2,12 @@
 from __future__ import annotations
 import argparse, json, math, os, signal, socket, struct, subprocess, sys, time
 from pathlib import Path
-from PIL import Image
 ROOT=Path(__file__).resolve().parents[1]
 TARGETS={t["target"]:t for t in json.loads((ROOT/"tools/targets.json").read_text())}
 FACES=["north","south","west","east","up","down"]
 NORMALS=[(0,0,-1),(0,0,1),(-1,0,0),(1,0,0),(0,1,0),(0,-1,0)]
+POSES=[(.5,65,-3.5,0,0),(.5,65,4.5,180,0),(-3.5,65,.5,-90,0),
+       (4.5,65,.5,90,0),(.5,68.88,.62,0,90),(.5,60.88,.38,0,-90)]
 
 def fixture(scene):
     nx,ny,nz=NORMALS[scene]
@@ -30,6 +31,21 @@ def fixture(scene):
 
 def scene_file(client_dir,scene):
     temporary=client_dir/"visual-scene.next";temporary.write_text(str(scene));temporary.replace(client_dir/"visual-scene.txt")
+
+def activate_scene(rcon,client_dir,scene,client,timeout=600):
+    # Do not let the client pose a new scene until the server has authorized its
+    # position. Client-only teleports can trigger movement corrections mid-capture.
+    command="tp @a "+" ".join(map(str,POSES[scene]))
+    deadline=time.monotonic()+timeout
+    while time.monotonic()<deadline:
+        if client.poll() is not None:raise RuntimeError("Client exited before scene activation")
+        reply=rcon.command(command)
+        if "Teleported" in reply:
+            scene_file(client_dir,scene)
+            return
+        if "Incorrect" in reply or "Unknown" in reply:raise RuntimeError(f"Scene teleport failed: {reply}")
+        time.sleep(1)
+    raise TimeoutError(f"No player joined for scene {FACES[scene]}")
 
 def free_port():
     with socket.socket() as sock:
@@ -65,6 +81,7 @@ def stop(process):
         except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL)
 
 def image_check(path):
+    from PIL import Image
     image=Image.open(path).convert("RGB");w,h=image.size
     hits={"red":[],"green":[],"blue":[]}
     for y in range(int(h*.2),int(h*.8)):
@@ -110,7 +127,7 @@ def main():
                 reply=rcon.command(text)
                 if "Unknown" in reply or "Incorrect" in reply:raise RuntimeError(f"Fixture command failed: {text}: {reply}")
             print("Fixture ready; starting client",args.target,flush=True)
-            client_dir=module/"run/visual-client";client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,0)
+            client_dir=module/"run/visual-client";client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
             client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,stderr=subprocess.STDOUT,**creation)
             results={}
             for scene,face in enumerate(FACES):
@@ -118,7 +135,7 @@ def main():
                     for text in fixture(scene):
                         reply=rcon.command(text)
                         if any(word in reply for word in ["Unknown","Incorrect","too many blocks"]):raise RuntimeError(f"Fixture failed: {text}: {reply}")
-                    scene_file(client_dir,scene)
+                activate_scene(rcon,client_dir,scene,client)
                 result=client_dir/f"visual-evidence/result-{scene}.json";deadline=time.monotonic()+(600 if scene==0 else 180)
                 while time.monotonic()<deadline and not result.exists():
                     if client.poll() is not None:raise RuntimeError(f"Client exited before {face} capture: {evidence/'client.log'}")

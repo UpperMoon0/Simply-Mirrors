@@ -1,6 +1,6 @@
 modLoader = "javafml"
 loaderVersion = "[10,)"
-license = "MIT AND Apache-2.0"
+license = "MIT"
 issueTrackerURL = "https://github.com/UpperMoon0/Simply-Mirrors/issues"
 [[mods]]
 modId = "simply_mirrors"

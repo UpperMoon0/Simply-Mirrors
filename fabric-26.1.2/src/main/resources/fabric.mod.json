@@ -7,10 +7,7 @@
   "authors": [
     "NsTut"
   ],
-  "license": [
-    "MIT",
-    "Apache-2.0"
-  ],
+  "license": "MIT",
   "environment": "*",
   "contact": {
     "sources": "https://github.com/UpperMoon0/Simply-Mirrors",

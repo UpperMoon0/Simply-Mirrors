@@ -1,6 +1,6 @@
 # Simply Mirrors
 
-**Real reflections. Six reflective sides. Your own frame.**
+**Real reflections. Six reflective sides.**
 
 Simply Mirrors adds a craftable, full-block mirror that reflects the world around it—including players and other entities. Every side reflects, so you can build wall mirrors, mirrored pillars, reflective floors, or mirrored ceilings with the same block.
 
@@ -27,9 +27,9 @@ Install the file matching your Minecraft version and loader. Fabric versions als
 
 **Immersive Portals and Architectury API are not required.**
 
-## Before you play
+## Compatibility and performance
 
-Simply Mirrors is currently experimental. Mirrors render when you are within 32 blocks, showing currently loaded terrain and entities. Up to six visible mirror planes can render per frame; larger flat surfaces share a reflection, while viewing more separate planes can reduce performance.
+Mirrors render when you are within 32 blocks, showing currently loaded terrain and entities. Up to six visible mirror planes can render per frame; larger flat surfaces share a reflection, while viewing more separate planes can reduce performance.
 
 Mirrors reflecting other mirrors recursively and shader-pack compatibility are not currently supported. Minecraft 26.1.2 currently requires the OpenGL renderer.
 
