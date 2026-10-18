@@ -25,8 +25,11 @@ jobs:
   visual:
     if: inputs.resume_run == ''
     uses: ./.github/workflows/visual.yml
+  shaders:
+    if: inputs.resume_run == ''
+    uses: ./.github/workflows/shaders.yml
   release:
-    needs: [build, visual]
+    needs: [build, visual, shaders]
     runs-on: ubuntu-latest
     permissions:
       contents: write

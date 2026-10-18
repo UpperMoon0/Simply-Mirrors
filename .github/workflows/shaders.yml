@@ -1,5 +1,6 @@
 name: Mirror shader acceptance
 on:
+  workflow_call:
   pull_request:
   workflow_dispatch:
 permissions:

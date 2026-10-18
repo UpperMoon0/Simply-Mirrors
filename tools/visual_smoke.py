@@ -148,7 +148,9 @@ def main():
                 except (OSError,ConnectionError):time.sleep(1)
             else:raise TimeoutError("Server startup timeout: "+(evidence/"server.log").read_text(errors="replace")[-8000:])
             print("Server and RCON ready",args.target,flush=True)
-            commands=["forceload add -16 -16 16 16","time set noon","weather clear","fill -12 53 -12 12 53 12 stone","setworldspawn 0 65 -4"]+fixture(0)
+            clock_rule="advance_time" if t["minecraft"]=="26.1.2" else "doDaylightCycle"
+            weather_rule="advance_weather" if t["minecraft"]=="26.1.2" else "doWeatherCycle"
+            commands=[f"gamerule {clock_rule} false",f"gamerule {weather_rule} false","forceload add -16 -16 16 16","time set noon","weather clear","fill -12 53 -12 12 53 12 stone","setworldspawn 0 65 -4"]+fixture(0)
             for text in commands:
                 reply=rcon.command(text)
                 if "Unknown" in reply or "Incorrect" in reply:raise RuntimeError(f"Fixture command failed: {text}: {reply}")

@@ -101,7 +101,7 @@ public final class MirrorRenderer {
                 if(sodium){
                     // Sodium owns its section lists; updating vanilla visibleSections alone has no effect.
                     redirect=target;reflectionProjection=projection;mc.smartCull=false;
-                    mc.levelRenderer.update(virtual);
+                    if(!shaders)mc.levelRenderer.update(virtual);
                 }
                 // Use loaded section geometry directly: the main camera's occlusion graph may
                 // omit a sealed room on the opposite side of the mirror wall.
@@ -145,7 +145,7 @@ public final class MirrorRenderer {
             mc.smartCull=oldSmartCull;reflectionProjection=null;ShaderReflection.end();
             visible.clear();visible.addAll(savedVisible);
             redirect=null;RenderSystem.setGlobalSettingsUniform(savedGlobals);RenderSystem.setProjectionMatrix(savedProj,savedType);RenderSystem.setShaderFog(savedFog);
-            if(sodium)mc.levelRenderer.update(mc.gameRenderer.getMainCamera());
+            if(sodium && !ShaderReflection.enabled())mc.levelRenderer.update(mc.gameRenderer.getMainCamera());
             state.reset();mc.levelRenderer.extractLevel(delta,mc.gameRenderer.getMainCamera(),partial);
             mc.gameRenderer.getMainCamera().extractRenderState(state.cameraRenderState,partial);
             state.cameraRenderState.viewRotationMatrix.set(savedView);state.cameraRenderState.projectionMatrix.set(savedProjection);

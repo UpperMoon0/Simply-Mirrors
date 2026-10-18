@@ -1,29 +1,41 @@
 # Shader validation
 
-Simply Mirrors 0.1.0 does **not** currently render mirrors correctly with the tested Complementary shader stack. Installing the renderer mods and successfully loading a shader pack is insufficient to establish compatibility.
+The 0.1.1 renderer adds standalone Iris/Oculus integration. Shader mods and Complementary remain optional development dependencies and are never bundled in the production mod.
 
-## Reproduced result
+## What changed
 
-On Windows with an NVIDIA GeForce GTX 1050 Ti, Forge 1.20.1, Embeddium 0.3.31, Oculus 1.8.0, and Complementary Reimagined r5.9.3, the north-facing mirror shows a flat sky-blue surface instead of the red, green, and blue fixture behind the player. The wall and surrounding world visibly receive shader lighting.
+- Keep perspective projection for shader depth reconstruction. Clip world geometry at the mirror using a view-space plane in the final vertex-producing stage, including geometry and tessellation evaluation output.
+- Suspend mirror clipping and reflected winding during shadow maps and fullscreen processing. Iris 1.11.4 uses GPU render passes for composites and finals, so hooking the older fullscreen-quad method alone is insufficient.
+- Enable depth writes before clearing a reflection target. Oculus final processing leaves depth writes disabled, and OpenGL depth clears obey that mask.
+- Compare depth texture identity when changing targets. Separate framebuffers can share the same allocation-version number.
+- Give modern Sodium the reflected projection and rebuild visibility for the reflected camera rather than reusing an asynchronous main-camera result.
 
-The capture reported 120 completed reflection passes, 120 angled-view frames, a registered creative tab, `glError=0`, and `shaderPackActive=true`. The image check correctly failed with zero reflected red-marker pixels. A successful launch or absence of a crash must not be reported as shader support.
+The implementation follows the relevant rendering contracts in the owner's CE sources, [Oculus 1.20.1](https://github.com/Asek3/Oculus/tree/1.20.1-new), [Sodium 0.9.2 for 26.1.2](https://github.com/CaffeineMC/sodium/tree/mc26.1.2-0.9.2), and [Iris's 26.1 rendering path](https://github.com/IrisShaders/Iris/tree/bff1e69cb6c5519d8745784aa9c8b92984de67e7). The installed Iris 1.11.4 bytecode also confirms the final pass calls `RenderPass.drawIndexed`, not `renderQuad`.
 
-![Released renderer with Complementary enabled](images/mirror-shader-oculus-unsupported.png)
+## Native capture
 
-The original baseline also reproduced a missing-color failure with Fabric 1.20.1 / Iris 1.7.6 / Sodium 0.5.12 and NeoForge 1.21.1 / Iris 1.8.12 / Sodium 0.6.13. Other combinations should be evaluated from their own capture results; the presence of a pinned dependency stack does not imply working reflections.
+NeoForge 26.1.2 with Iris 1.11.4, Sodium 0.9.2, Complementary Reimagined r5.9.3, and an NVIDIA GTX 1050 Ti passed all six orientations, including 120 reflected frames and 120 angled-view frames per orientation. Each result reported an active shader pack and no OpenGL error.
+
+![Complementary reflection on NeoForge 26.1.2](images/mirror-complementary-neoforge-26.png)
+
+The full eight-target CI matrix remains the acceptance gate; a native result for one target does not establish the others.
 
 ## Reproduction
 
-Use JDK 21 for the Gradle invocation and install Python 3.11+ with Pillow. The game uses the target's matching Java toolchain.
+Use JDK 21 for older targets and JDK 25 for 26.1.2 Gradle builds, plus Python 3.11+ with Pillow. The game uses each target's matching Java toolchain.
 
 ```sh
-python tools/visual_smoke.py --target forge-1.20.1 --shaders --run-name shader-baseline
+python tools/visual_smoke.py --target forge-1.20.1 --shaders --run-name shader-check
 ```
 
-The installer downloads only checksum-pinned native artifacts. Forge 1.16.5 uses Oculus/Rubidium, Forge 1.20.1 uses Oculus/Embeddium, and Fabric/modern NeoForge use Iris/Sodium. Every target uses Complementary Reimagined r5.9.3. Development dependencies and the shader pack remain local and are excluded from production jars.
+The installer downloads checksum-pinned native artifacts. Forge 1.16.5 uses Oculus/Rubidium; Forge 1.20.1 uses Oculus/Embeddium; Fabric and modern NeoForge use Iris/Sodium. All stacks use Complementary Reimagined r5.9.3. Fabric 1.16.5 uses the same upstream SLF4J 1.7.12 library without Iris's generated mod metadata: Loader 0.16's preloaded logging-jar resource lookup otherwise hides the development mods. Third-party downloaded jars are not modified.
 
-Each run starts a disposable server without shader mods and a shader-enabled client, rebuilds the fixture for each of the six orientations, and checks actual captured colors and handedness. An image mismatch is retained while the remaining faces are captured; the run fails after clean client shutdown. Startup, OpenGL, or missing-pack failures stop the run immediately. The harness refuses to reuse a saved test world; choose a fresh `--run-name` when retrying.
+Each run starts a disposable server without shader mods and a shader-enabled client. The fixture includes an opaque wall behind the mirrors and asymmetric colored markers behind the player. Time is fixed at noon and weather is stable, so slower software rendering cannot accidentally turn later captures into nighttime tests. Vanilla color checks remain unchanged. Shader checks require substantial red, green, and blue regions in reflected order while allowing directional shading and warm lighting; flat-blue output still fails.
 
-Results and logs are written under `<target>/run/<run-name>-evidence` and screenshots under `<target>/run/<run-name>-client/visual-evidence`. Only a fully passing run creates `verified.json`; failed image runs create `results.json` and `failure.txt`.
+Logs and results are written under `<target>/run/<run-name>-evidence`; captures are under `<target>/run/<run-name>-client/visual-evidence`. Only a fully passing run writes `verified.json`. Image mismatches are retained while remaining faces are captured; the run then fails. The harness refuses to reuse a saved world, so retries need a fresh run name.
 
-The **Mirror shader acceptance** workflow is a manually dispatched diagnostic. Its failures record the current unsupported shader combination and are separate from ordinary vanilla acceptance and release builds. A production compatibility fix must pass these image checks before shader support is advertised.
+## Released 0.1.0 baseline
+
+The old renderer produced a flat blue mirror despite an active shader pack, 120 completed reflection passes, and `glError=0`. The acceptance tests reject this result.
+
+![0.1.0 failing capture](images/mirror-shader-oculus-unsupported.png)
