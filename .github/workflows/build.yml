@@ -72,3 +72,22 @@ jobs:
             !${{ matrix.target }}/build/libs/*-dev.jar
             !${{ matrix.target }}/build/libs/*-dev-shadow.jar
           if-no-files-found: error
+  release-package:
+    name: Verify eight-target release bundle
+    needs: [reflection-core, builds]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: simply-mirrors-*
+          path: release-input
+      - run: python tools/release.py collect --input release-input --output release-output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-release-bundle
+          path: release-output/*
+          if-no-files-found: error

@@ -70,6 +70,10 @@ jobs:
             echo "Release already exists; verify it and resume individual uploads manually." >&2
             exit 1
           fi
+          if git rev-parse --verify "refs/tags/v$MOD_VERSION" >/dev/null 2>&1; then
+            echo "Version tag already exists; verify its commit before releasing." >&2
+            exit 1
+          fi
           gh release create "v$MOD_VERSION" release-output/*.jar release-output/SHA256SUMS \
             --target "$GITHUB_SHA" --title "Simply Mirrors v$MOD_VERSION" \
             --notes-file "changelog/$MOD_VERSION.md" "${flags[@]}"
