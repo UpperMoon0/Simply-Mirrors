@@ -85,18 +85,21 @@ def request(path, token, data=None, content_type=None):
         with urllib.request.urlopen(req, timeout=120) as response:
             return json.load(response)
     except urllib.error.HTTPError as error:
-        raise RuntimeError(f"CurseForge request {path} failed: HTTP {error.code}") from None
+        detail = error.read(4096).decode("utf-8", errors="replace").replace(token, "[redacted]")
+        raise RuntimeError(f"CurseForge request {path} failed: HTTP {error.code}: {detail}") from None
 
 def metadata(info, v):
     loader = {"fabric": "Fabric", "forge": "Forge", "neoforge": "NeoForge"}[info["loader"]]
     relations = [{"slug": "fabric-api", "type": "requiredDependency"}] if info["loader"] == "fabric" else []
-    return {
+    result = {
         "displayName": f"Simply Mirrors {v} - {loader} {info['minecraft']}",
         "changelog": (ROOT / "changelog" / f"{v}.md").read_text(),
         "changelogType": "markdown", "releaseType": release_type(v),
         "gameVersionNames": [info["minecraft"], loader, f"Java {info['java']}", "Client", "Server"],
-        "relations": {"projects": relations},
     }
+    if relations:
+        result["relations"] = {"projects": relations}
+    return result
 
 def preflight(source):
     project, token = settings()
@@ -117,15 +120,25 @@ def multipart(meta, path):
             "Content-Type: application/java-archive\r\n\r\n").encode()
     return body + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode(), f"multipart/form-data; boundary={boundary}"
 
-def publish(source):
+def publish(source, resume=False):
     project, token = preflight(source)
     receipts = source / "curseforge-receipts.json"
-    if receipts.exists():
+    if receipts.exists() and not resume:
         raise ValueError("Upload receipts already exist; inspect them before resuming to avoid duplicate uploads")
-    result = {"project": project, "version": version(), "files": {}}
+    if resume:
+        result = json.loads(receipts.read_text())
+        if (result.get("project") != project or result.get("version") != version()
+                or not isinstance(result.get("files"), dict)
+                or any(t not in TARGETS or type(i) is not int or i <= 0 for t, i in result["files"].items())):
+            raise ValueError("Receipt project, version, targets, or file IDs do not match this release")
+    else:
+        result = {"project": project, "version": version(), "files": {}}
     receipts.write_text(json.dumps(result, indent=2) + "\n")
     # No automatic retries: a network timeout may happen after a successful upload.
     for target, info in TARGETS.items():
+        if target in result["files"]:
+            print(f"Keeping {target}: CurseForge file {result['files'][target]}")
+            continue
         path = source / expected_name(target, version())
         body, content_type = multipart(metadata(info, version()), path)
         response = request(f"/projects/{project}/upload-file", token, body, content_type)
@@ -141,6 +154,7 @@ def main():
     parser.add_argument("command", choices=["collect", "plan", "preflight", "publish"])
     parser.add_argument("--input", type=Path, default=Path("release-input"))
     parser.add_argument("--output", type=Path, default=Path("release-output"))
+    parser.add_argument("--resume", action="store_true", help="Skip uploads recorded in inspected receipts")
     args = parser.parse_args()
     if args.command == "collect": collect(args.input, args.output)
     elif args.command == "plan":
@@ -150,6 +164,6 @@ def main():
             with open(os.environ["GITHUB_OUTPUT"], "a") as output:
                 output.write("".join(f"{k}={v}\n" for k, v in data.items()))
     elif args.command == "preflight": preflight(args.input)
-    else: publish(args.input)
+    else: publish(args.input, resume=args.resume)
 
 if __name__ == "__main__": main()

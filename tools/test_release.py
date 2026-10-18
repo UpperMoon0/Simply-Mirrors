@@ -1,5 +1,6 @@
 """Release regression tests: no network calls or uploads."""
 import os
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -34,8 +35,10 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(kind, release.release_type(v))
         for info in release.TARGETS.values():
             meta = release.metadata(info, release.version())
-            relations = meta["relations"]["projects"]
+            relations = meta.get("relations", {}).get("projects", [])
             self.assertEqual(info["loader"] == "fabric", bool(relations))
+            if not relations:
+                self.assertNotIn("relations", meta)
             self.assertIn(info["minecraft"], meta["gameVersionNames"])
             self.assertIn(f"Java {info['java']}", meta["gameVersionNames"])
 
@@ -62,5 +65,27 @@ class ReleaseTests(unittest.TestCase):
         with patch.dict(os.environ, {"CURSEFORGE_PROJECT_ID": "123"}, clear=True):
             with self.assertRaisesRegex(ValueError, "CURSEFORGE_API_TOKEN"):
                 release.settings()
+
+    @patch("release.request", return_value={"id": 42})
+    @patch("release.preflight", return_value=("1751860", "fixture-token"))
+    def test_resume_preserves_accepted_uploads_and_records_missing_targets(self, preflight, request):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp)
+            target = next(iter(release.TARGETS))
+            receipt = source / "curseforge-receipts.json"
+            receipt.write_text(json.dumps({"project": "1751860", "version": release.version(), "files": {target: 9237589}}))
+            for name in release.TARGETS:
+                (source / release.expected_name(name, release.version())).write_bytes(b"fixture")
+            with self.assertRaises(ValueError): release.publish(source)
+            release.publish(source, resume=True)
+            result = json.loads(receipt.read_text())
+            self.assertEqual(7, request.call_count)
+            self.assertEqual(8, len(result["files"]))
+            self.assertEqual(9237589, result["files"][target])
+            request.reset_mock()
+            result["version"] = "999.0.0"
+            receipt.write_text(json.dumps(result))
+            with self.assertRaises(ValueError): release.publish(source, resume=True)
+            request.assert_not_called()
 
 if __name__ == "__main__": unittest.main()
