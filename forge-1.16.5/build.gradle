@@ -37,3 +37,5 @@ jar {
 apply from: file('../tools/visual.gradle')
 
 sourceSets.main.resources.srcDir('../common-assets/src/main/resources')
+
+apply from: file('../tools/shader-runtime.gradle')

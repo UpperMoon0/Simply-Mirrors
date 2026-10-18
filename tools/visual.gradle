@@ -3,6 +3,8 @@ if (!providers.gradleProperty('visualTest').isPresent()) return
 def mc = providers.gradleProperty('visualMc').get()
 def loader = providers.gradleProperty('visualLoader').get()
 def port = providers.gradleProperty('visualPort').get()
+def runName = providers.gradleProperty('visualRunName').orElse('visual').get()
+if (!(runName ==~ /[a-z0-9-]+/)) throw new GradleException('Invalid visual run name')
 logger.lifecycle("Visual target: ${mc}/${loader}")
 layout.buildDirectory = file('build/visual')
 if (!(mc == '1.16.5' && loader == 'forge')) {
@@ -28,7 +30,7 @@ if (mc == '1.16.5' && loader == 'forge') {
         visualClient {
             taskName 'runVisualClient'
             parent project.minecraft.runs.getByName('client')
-            workingDirectory project.file('run/visual-client')
+            workingDirectory project.file("run/${runName}-client")
             property 'simplymirrors.visualPort', port
             jvmArgs '-Xmx1024m'
             args '--width', '960', '--height', '540', '--mixin', 'simplymirrors.visual.mixins.json'
@@ -37,7 +39,7 @@ if (mc == '1.16.5' && loader == 'forge') {
         visualServer {
             taskName 'runVisualServer'
             parent project.minecraft.runs.getByName('server')
-            workingDirectory project.file('run/visual-server')
+            workingDirectory project.file("run/${runName}-server")
             jvmArgs '-Xmx1024m'
             args '--nogui'
             mods { simply_mirrors { source sourceSets.main } }
@@ -47,7 +49,7 @@ if (mc == '1.16.5' && loader == 'forge') {
     neoForge.runs {
         visualClient {
             client()
-            gameDirectory = project.file('run/visual-client')
+            gameDirectory = project.file("run/${runName}-client")
             systemProperty 'simplymirrors.visualTest', 'true'
             systemProperty 'simplymirrors.visualPort', port
             jvmArguments.addAll '-Xmx1024m'
@@ -55,7 +57,7 @@ if (mc == '1.16.5' && loader == 'forge') {
         }
         visualServer {
             server()
-            gameDirectory = project.file('run/visual-server')
+            gameDirectory = project.file("run/${runName}-server")
             jvmArguments.addAll '-Xmx1024m'
             programArgument '--nogui'
         }
@@ -64,15 +66,15 @@ if (mc == '1.16.5' && loader == 'forge') {
     loom.runs {
         visualClient {
             client()
-            runDir('run/visual-client')
+            runDir("run/${runName}-client")
             property 'simplymirrors.visualTest', 'true'
             property 'simplymirrors.visualPort', port
-            vmArg '-Xmx1024m'
+            vmArg '-Xmx2048m'
             programArgs '--width', '960', '--height', '540'
         }
         visualServer {
             server()
-            runDir('run/visual-server')
+            runDir("run/${runName}-server")
             vmArg '-Xmx1024m'
             programArg 'nogui'
         }

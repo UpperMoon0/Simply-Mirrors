@@ -97,9 +97,19 @@ def image_check(path):
     return {"pixels":{key:len(value) for key,value in hits.items()},"redMeanX":red,"blueMeanX":blue}
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True);args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
+    parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
+    parser.add_argument("--run-name",help="Isolated test directory prefix")
+    args=parser.parse_args()
     t=TARGETS[args.target];module=ROOT/args.target;cwd=ROOT/t["build_root"]
-    port=free_port();rcon_port=free_port();server_dir=module/"run/visual-server";server_dir.mkdir(parents=True,exist_ok=True)
+    run_name=args.run_name or ("shader" if args.shaders else "visual")
+    if not __import__('re').fullmatch('[a-z0-9-]+',run_name):raise ValueError('Invalid run name')
+    client_dir=module/f"run/{run_name}-client"
+    if args.shaders:
+        from shader_stack import prepare, install_pack
+        _,pack=prepare(args.target,ROOT/"build/shader-dependencies")
+        install_pack(client_dir,pack,loader=t['loader'])
+    port=free_port();rcon_port=free_port();server_dir=module/f"run/{run_name}-server";server_dir.mkdir(parents=True,exist_ok=True)
     if (server_dir/"visual-world").exists():raise SystemExit("Existing test world found; use a fresh checkout or preserve/rename the old test world before retrying")
     (server_dir/"eula.txt").write_text("eula=true\n")
     props={"server-ip":"127.0.0.1","server-port":port,"enable-rcon":"true","rcon.port":rcon_port,"rcon.password":"simply-mirrors-disposable-test","online-mode":"false","gamemode":"creative","force-gamemode":"true","allow-flight":"true","spawn-protection":0,"view-distance":4,"simulation-distance":4,"level-name":"visual-world","level-type":"flat" if t["minecraft"]=="1.16.5" else "minecraft:flat","max-players":2}
@@ -107,13 +117,15 @@ def main():
     command=[str(cwd/"gradlew.bat")] if os.name=="nt" else ["./gradlew"]
     if t["build_root"]==".":command.append(f"-Ptarget={args.target}")
     command += ["-PvisualTest",f"-PvisualMc={t['minecraft']}",f"-PvisualLoader={t['loader']}",f"-PvisualPort={port}","--no-daemon","--console=plain","-Dorg.gradle.jvmargs=-Xmx1024m","--max-workers=2"]
+    command += [f"-PvisualRunName={run_name}",f"-PmirrorsShaderStack={ROOT/'build/shader-dependencies' if args.shaders else 'off'}"]
     task_prefix=f":{args.target}:" if t["build_root"]=="." else ""
-    evidence=module/"run/visual-evidence";evidence.mkdir(parents=True,exist_ok=True)
+    evidence=module/f"run/{run_name}-evidence";evidence.mkdir(parents=True,exist_ok=True)
     creation={"creationflags":subprocess.CREATE_NO_WINDOW} if os.name=="nt" else {"start_new_session":True}
     server=client=rcon=None
     with (evidence/"server.log").open("w") as server_log,(evidence/"client.log").open("w") as client_log:
         try:
-            server=subprocess.Popen(command+[task_prefix+"runVisualServer"],cwd=cwd,stdout=server_log,stderr=subprocess.STDOUT,**creation)
+            server_command=["-PmirrorsShaderStack=off" if item.startswith("-PmirrorsShaderStack=") else item for item in command]
+            server=subprocess.Popen(server_command+[task_prefix+"runVisualServer"],cwd=cwd,stdout=server_log,stderr=subprocess.STDOUT,**creation)
             print("Starting disposable server",args.target,flush=True)
             deadline=time.monotonic()+360
             while time.monotonic()<deadline:
@@ -127,7 +139,7 @@ def main():
                 reply=rcon.command(text)
                 if "Unknown" in reply or "Incorrect" in reply:raise RuntimeError(f"Fixture command failed: {text}: {reply}")
             print("Fixture ready; starting client",args.target,flush=True)
-            client_dir=module/"run/visual-client";client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
+            client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
             client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,stderr=subprocess.STDOUT,**creation)
             results={}
             for scene,face in enumerate(FACES):
@@ -142,6 +154,7 @@ def main():
                     time.sleep(1)
                 if not result.exists():raise TimeoutError(f"Client visual probe timed out on {face}: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
+                if args.shaders:assert data.get('shaderPackActive') is True,data
                 data.update(image_check(result.with_name(f"mirror-{scene}.png")));results[face]=data
                 print("Verified reflective face",args.target,face,json.dumps(data),flush=True)
             (evidence/"verified.json").write_text(json.dumps(results,indent=2)+"\n")
