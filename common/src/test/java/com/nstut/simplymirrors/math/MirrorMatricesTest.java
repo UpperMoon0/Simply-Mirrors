@@ -57,5 +57,22 @@ public class MirrorMatricesTest {
         assertNotEquals(new MirrorSurface(0,0,0,0,-1).planeKey(),new MirrorSurface(0,0,1,0,-1).planeKey());
         assertNotEquals(new MirrorSurface(0,0,0,0,-1).planeKey(),new MirrorSurface(0,0,0,0,1).planeKey());
     }
+    @Test public void mirrorSurfaceCoversTheEntireOutwardCubeFace() {
+        for(int[] n:new int[][]{{0,-1},{0,1},{-1,0},{1,0}}) {
+            MirrorSurface surface=new MirrorSurface(2,3,4,n[0],n[1]);
+            assertEquals(2.5+n[0]*.5,surface.cx,1e-9);
+            assertEquals(4.5+n[1]*.5,surface.cz,1e-9);
+            double minY=Double.POSITIVE_INFINITY,maxY=-minY,minSide=minY,maxSide=-minY;
+            for(double[] corner:surface.corners()) {
+                double dx=corner[0]-surface.cx,dz=corner[2]-surface.cz;
+                assertEquals(.001,dx*n[0]+dz*n[1],1e-9);
+                double side=-n[1]*dx+n[0]*dz;
+                minSide=Math.min(minSide,side);maxSide=Math.max(maxSide,side);
+                minY=Math.min(minY,corner[1]);maxY=Math.max(maxY,corner[1]);
+            }
+            assertEquals(3,minY,1e-9);assertEquals(4,maxY,1e-9);
+            assertEquals(-.5,minSide,1e-9);assertEquals(.5,maxSide,1e-9);
+        }
+    }
     @Test(expected=IllegalArgumentException.class) public void singularMatricesAreRejected() { MirrorMatrices.inverse(new float[16]); }
 }

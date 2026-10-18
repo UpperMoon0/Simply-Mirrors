@@ -15,7 +15,7 @@ import net.minecraft.core.registries.Registries;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 
 public final class SimplyMirrorsFabric implements ModInitializer {
-    public static final Block MIRROR = new MirrorBlock(BlockBehaviour.Properties.of().strength(0.8F).sound(SoundType.WOOD).noOcclusion().setId(ResourceKey.create(Registries.BLOCK, id("mirror"))));
+    public static final Block MIRROR = new MirrorBlock(BlockBehaviour.Properties.of().strength(0.8F).sound(SoundType.METAL).setId(ResourceKey.create(Registries.BLOCK, id("mirror"))));
     
     public static final Item MIRROR_ITEM = new BlockItem(MIRROR, new Item.Properties().setId(ResourceKey.create(Registries.ITEM, id("mirror"))).useBlockDescriptionPrefix());
     @Override public void onInitialize() {

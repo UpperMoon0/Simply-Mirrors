@@ -1,14 +1,11 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    "SIS",
-    "IGI",
-    "SIS"
+    "GGG",
+    "GIG",
+    "GGG"
   ],
   "key": {
-    "S": {
-      "item": "minecraft:stick"
-    },
     "I": {
       "item": "minecraft:iron_ingot"
     },

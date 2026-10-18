@@ -27,6 +27,9 @@ def verify(path, target):
         assert mixins.get("client") and not mixins.get("mixins"), "Renderer mixins must remain client-only"
         for resource in ["blockstates/mirror.json", "models/block/mirror.json", "models/item/mirror.json", "lang/en_us.json"]:
             json.loads(jar.read(f"assets/simply_mirrors/{resource}"))
+        model = json.loads(jar.read("assets/simply_mirrors/models/block/mirror.json"))
+        assert model["parent"] == "minecraft:block/cube_all" and "elements" not in model, "Mirror must be a frameless full cube"
+        assert model["textures"] == {"all": "minecraft:block/iron_block"}, "Unexpected mirror frame texture"
         singular = target["minecraft"] in ["1.21.1", "26.1.2"]
         folder = "recipe" if singular else "recipes"
         recipe = json.loads(jar.read(f"data/simply_mirrors/{folder}/mirror.json"))

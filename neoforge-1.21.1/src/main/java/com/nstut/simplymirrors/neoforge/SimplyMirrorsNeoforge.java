@@ -17,7 +17,7 @@ public final class SimplyMirrorsNeoforge {
     private static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(Registries.BLOCK, SimplyMirrors.MOD_ID);
     private static final DeferredRegister<Item> ITEMS = DeferredRegister.create(Registries.ITEM, SimplyMirrors.MOD_ID);
     private static final DeferredRegister<BlockEntityType<?>> ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, SimplyMirrors.MOD_ID);
-    public static final DeferredHolder<Block, Block> MIRROR = BLOCKS.register("mirror", () -> new MirrorBlock(BlockBehaviour.Properties.of().strength(0.8F).sound(SoundType.WOOD).noOcclusion()));
+    public static final DeferredHolder<Block, Block> MIRROR = BLOCKS.register("mirror", () -> new MirrorBlock(BlockBehaviour.Properties.of().strength(0.8F).sound(SoundType.METAL)));
     private static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, SimplyMirrors.MOD_ID);
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> TAB = TABS.register("main", () -> CreativeModeTab.builder(CreativeModeTab.Row.TOP, 0)
         .title(Component.translatable("itemGroup.simply_mirrors")).icon(() -> new ItemStack(SimplyMirrorsNeoforge.MIRROR_ITEM.get()))

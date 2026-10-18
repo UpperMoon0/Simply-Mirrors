@@ -2,15 +2,15 @@
 
 A standalone Minecraft mod project for placeable mirrors that reflect the surrounding world.
 
-**Status: experimental development build.** Includes a craftable wall-mounted mirror, a dedicated Simply Mirrors creative tab, and native reflection adapters for all four Minecraft versions. Reflection geometry is adapted from Immersive Portals CE; no portal mod is required. Runtime acceptance is tracked per target; the first verified capture is shown below.
+**Status: experimental development build.** Includes a craftable full-block frameless mirror, a dedicated Simply Mirrors creative tab, and native reflection adapters for all four Minecraft versions. Reflection geometry is adapted from Immersive Portals CE; no portal mod is required. Runtime acceptance is tracked per target; the first verified capture is shown below.
 
-Mirrors face the wall surface you click, or face you when placed from above/below. Place a block from the Simply Mirrors tab or craft one using sticks in the corners, iron ingots on the edges, and glass in the center. The oak frame surrounds a live reflective glass opening.
+The reflective face points in the direction of the surface you click, or toward you when placed from above/below. Each mirror is a full solid cube, with a reflection covering its entire front face. Adjacent mirrors form a continuous reflective surface. Build your own frame using any blocks you like. Take a mirror from the Simply Mirrors tab or craft one with eight glass blocks around an iron ingot.
 
 The first renderer is bounded to two visible mirror planes per frame within 32 blocks. Coplanar mirrors share a reflection render. Reflections show loaded terrain and entities; recursive mirror reflections and shader-pack compatibility are not yet supported. The 26.1.2 compositor currently targets Minecraft's OpenGL renderer.
 
 ![Live reflections in the Fabric 1.16.5 acceptance scene](docs/images/mirror-fabric-1.16.5.png)
 
-The capture shows the player and colored blocks behind the camera reflected in a 3 x 3 mirror panel, with a solid wall behind the glass.
+The capture shows the player and colored blocks behind the camera reflected in a 3 x 3 mirror surface, with a solid wall behind the glass.
 
 ## Target matrix
 
@@ -59,7 +59,7 @@ To run one target locally, install Pillow and use `python tools/visual_smoke.py 
 
 ## Rendering implementation
 
-The mirror plane follows the block's facing. The camera position and view are reflected using Immersive Portals CE's vector reflection and reflection matrix. A version adapter renders the same world to an offscreen target with an oblique near plane at the glass, then projects that texture onto the glass opening with world depth testing. This excludes blocks behind the mirror and prevents the wall from obscuring the reflected room. Render targets and projection resources are released on world unload and shutdown.
+The mirror plane follows the block's facing. The camera position and view are reflected using Immersive Portals CE's vector reflection and reflection matrix. A version adapter renders the same world to an offscreen target with an oblique near plane at the glass, then projects that texture onto the full mirror face with world depth testing. This excludes blocks behind the mirror and prevents the wall from obscuring the reflected room. Render targets and projection resources are released on world unload and shutdown.
 
 ## License
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.3
+
+- Replace the framed wall panel with a full solid mirror block and an edge-to-edge reflective face.
+- Remove the built-in wooden frame so players can build their own surrounds.
+- Make adjacent mirror faces meet without inset borders and use a glass-and-iron recipe.
+
 ## 0.1.0-dev.2
 
 - Add a wall-mounted mirror block, block item, creative tab, recipe, and drops on every target.

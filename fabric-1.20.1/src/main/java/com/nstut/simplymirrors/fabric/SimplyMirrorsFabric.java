@@ -13,7 +13,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.network.chat.Component;
 
 public final class SimplyMirrorsFabric implements ModInitializer {
-    public static final Block MIRROR = new MirrorBlock(BlockBehaviour.Properties.of().strength(0.8F).sound(SoundType.WOOD).noOcclusion());
+    public static final Block MIRROR = new MirrorBlock(BlockBehaviour.Properties.of().strength(0.8F).sound(SoundType.METAL));
     
     public static final Item MIRROR_ITEM = new BlockItem(MIRROR, new Item.Properties());
     @Override public void onInitialize() {

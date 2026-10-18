@@ -17,7 +17,7 @@ public final class SimplyMirrorsForge {
     private static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, SimplyMirrors.MOD_ID);
     private static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, SimplyMirrors.MOD_ID);
     private static final DeferredRegister<BlockEntityType<?>> ENTITIES = DeferredRegister.create(ForgeRegistries.TILE_ENTITIES, SimplyMirrors.MOD_ID);
-    public static final RegistryObject<Block> MIRROR = BLOCKS.register("mirror", () -> new MirrorBlock(BlockBehaviour.Properties.of(net.minecraft.world.level.material.Material.WOOD).strength(0.8F).sound(SoundType.WOOD).noOcclusion()));
+    public static final RegistryObject<Block> MIRROR = BLOCKS.register("mirror", () -> new MirrorBlock(BlockBehaviour.Properties.of(net.minecraft.world.level.material.Material.METAL).strength(0.8F).sound(SoundType.METAL)));
     public static final CreativeModeTab TAB = new CreativeModeTab("simply_mirrors") { @Override public ItemStack makeIcon() { return new ItemStack(SimplyMirrorsForge.MIRROR_ITEM.get()); } };
     public static final RegistryObject<BlockItem> MIRROR_ITEM = ITEMS.register("mirror", () -> new BlockItem(MIRROR.get(), new Item.Properties().tab(TAB)));
     public static final RegistryObject<BlockEntityType<MirrorBlockEntity>> MIRROR_ENTITY = ENTITIES.register("mirror", () -> BlockEntityType.Builder.of(MirrorBlockEntity::new, MIRROR.get()).build(null));
