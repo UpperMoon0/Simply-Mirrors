@@ -95,6 +95,10 @@ def main():
             if not result.exists():raise TimeoutError("Client visual probe timed out: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
             data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
             data.update(image_check(result.with_name("mirror.png")));(evidence/"verified.json").write_text(json.dumps(data,indent=2)+"\n")
+            # The probe quits normally after capture. Do not kill Gradle while it releases
+            # Loom's cache lock, or accept a process that crashes after writing its result.
+            exit_code=client.wait(timeout=60)
+            if exit_code!=0:raise RuntimeError(f"Client failed after capture ({exit_code}): {evidence/'client.log'}")
             print("SIMPLY_MIRRORS_VISUAL_PASS",args.target,json.dumps(data),flush=True)
         finally:
             stop(client)
