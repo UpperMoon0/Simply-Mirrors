@@ -18,6 +18,7 @@ import static org.lwjgl.opengl.GL33.*;
 @Mixin(Minecraft.class)
 public abstract class VisualProbeMixin {
     @Unique private int simplymirrors$frames;
+    @Unique private int simplymirrors$mirrorFrames;
     @Unique private boolean simplymirrors$done;
     @Unique private boolean simplymirrors$joining;
     @Inject(method="runTick",at=@At("TAIL"))
@@ -33,13 +34,17 @@ public abstract class VisualProbeMixin {
             }
             return;
         }
+        if(MirrorRenderer.completedPasses>0)simplymirrors$mirrorFrames++;
+        int phase=simplymirrors$mirrorFrames/20;
+        float yaw=phase==1?20:phase==2?-20:0;
+        float pitch=phase==3?20:phase==4?-20:0;
         mc.player.setPos(.5,65,-3.5);mc.player.xo=.5;mc.player.yo=65;mc.player.zo=-3.5;
-        mc.player.setYRot(0);mc.player.setXRot(0);mc.player.yRotO=0;mc.player.xRotO=0;mc.player.yBodyRot=0;mc.player.yHeadRot=0;
-        if(MirrorRenderer.completedPasses<30&&simplymirrors$frames<1800)return;
+        mc.player.setYRot(yaw);mc.player.setXRot(pitch);mc.player.yRotO=yaw;mc.player.xRotO=pitch;mc.player.yBodyRot=yaw;mc.player.yHeadRot=yaw;
+        if((MirrorRenderer.completedPasses<120||simplymirrors$mirrorFrames<120)&&simplymirrors$frames<1800)return;
         boolean tab=false;for(CreativeModeTab t:BuiltInRegistries.CREATIVE_MODE_TAB)if(t!=null&&t.getDisplayName().getString().equals("Simply Mirrors"))tab=true;
         int error=glGetError();Path dir=mc.gameDirectory.toPath().resolve("visual-evidence");Files.createDirectories(dir);
         VisualCapture.save(((com.mojang.blaze3d.opengl.GlTexture)mc.getMainRenderTarget().getColorTexture()).glId(),mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,dir.resolve("mirror.png"));
-        String json="{\"passes\":"+MirrorRenderer.completedPasses+",\"glError\":"+error+",\"creativeTab\":"+tab+"}";
+        String json="{\"passes\":"+MirrorRenderer.completedPasses+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+"}";
         Files.write(dir.resolve("result.json"),json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         System.out.println("SIMPLY_MIRRORS_VISUAL_RESULT "+json);simplymirrors$done=true;mc.stop();
     }

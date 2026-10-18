@@ -1,0 +1,87 @@
+name: Build and release
+on:
+  push:
+    branches: [main]
+    paths: [gradle.properties]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish this version to GitHub and CurseForge (main only)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: simply-mirrors-release
+  cancel-in-progress: false
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+  visual:
+    uses: ./.github/workflows/visual.yml
+  release:
+    needs: [build, visual]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: simply-mirrors-*
+          path: release-input
+      - name: Verify all eight release jars and prepare checksums
+        run: python tools/release.py collect --input release-input --output release-output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simply-mirrors-release-bundle
+          path: release-output/*
+          if-no-files-found: error
+      - name: Decide whether this version should publish
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          REQUEST_PUBLISH: ${{ inputs.publish }}
+        run: python tools/release.py plan
+      - name: Validate publishing setup and CurseForge tags
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
+        run: python tools/release.py preflight --input release-output
+      - name: Create GitHub release for this commit
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MOD_VERSION: ${{ steps.plan.outputs.version }}
+          RELEASE_TYPE: ${{ steps.plan.outputs.release_type }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          flags=()
+          if [[ "$RELEASE_TYPE" != release ]]; then flags+=(--prerelease); fi
+          if gh release view "v$MOD_VERSION" >/dev/null 2>&1; then
+            echo "Release already exists; verify it and resume individual uploads manually." >&2
+            exit 1
+          fi
+          gh release create "v$MOD_VERSION" release-output/*.jar release-output/SHA256SUMS \
+            --target "$GITHUB_SHA" --title "Simply Mirrors v$MOD_VERSION" \
+            --notes-file "changelog/$MOD_VERSION.md" "${flags[@]}"
+      - name: Upload all eight files to CurseForge
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
+        run: python tools/release.py publish --input release-output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: curseforge-upload-receipts
+          path: release-output/curseforge-receipts.json
+          if-no-files-found: ignore

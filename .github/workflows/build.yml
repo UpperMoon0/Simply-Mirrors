@@ -1,5 +1,6 @@
 name: Build and verify
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -22,6 +23,10 @@ jobs:
             8
             21
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tools -p 'test_*.py'
       - run: chmod +x gradlew
       - run: ./gradlew -Ptarget=common :common:test --no-daemon --console=plain
       - uses: actions/upload-artifact@v4

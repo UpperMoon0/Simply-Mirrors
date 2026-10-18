@@ -1,5 +1,9 @@
 # Simply Mirrors
 
+<img src="common-assets/src/main/resources/assets/simply_mirrors/icon.png" width="128" alt="Simply Mirrors icon">
+
+[Release and CurseForge setup](docs/releasing.md)
+
 A standalone Minecraft mod project for placeable mirrors that reflect the surrounding world.
 
 **Status: experimental development build.** Includes a craftable full-block frameless mirror, a dedicated Simply Mirrors creative tab, and native reflection adapters for all four Minecraft versions. Reflection geometry is adapted from Immersive Portals CE; no portal mod is required. Runtime acceptance is tracked per target; the first verified capture is shown below.

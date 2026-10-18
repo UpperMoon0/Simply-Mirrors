@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.4
+
+- Fix angled-view mirror hangs in vanilla camera-frustum fitting (1.20.1 and 1.21.1).
+- Add a generated frameless mirror texture and a simple mod icon in every loader's metadata.
+- Add angled visual regression checks and a gated GitHub/CurseForge release workflow.
+
 ## 0.1.0-dev.3
 
 - Replace the framed wall panel with a full solid mirror block and an edge-to-edge reflective face.

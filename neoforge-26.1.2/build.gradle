@@ -29,3 +29,5 @@ tasks.withType(Jar).configureEach { from('../LICENSE'); from('../NOTICE'); from(
 publishing { publications { mavenJava(MavenPublication) { from components.java } } }
 
 apply from: file('../tools/visual.gradle')
+
+sourceSets.main.resources.srcDir('../common-assets/src/main/resources')

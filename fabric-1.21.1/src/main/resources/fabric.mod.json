@@ -29,5 +29,6 @@
   },
   "mixins": [
     "simplymirrors.mixins.json"
-  ]
+  ],
+  "icon": "assets/simply_mirrors/icon.png"
 }

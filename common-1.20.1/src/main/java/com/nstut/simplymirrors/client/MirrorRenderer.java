@@ -78,7 +78,9 @@ public final class MirrorRenderer {
                 redirect=target;
                 try {
                     target.bindWrite(true);RenderSystem.setProjectionMatrix(projection,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);glFrontFace(GL_CW);
-                    mc.levelRenderer.prepareCullFrustum(pose,reflectedEye,projection);
+                    // Vanilla camera-cube fitting can loop forever with an oblique near plane.
+                    // Cull conservatively with perspective; retain oblique projection for drawing.
+                    mc.levelRenderer.prepareCullFrustum(pose,reflectedEye,mainProjectionMatrix);
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
                 } finally {
                     mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);

@@ -35,3 +35,5 @@ jar {
     finalizedBy 'reobfJar'
 }
 apply from: file('../tools/visual.gradle')
+
+sourceSets.main.resources.srcDir('../common-assets/src/main/resources')

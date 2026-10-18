@@ -6,6 +6,7 @@ issueTrackerURL = "https://github.com/UpperMoon0/Simply-Mirrors/issues"
 modId = "simply_mirrors"
 version = "${version}"
 displayName = "Simply Mirrors"
+logoFile = "assets/simply_mirrors/icon.png"
 authors = "NsTut"
 description = "Craftable full-block frameless mirrors with live world reflections and a dedicated creative tab."
 [[dependencies.simply_mirrors]]
