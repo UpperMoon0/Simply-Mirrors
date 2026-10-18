@@ -8,6 +8,10 @@ public final class ShaderReflection {
     private static float[] plane,projection;
     private static Method active;
     private static boolean searched;
+    public static boolean terrainRendererPresent() {
+        try {Class.forName("net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer",false,ShaderReflection.class.getClassLoader());return true;}
+        catch(ClassNotFoundException absent){return false;}
+    }
     public static boolean enabled() {
         if (!searched) {
             searched=true;
@@ -20,7 +24,7 @@ public final class ShaderReflection {
     }
     public static void begin(float[] perspective,float[] view,double nx,double ny,double nz,double x,double y,double z,Object reflectedCamera) {
         plane=MirrorMatrices.clipPlane(view,nx,ny,nz,x,y,z);
-        projection=perspective;camera=reflectedCamera;glEnable(GL_CLIP_DISTANCE0);
+        projection=MirrorMatrices.inverse(perspective);camera=reflectedCamera;glEnable(GL_CLIP_DISTANCE0);
     }
     public static void end() {camera=null;plane=null;projection=null;glDisable(GL_CLIP_DISTANCE0);}
     public static void upload() {
@@ -28,7 +32,7 @@ public final class ShaderReflection {
         if(program==0)return;
         int location=glGetUniformLocation(program,"simplymirrors_ClipPlane");
         if(location<0)return;
-        if(projection!=null){int matrix=glGetUniformLocation(program,"simplymirrors_Projection");if(matrix>=0)glUniformMatrix4fv(matrix,false,projection);}
+        if(projection!=null){int matrix=glGetUniformLocation(program,"simplymirrors_InverseProjection");if(matrix>=0)glUniformMatrix4fv(matrix,false,projection);}
         if(plane!=null && glIsEnabled(GL_CLIP_DISTANCE0))glUniform4f(location,plane[0],plane[1],plane[2],plane[3]);
         else glUniform4f(location,0,0,0,1);
     }

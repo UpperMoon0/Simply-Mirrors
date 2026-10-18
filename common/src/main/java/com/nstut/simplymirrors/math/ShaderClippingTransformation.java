@@ -62,7 +62,7 @@ public final class ShaderClippingTransformation {
                 if (entry.getKey().name().equals(stage.name()) && entry.getValue() != null) {
                     Map<S, String> result = new LinkedHashMap<>(sources);
                     result.put(entry.getKey(), transform(entry.getValue(), stage,
-                        "simplymirrors_Projection"));
+                        "simplymirrors_InverseProjection"));
                     return result;
                 }
             }
@@ -70,7 +70,7 @@ public final class ShaderClippingTransformation {
         return sources;
     }
 
-    public static String transform(String source, Stage stage, String projectionUniform) {
+    public static String transform(String source, Stage stage, String inverseProjectionUniform) {
         String masked = maskComments(source);
         // Do not patch twice after reload, or rewrite names inside comments.
         if (masked.contains(MAIN) || masked.contains(DISTANCE)) {
@@ -78,18 +78,18 @@ public final class ShaderClippingTransformation {
         }
         Matcher main = MAIN_DECLARATION.matcher(masked);
         if (!main.find()) {
-            throw new IllegalArgumentException("World shader has no main function for portal clipping");
+            throw new IllegalArgumentException("World shader has no main function for mirror clipping");
         }
 
         String declarations = "\nuniform vec4 simplymirrors_ClipPlane;\n";
         if (!Pattern.compile("\\buniform\\s+(?:(?:lowp|mediump|highp)\\s+)?mat4\\s+"
-            + Pattern.quote(projectionUniform) + "\\b").matcher(masked).find()) {
-            declarations += "uniform mat4 " + projectionUniform + ";\n";
+            + Pattern.quote(inverseProjectionUniform) + "\\b").matcher(masked).find()) {
+            declarations += "uniform mat4 " + inverseProjectionUniform + ";\n";
         }
         String distanceFunction = "float " + DISTANCE + "(vec4 position) {\n"
             // A neutral plane must be positive even for unusual pack clip-space w values.
             + "    if (all(equal(simplymirrors_ClipPlane, vec4(0.0, 0.0, 0.0, 1.0)))) return 1.0;\n"
-            + "    return dot(inverse(" + projectionUniform + ") * position, simplymirrors_ClipPlane);\n"
+            + "    return dot(" + inverseProjectionUniform + " * position, simplymirrors_ClipPlane);\n"
             + "}\n";
         String result;
         if (stage == Stage.GEOMETRY) {

@@ -80,20 +80,34 @@ def stop(process):
         try:process.wait(timeout=10)
         except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL)
 
-def image_check(path):
+def image_check(path,shaders=False):
     from PIL import Image
+    import colorsys
     image=Image.open(path).convert("RGB");w,h=image.size
     hits={"red":[],"green":[],"blue":[]}
     for y in range(int(h*.2),int(h*.8)):
         for x in range(int(w*.3),int(w*.7)):
             r,g,b=image.getpixel((x,y))
-            if r>35 and r>g*1.8 and r>b*1.8:hits["red"].append(x)
-            if g>35 and g>r*1.4 and g>b*1.3:hits["green"].append(x)
-            if b>35 and b>r*1.8 and b>g*1.8:hits["blue"].append(x)
+            if shaders:
+                # Shader lighting changes brightness and warms lime toward yellow.
+                # Require substantial chroma and all three ordered marker bands.
+                hue,saturation,value=colorsys.rgb_to_hsv(r/255,g/255,b/255)
+                hue*=360
+                if saturation<.28 or value<.08 or max(r,g,b)-min(r,g,b)<12:continue
+                if hue<30 or hue>330:hits["red"].append(x)
+                if 65<hue<165:hits["green"].append(x)
+                if 190<hue<265:hits["blue"].append(x)
+            else:
+                if r>35 and r>g*1.8 and r>b*1.8:hits["red"].append(x)
+                if g>35 and g>r*1.4 and g>b*1.3:hits["green"].append(x)
+                if b>35 and b>r*1.8 and b>g*1.8:hits["blue"].append(x)
     for name,xs in hits.items():
-        assert len(xs)>20,f"No reflected {name} marker in mirror: {len(xs)} pixels"
+        assert len(xs)>(w*h*.003 if shaders else 20),f"No reflected {name} marker in mirror: {len(xs)} pixels"
     red=sum(hits["red"])/len(hits["red"]);blue=sum(hits["blue"])/len(hits["blue"])
     assert red>blue+5,f"Reflection handedness incorrect: red x={red}, blue x={blue}"
+    if shaders:
+        green=sum(hits["green"])/len(hits["green"])
+        assert blue+20<green<red-20,"Reflected marker bands are not ordered blue, green, red"
     return {"pixels":{key:len(value) for key,value in hits.items()},"redMeanX":red,"blueMeanX":blue}
 
 def main():
@@ -156,7 +170,7 @@ def main():
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
                 try:
-                    data.update(image_check(result.with_name(f"mirror-{scene}.png")))
+                    data.update(image_check(result.with_name(f"mirror-{scene}.png"),shaders=args.shaders))
                 except AssertionError as error:
                     failures[face]=str(error);data['imageError']=str(error)
                 results[face]=data

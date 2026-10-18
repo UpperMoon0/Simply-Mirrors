@@ -74,10 +74,13 @@ public final class MirrorRenderer {
                 PoseStack pose=new PoseStack();pose.last().pose().multiply(reflectedView);pose.last().normal().load(new com.mojang.math.Matrix3f(reflectedView));
                 int oldFront=glGetInteger(GL_FRONT_FACE);
                 boolean oldSmartCull=mc.smartCull;
+                boolean oldDepthMask=glGetBoolean(GL_DEPTH_WRITEMASK);
                 // The virtual camera is behind the wall; portal clipping replaces ordinary wall occlusion.
                 mc.smartCull=false;
                 redirect=target;
                 try {
+                    // Iris final compositing leaves depth writes disabled; clears obey that mask.
+                    RenderSystem.depthMask(true);
                     target.setClearColor(0.615f,0.718f,0.792f,1);target.clear(Minecraft.ON_OSX);target.bindWrite(true);
                     if(shaders)ShaderReflection.begin(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],virtual);
                     game.resetProjectionMatrix(projection);glFrontFace(GL_CW);
@@ -85,6 +88,7 @@ public final class MirrorRenderer {
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
                 } finally {
                     if(shaders)ShaderReflection.end();
+                    RenderSystem.depthMask(oldDepthMask);
                     mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);game.resetProjectionMatrix(mainProjectionMatrix);
                     
                     mc.getEntityRenderDispatcher().prepare(mc.level,camera,mc.crosshairPickEntity);

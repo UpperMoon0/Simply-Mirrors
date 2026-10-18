@@ -6,10 +6,10 @@ public class ShaderClippingTransformationTest {
     private enum Stage {VERTEX,GEOMETRY,TESS_EVAL,FRAGMENT}
     private static final String SOURCE="#version 330 core\nvoid main(){gl_Position=vec4(1);if(true)return;}\n";
     @Test public void clipsAfterEarlyReturnAndIsIdempotent(){
-        String patched=ShaderClippingTransformation.transform(SOURCE,ShaderClippingTransformation.Stage.VERTEX,"simplymirrors_Projection");
+        String patched=ShaderClippingTransformation.transform(SOURCE,ShaderClippingTransformation.Stage.VERTEX,"simplymirrors_InverseProjection");
         assertTrue(patched.contains("simplymirrors_unclippedMain();"));
         assertTrue(patched.contains("gl_ClipDistance[0] ="));
-        assertEquals(patched,ShaderClippingTransformation.transform(patched,ShaderClippingTransformation.Stage.VERTEX,"simplymirrors_Projection"));
+        assertEquals(patched,ShaderClippingTransformation.transform(patched,ShaderClippingTransformation.Stage.VERTEX,"simplymirrors_InverseProjection"));
     }
     @Test public void cacheCopyLeavesShadowAndCompositeUnmodified(){
         Map<Stage,String> original=new EnumMap<>(Stage.class);original.put(Stage.VERTEX,SOURCE);
@@ -28,7 +28,7 @@ public class ShaderClippingTransformationTest {
         assertTrue(result.get(Stage.GEOMETRY).contains("EmitStreamVertex(0); }"));
     }
     @Test public void explicitPerVertexOutputGetsClipDistance(){
-        String result=ShaderClippingTransformation.transform("#version 330 core\nout gl_PerVertex {vec4 gl_Position;};\nvoid main(){}",ShaderClippingTransformation.Stage.VERTEX,"simplymirrors_Projection");
+        String result=ShaderClippingTransformation.transform("#version 330 core\nout gl_PerVertex {vec4 gl_Position;};\nvoid main(){}",ShaderClippingTransformation.Stage.VERTEX,"simplymirrors_InverseProjection");
         assertTrue(result.contains("float gl_ClipDistance[1];"));
     }
     @Test public void allSixPlanesClipWallAndKeepReflectedRoom(){
