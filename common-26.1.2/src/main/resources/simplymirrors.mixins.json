@@ -12,6 +12,7 @@
     "IrisFullscreenMixin",
     "IrisTransformMixin",
     "IrisUniformMixin",
+    "IrisFrameMixin",
     "ReflectionCameraMixin",
     "IrisShadowMixin",
     "SodiumReflectionMixin",

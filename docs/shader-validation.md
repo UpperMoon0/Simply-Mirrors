@@ -40,3 +40,11 @@ Logs and results are written under `<target>/run/<run-name>-evidence`; captures 
 The old renderer produced a flat blue mirror despite an active shader pack, 120 completed reflection passes, and `glError=0`. The acceptance tests reject this result.
 
 ![0.1.0 failing capture](images/mirror-shader-oculus-unsupported.png)
+
+## Camera and temporal-state isolation
+
+Each reflected pass overrides camera-dependent uniforms without advancing Iris's frame counter or camera-history suppliers. The main camera, shadow matrices, and GPU uniform values are restored afterward. Persistent color textures are saved on both main/alternate sides, including allocated mip levels and sampler state, then restored even if a reflected render fails.
+
+Reflections start with cleared temporal history rather than borrowing the main view's previous frame. The pinned Complementary TAA shader rejects that empty history and uses the current reflected color. This preserves the main view's accumulated TAA; reflections do not yet accumulate separate per-mirror temporal history.
+
+The `Shader history isolation (OpenGL)` CI check exercises the production texture transaction in a real software-rendered OpenGL context, including repeated exception paths and exact image/state restoration. Its Iris API-shaped fixtures test the bridge without launching Minecraft. See [the native regression instructions](../tools/gl-tests/README.md). Shared Java tests separately cover camera-uniform restoration, multiple mirror planes, shadow matrices, mutable captured matrices, and interrupted updates. These focused checks supplement the eight-target in-game shader captures; they are not substitutes for them.

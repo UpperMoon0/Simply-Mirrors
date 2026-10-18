@@ -1,6 +1,6 @@
 # Releasing Simply Mirrors
 
-The **Build and release** workflow follows the Simply Speakers/Simply Screens pattern: a version change on `main` builds the mod and publishes it. It also requires the reflection tests and visual acceptance tests on all eight targets to pass before any publication. Development versions (`-dev`) only produce a verified bundle automatically.
+The **Build and release** workflow follows the Simply Speakers/Simply Screens pattern: a version change on `main` builds the mod and publishes it. It also requires the reflection tests, native OpenGL state-isolation regression, and vanilla plus shader acceptance tests on all eight targets to pass before any publication. Development versions (`-dev`) only produce a verified bundle automatically.
 
 Configure these on **UpperMoon0/Simply-Mirrors → Settings → Secrets and variables → Actions**:
 

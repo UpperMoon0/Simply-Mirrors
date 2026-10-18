@@ -117,7 +117,7 @@ public final class MirrorRenderer {
                 var mv=RenderSystem.getModelViewStack();mv.pushMatrix();mv.identity();
                 try(GpuBuffer globals=globals(reflectedEye,main.width,main.height,mc,partial)) {
                     redirect=target;
-                    if(shaders)ShaderReflection.begin(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],virtual);
+                    if(shaders)ShaderReflection.begin(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected);
                     RenderSystem.setGlobalSettingsUniform(globals);
                     RenderSystem.setProjectionMatrix(projectionBuffer.getBuffer(projection),ProjectionType.PERSPECTIVE);glFrontFace(GL_CW);
                     mc.levelRenderer.renderLevel(allocator,delta,false,state.cameraRenderState,reflectedView,fog,new Vector4f(color),sky,state.chunkSectionsToRender);

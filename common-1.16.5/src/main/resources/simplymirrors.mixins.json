@@ -12,6 +12,7 @@
     "ReflectionCullingMixin",
     "IrisFullscreenMixin",
     "IrisUniformMixin",
+    "IrisFrameMixin",
     "ReflectionCameraMixin",
     "IrisShadowMixin",
     "IrisLegacyTransformMixin",
