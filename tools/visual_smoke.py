@@ -141,7 +141,7 @@ def main():
             print("Fixture ready; starting client",args.target,flush=True)
             client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
             client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,stderr=subprocess.STDOUT,**creation)
-            results={}
+            results={};failures={}
             for scene,face in enumerate(FACES):
                 if scene:
                     for text in fixture(scene):
@@ -155,14 +155,19 @@ def main():
                 if not result.exists():raise TimeoutError(f"Client visual probe timed out on {face}: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
-                data.update(image_check(result.with_name(f"mirror-{scene}.png")));results[face]=data
-                print("Verified reflective face",args.target,face,json.dumps(data),flush=True)
-            (evidence/"verified.json").write_text(json.dumps(results,indent=2)+"\n")
+                try:
+                    data.update(image_check(result.with_name(f"mirror-{scene}.png")))
+                except AssertionError as error:
+                    failures[face]=str(error);data['imageError']=str(error)
+                results[face]=data
+                print("Failed reflective face" if face in failures else "Verified reflective face",args.target,face,json.dumps(data),flush=True)
+            (evidence/("results.json" if failures else "verified.json")).write_text(json.dumps(results,indent=2)+"\n")
             scene_file(client_dir,6)
             # The probe quits normally after capture. Do not kill Gradle while it releases
             # Loom's cache lock, or accept a process that crashes after writing its result.
             exit_code=client.wait(timeout=60)
             if exit_code!=0:raise RuntimeError(f"Client failed after capture ({exit_code}): {evidence/'client.log'}")
+            if failures:raise AssertionError("Reflection image checks failed: "+json.dumps(failures))
             print("SIMPLY_MIRRORS_VISUAL_PASS",args.target,json.dumps(results),flush=True)
         except BaseException as error:
             (evidence/"failure.txt").write_text(f"{type(error).__name__}: {error}\n")

@@ -2,7 +2,7 @@
 
 <img src="common-assets/src/main/resources/assets/simply_mirrors/icon.png" width="128" alt="Simply Mirrors icon">
 
-[CurseForge description](docs/curseforge-description.md) · [Release and CurseForge setup](docs/releasing.md)
+[CurseForge description](docs/curseforge-description.md) Â· [Release and CurseForge setup](docs/releasing.md)
 
 A standalone Minecraft mod project for placeable mirrors that reflect the surrounding world.
 
@@ -55,6 +55,26 @@ The Forge 1.20.1 development client includes JEI 15.20.0.106 for browsing mirror
 ./gradlew -Ptarget=forge-1.20.1 :forge-1.20.1:runClient
 ```
 
+Install the pinned shader development stack and enable Complementary:
+
+```sh
+python tools/shader_stack.py --target forge-1.20.1 --client forge-1.20.1/run
+```
+
+The installer requires Python 3.11 or newer and verifies SHA-512 downloads. Installed development clients load their matching stack automatically; use `-PmirrorsShaderStack=off` for a vanilla baseline. Server runs exclude these client mods. Production jars do not bundle shader dependencies.
+
+| Target | Shader loader | Terrain renderer |
+| --- | --- | --- |
+| Fabric 1.16.5 | Iris 1.4.5 | Sodium 0.2.0 |
+| Forge 1.16.5 | Oculus 1.4.8 | Rubidium 0.2.13 |
+| Fabric 1.20.1 | Iris 1.7.6 | Sodium 0.5.12 beta 2 |
+| Forge 1.20.1 | Oculus 1.8.0 | Embeddium 0.3.31 |
+| Fabric 1.21.1 | Iris 1.8.8 | Sodium 0.6.13 |
+| NeoForge 1.21.1 | Iris 1.8.12 | Sodium 0.6.13 |
+| Fabric / NeoForge 26.1.2 | Iris 1.11.4 | Sodium 0.9.2 |
+
+All targets use Complementary Reimagined r5.9.3. Exact artifacts and upstream URLs are recorded in [the shader lock](tools/shader/stack-lock.json).
+
 ## Layout
 
 - `common`: loader- and Minecraft-independent Java 8 sources and reflection-math regression tests.
@@ -68,6 +88,8 @@ The Forge 1.20.1 development client includes JEI 15.20.0.106 for browsing mirror
 Shared tests cover reflection vector/matrix parity, inverse transforms, glass projection alignment, oblique wall clipping, and coplanar grouping. Every production artifact is checked for version/loader identity, Java level, block/item resources, mixin metadata, and license notices. The isolated visual workflow launches a disposable dedicated server and client, places an asymmetric red/green/blue fixture behind the player and an opaque wall behind the mirrors, then checks the captured reflection's colors, handedness, completed render passes, creative tab, and OpenGL error state. Artifacts include the capture and logs for each target. The fixture is rebuilt in all six orientations, checking side walls, floors, and ceilings independently of the saved placement direction. Each orientation also exercises angled views and must complete at least 120 reflection frames before capture.
 
 To run one target locally, install Pillow and use `python tools/visual_smoke.py --target fabric-1.20.1`. Linux CI supplies Xvfb and Mesa software rendering. The script refuses to reuse an existing test world. Test probes are compiled into a separate build directory and are rejected by the production packaging check.
+
+Add `--shaders` for the same six-face checks with the locked shader pack active, or `--run-name <new-name>` for a fresh isolated retry. Shader captures require Iris/Oculus' public API to report an active pack. The manually dispatched shader workflow uploads screenshots, per-face results, and logs. This diagnostic currently reproduces shader incompatibility; an active pack and successful render passes do not guarantee a correct mirror. See [shader validation findings](docs/shader-validation.md).
 
 ## Rendering implementation
 
