@@ -63,9 +63,10 @@ public final class MirrorRenderer {
         for(MirrorSurface s:cached) {
             if(distance(s,eye)>32*32||!s.plane().isFrontFacing(eye.x,eye.y,eye.z,.025))continue;
             BlockState state=mc.level.getBlockState(new BlockPos(s.x,s.y,s.z));
-            if(!(state.getBlock() instanceof MirrorBlock))continue;Direction f=state.getValue(MirrorBlock.FACING);
+            if(!(state.getBlock() instanceof MirrorBlock))continue;
+            if(mc.level.getBlockState(new BlockPos(s.x+s.nx,s.y+s.ny,s.z+s.nz)).getBlock() instanceof MirrorBlock)continue;
             double[] clip=MirrorMatrices.transform(vp,s.cx-eye.x,s.cy-eye.y,s.cz-eye.z,1);
-            if(f.getStepX()!=s.nx||f.getStepZ()!=s.nz||clip[3]<=.01||Math.abs(clip[0])>clip[3]+1.5||Math.abs(clip[1])>clip[3]+1.5)continue;
+            if(clip[3]<=.01||Math.abs(clip[0])>clip[3]+1.5||Math.abs(clip[1])>clip[3]+1.5)continue;
             groups.computeIfAbsent(s.planeKey(),k->new ArrayList<>()).add(s);
         }
         if(groups.isEmpty())return;
@@ -83,15 +84,15 @@ public final class MirrorRenderer {
             }
             if(projectionBuffer==null)projectionBuffer=new ProjectionMatrixBuffer("Simply Mirrors projection");
             for(List<MirrorSurface> surfaces:groups.values()) {
-                if(passes++>=2)break;
+                if(passes++>=6)break;
                 MirrorSurface s=surfaces.get(0);double[] reflected=s.plane().reflectPoint(eye.x,eye.y,eye.z);
                 Vec3 reflectedEye=new Vec3(reflected[0],reflected[1],reflected[2]);
-                Matrix4f reflectedView=new Matrix4f().set(MirrorMatrices.multiply(view,ImmersiveMirrorTransform.matrix(s.nx,0,s.nz)));
-                Matrix4f projection=new Matrix4f().set(MirrorMatrices.oblique(proj,reflectedView.get(new float[16]),s.nx,0,s.nz,
+                Matrix4f reflectedView=new Matrix4f().set(MirrorMatrices.multiply(view,ImmersiveMirrorTransform.matrix(s.nx,s.ny,s.nz)));
+                Matrix4f projection=new Matrix4f().set(MirrorMatrices.oblique(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,
                         s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],RenderSystem.getDevice().isZZeroToOne()));
                 Camera virtual=new ReflectionCamera(reflectedView);virtual.setLevel(mc.level);virtual.setEntity(mc.getCameraEntity());virtual.update(delta);
                 CameraAccessor ca=(CameraAccessor)(Object)virtual;ca.simplymirrors$position(reflectedEye);
-                ca.simplymirrors$rotation(s.nz!=0?180-mc.gameRenderer.getMainCamera().yRot():-mc.gameRenderer.getMainCamera().yRot(),mc.gameRenderer.getMainCamera().xRot());
+                ca.simplymirrors$rotation(s.ny!=0?mc.gameRenderer.getMainCamera().yRot():s.nz!=0?180-mc.gameRenderer.getMainCamera().yRot():-mc.gameRenderer.getMainCamera().yRot(),s.ny!=0?-mc.gameRenderer.getMainCamera().xRot():mc.gameRenderer.getMainCamera().xRot());
                 ca.simplymirrors$detached(true);virtual.tick();ca.simplymirrors$frustum(reflectedView,projection,reflectedEye);
                 // Use loaded section geometry directly: the main camera's occlusion graph may
                 // omit a sealed room on the opposite side of the mirror wall.
@@ -157,11 +158,12 @@ public final class MirrorRenderer {
             if(!level.hasChunk(x,z))continue;
             for(BlockEntity be:level.getChunk(x,z).getBlockEntities().values()) {
                 if(!(be instanceof MirrorBlockEntity))continue;BlockPos pos=be.getBlockPos();BlockState state=level.getBlockState(pos);
-                if(!(state.getBlock() instanceof MirrorBlock))continue;Direction f=state.getValue(MirrorBlock.FACING);
-                out.add(new MirrorSurface(pos.getX(),pos.getY(),pos.getZ(),f.getStepX(),f.getStepZ()));
+                if(!(state.getBlock() instanceof MirrorBlock))continue;
+                for(MirrorSurface face:MirrorSurface.faces(pos.getX(),pos.getY(),pos.getZ()))
+                    if(!(level.getBlockState(new BlockPos(face.x+face.nx,face.y+face.ny,face.z+face.nz)).getBlock() instanceof MirrorBlock))out.add(face);
             }
         }
-        out.sort(Comparator.comparingDouble(s->distance(s,eye)));return out.size()>256?new ArrayList<>(out.subList(0,256)):out;
+        out.sort(Comparator.comparingDouble(s->distance(s,eye)));return out.size()>1536?new ArrayList<>(out.subList(0,1536)):out;
     }
     public static void release() {
         if(target!=null)target.destroyBuffers();target=null;if(projectionBuffer!=null)projectionBuffer.close();projectionBuffer=null;

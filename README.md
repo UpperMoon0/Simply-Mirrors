@@ -8,9 +8,9 @@ A standalone Minecraft mod project for placeable mirrors that reflect the surrou
 
 **Status: experimental development build.** Includes a craftable full-block frameless mirror, a dedicated Simply Mirrors creative tab, and native reflection adapters for all four Minecraft versions. Reflection geometry is adapted from Immersive Portals CE; no portal mod is required. Runtime acceptance is tracked per target; the first verified capture is shown below.
 
-The reflective face points in the direction of the surface you click, or toward you when placed from above/below. Each mirror is a full solid cube, with a reflection covering its entire front face. Adjacent mirrors form a continuous reflective surface. Build your own frame using any blocks you like. Take a mirror from the Simply Mirrors tab or craft one with eight glass blocks around an iron ingot.
+Every face of the full solid cube reflects: north, south, east, west, top, and bottom. Placement direction does not limit reflections. Adjacent mirrors form continuous surfaces, including floors and ceilings. Build your own frame using any blocks you like. Take a mirror from the Simply Mirrors tab or craft one with eight glass blocks around an iron ingot.
 
-The first renderer is bounded to two visible mirror planes per frame within 32 blocks. Coplanar mirrors share a reflection render. Reflections show loaded terrain and entities; recursive mirror reflections and shader-pack compatibility are not yet supported. The 26.1.2 compositor currently targets Minecraft's OpenGL renderer.
+The renderer is bounded to six visible mirror planes per frame within 32 blocks. Coplanar mirrors share a reflection render, and internal faces between neighboring mirrors are skipped. More visible planes cost additional world renders. Reflections show loaded terrain and entities; recursive mirror reflections and shader-pack compatibility are not yet supported. The 26.1.2 compositor currently targets Minecraft's OpenGL renderer.
 
 ![Frameless reflections in the Fabric 26.1.2 acceptance scene](docs/images/mirror-frameless.png)
 

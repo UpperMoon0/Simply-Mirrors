@@ -1,10 +1,35 @@
 """Launch an isolated server/client scene and verify actual mirror pixels and creative-tab registration."""
 from __future__ import annotations
-import argparse, json, os, signal, socket, struct, subprocess, sys, time
+import argparse, json, math, os, signal, socket, struct, subprocess, sys, time
 from pathlib import Path
 from PIL import Image
 ROOT=Path(__file__).resolve().parents[1]
 TARGETS={t["target"]:t for t in json.loads((ROOT/"tools/targets.json").read_text())}
+FACES=["north","south","west","east","up","down"]
+NORMALS=[(0,0,-1),(0,0,1),(-1,0,0),(1,0,0),(0,1,0),(0,-1,0)]
+
+def fixture(scene):
+    nx,ny,nz=NORMALS[scene]
+    right=(-nz,0,nx) if not ny else (1,0,0)
+    up=(0,1,0) if not ny else (0,0,ny)
+    def point(x,y,z):
+        local=(x+.5-.5,y+.5-66.5,-(z+.5-.5))
+        return tuple(math.floor(c+right[i]*local[0]+up[i]*local[1]+NORMALS[scene][i]*local[2]+1e-7) for i,c in enumerate((.5,66.5,.5)))
+    def fill(a,b,block):
+        a,b=point(*a),point(*b)
+        low=[min(x,y) for x,y in zip(a,b)];high=[max(x,y) for x,y in zip(a,b)]
+        return "fill "+" ".join(map(str,low+high))+" "+block
+    commands=["fill -12 54 -12 12 79 12 air",fill((-5,65,1),(5,70,1),"white_concrete"),
+              fill((-4,65,-8),(-2,69,-8),"red_concrete"),fill((-1,65,-8),(1,69,-8),"lime_concrete"),
+              fill((2,65,-8),(4,69,-8),"blue_concrete")]
+    # Every block retains the same legacy facing; the other five reflections must work independently of it.
+    for x in range(-1,2):
+        for y in range(65,68):
+            pos=point(x,y,0);commands.append("setblock "+" ".join(map(str,pos))+" simply_mirrors:mirror[facing=north]")
+    return commands
+
+def scene_file(client_dir,scene):
+    temporary=client_dir/"visual-scene.next";temporary.write_text(str(scene));temporary.replace(client_dir/"visual-scene.txt")
 
 def free_port():
     with socket.socket() as sock:
@@ -80,26 +105,35 @@ def main():
                 except (OSError,ConnectionError):time.sleep(1)
             else:raise TimeoutError("Server startup timeout: "+(evidence/"server.log").read_text(errors="replace")[-8000:])
             print("Server and RCON ready",args.target,flush=True)
-            commands=["forceload add -16 -16 16 16","time set noon","weather clear","fill -12 64 -12 12 64 12 stone","fill -5 65 1 5 70 1 white_concrete","fill -4 65 -8 -2 69 -8 red_concrete","fill -1 65 -8 1 69 -8 lime_concrete","fill 2 65 -8 4 69 -8 blue_concrete","setworldspawn 0 65 -4"]
-            for x in range(-1,2):
-                for y in range(65,68):commands.append(f"setblock {x} {y} 0 simply_mirrors:mirror[facing=north]")
+            commands=["forceload add -16 -16 16 16","time set noon","weather clear","fill -12 53 -12 12 53 12 stone","setworldspawn 0 65 -4"]+fixture(0)
             for text in commands:
                 reply=rcon.command(text)
                 if "Unknown" in reply or "Incorrect" in reply:raise RuntimeError(f"Fixture command failed: {text}: {reply}")
             print("Fixture ready; starting client",args.target,flush=True)
+            client_dir=module/"run/visual-client";client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,0)
             client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,stderr=subprocess.STDOUT,**creation)
-            result=module/"run/visual-client/visual-evidence/result.json";deadline=time.monotonic()+600
-            while time.monotonic()<deadline and not result.exists():
-                if client.poll() is not None:raise RuntimeError(f"Client exited before capture: {evidence/'client.log'}")
-                time.sleep(1)
-            if not result.exists():raise TimeoutError("Client visual probe timed out: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
-            data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
-            data.update(image_check(result.with_name("mirror.png")));(evidence/"verified.json").write_text(json.dumps(data,indent=2)+"\n")
+            results={}
+            for scene,face in enumerate(FACES):
+                if scene:
+                    for text in fixture(scene):
+                        reply=rcon.command(text)
+                        if any(word in reply for word in ["Unknown","Incorrect","too many blocks"]):raise RuntimeError(f"Fixture failed: {text}: {reply}")
+                    scene_file(client_dir,scene)
+                result=client_dir/f"visual-evidence/result-{scene}.json";deadline=time.monotonic()+(600 if scene==0 else 180)
+                while time.monotonic()<deadline and not result.exists():
+                    if client.poll() is not None:raise RuntimeError(f"Client exited before {face} capture: {evidence/'client.log'}")
+                    time.sleep(1)
+                if not result.exists():raise TimeoutError(f"Client visual probe timed out on {face}: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
+                data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
+                data.update(image_check(result.with_name(f"mirror-{scene}.png")));results[face]=data
+                print("Verified reflective face",args.target,face,json.dumps(data),flush=True)
+            (evidence/"verified.json").write_text(json.dumps(results,indent=2)+"\n")
+            scene_file(client_dir,6)
             # The probe quits normally after capture. Do not kill Gradle while it releases
             # Loom's cache lock, or accept a process that crashes after writing its result.
             exit_code=client.wait(timeout=60)
             if exit_code!=0:raise RuntimeError(f"Client failed after capture ({exit_code}): {evidence/'client.log'}")
-            print("SIMPLY_MIRRORS_VISUAL_PASS",args.target,json.dumps(data),flush=True)
+            print("SIMPLY_MIRRORS_VISUAL_PASS",args.target,json.dumps(results),flush=True)
         finally:
             stop(client)
             if rcon:

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.5
+
+- Make all six block faces reflective, including floors and ceilings, independently of placement direction.
+- Skip hidden internal faces between adjacent mirrors and allow six visible planes per frame.
+- Verify actual reflected pixels and angled views for each face on all eight targets.
+
 ## 0.1.0-dev.4
 
 - Fix angled-view mirror hangs in vanilla camera-frustum fitting (1.20.1 and 1.21.1).

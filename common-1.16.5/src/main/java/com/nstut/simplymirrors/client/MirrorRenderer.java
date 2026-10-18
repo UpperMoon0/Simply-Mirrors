@@ -50,8 +50,8 @@ public final class MirrorRenderer {
             if(distance(s,eye)>32*32||!s.plane().isFrontFacing(eye.x,eye.y,eye.z,.025))continue;
             BlockState state=mc.level.getBlockState(new BlockPos(s.x,s.y,s.z));
             if(!(state.getBlock() instanceof MirrorBlock))continue;
-            Direction facing=state.getValue(MirrorBlock.FACING);
-            if(facing.getStepX()!=s.nx||facing.getStepZ()!=s.nz||!visible(s,vp,eye))continue;
+            if(mc.level.getBlockState(new BlockPos(s.x+s.nx,s.y+s.ny,s.z+s.nz)).getBlock() instanceof MirrorBlock)continue;
+            if(!visible(s,vp,eye))continue;
             groups.computeIfAbsent(s.planeKey(),k->new ArrayList<>()).add(s);
         }
         RenderTarget main=mc.getMainRenderTarget();int passes=0;
@@ -60,16 +60,16 @@ public final class MirrorRenderer {
                 if(target!=null)target.destroyBuffers();target=new RenderTarget(main.width,main.height,true,Minecraft.ON_OSX);
             }
             for(List<MirrorSurface> surfaces:groups.values()) {
-                if(passes++>=2)break;
+                if(passes++>=6)break;
                 MirrorSurface surface=surfaces.get(0);
                 double[] reflected=surface.plane().reflectPoint(eye.x,eye.y,eye.z);
                 Vec3 reflectedEye=new Vec3(reflected[0],reflected[1],reflected[2]);
-                Matrix4f reflectedView=matrix(MirrorMatrices.multiply(view,ImmersiveMirrorTransform.matrix(surface.nx,0,surface.nz)));
-                Matrix4f projection=matrix(MirrorMatrices.oblique(proj,array(reflectedView),surface.nx,0,surface.nz,
+                Matrix4f reflectedView=matrix(MirrorMatrices.multiply(view,ImmersiveMirrorTransform.matrix(surface.nx,surface.ny,surface.nz)));
+                Matrix4f projection=matrix(MirrorMatrices.oblique(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,
                     surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],false));
                 Camera virtual=new Camera();virtual.setup(mc.level,mc.getCameraEntity(),true,false,partial);
                 CameraAccessor accessor=(CameraAccessor)(Object)virtual;accessor.simplymirrors$position(reflectedEye);
-                accessor.simplymirrors$rotation(surface.nz!=0?180-camera.getYRot():-camera.getYRot(),camera.getXRot());
+                accessor.simplymirrors$rotation(surface.ny!=0?camera.getYRot():surface.nz!=0?180-camera.getYRot():-camera.getYRot(),surface.ny!=0?-camera.getXRot():camera.getXRot());
                 PoseStack pose=new PoseStack();pose.last().pose().multiply(reflectedView);pose.last().normal().load(new com.mojang.math.Matrix3f(reflectedView));
                 int oldFront=glGetInteger(GL_FRONT_FACE);
                 boolean oldSmartCull=mc.smartCull;
@@ -103,12 +103,13 @@ public final class MirrorRenderer {
             if(!level.hasChunk(x,z))continue;
             for(BlockEntity be:level.getChunk(x,z).getBlockEntities().values()) {
                 if(!(be instanceof MirrorBlockEntity))continue;BlockPos pos=be.getBlockPos();BlockState state=level.getBlockState(pos);
-                if(!(state.getBlock() instanceof MirrorBlock))continue;Direction f=state.getValue(MirrorBlock.FACING);
-                surfaces.add(new MirrorSurface(pos.getX(),pos.getY(),pos.getZ(),f.getStepX(),f.getStepZ()));
+                if(!(state.getBlock() instanceof MirrorBlock))continue;
+                for(MirrorSurface face:MirrorSurface.faces(pos.getX(),pos.getY(),pos.getZ()))
+                    if(!(level.getBlockState(new BlockPos(face.x+face.nx,face.y+face.ny,face.z+face.nz)).getBlock() instanceof MirrorBlock))surfaces.add(face);
             }
         }
         surfaces.sort(Comparator.comparingDouble(s->distance(s,eye)));
-        return surfaces.size()>256?new ArrayList<>(surfaces.subList(0,256)):surfaces;
+        return surfaces.size()>1536?new ArrayList<>(surfaces.subList(0,1536)):surfaces;
     }
     public static void release() {
         if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;COMPOSITE.close();

@@ -8,7 +8,7 @@ version = "${version}"
 displayName = "Simply Mirrors"
 logoFile = "assets/simply_mirrors/icon.png"
 authors = "NsTut"
-description = "Craftable full-block frameless mirrors with live world reflections and a dedicated creative tab."
+description = "Craftable full-block frameless mirrors with live reflections on all six faces and a dedicated creative tab."
 [[dependencies.simply_mirrors]]
 modId = "neoforge"
 type = "required"
