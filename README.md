@@ -43,6 +43,14 @@ cd fabric-26.1.2
 
 The root wrapper is Gradle 8.14. Forge 1.16.5 uses its own Gradle 8.14 build with ForgeGradle 6.0.54 and MixinGradle 0.7.38, avoiding Loom's incomplete remapping of Forge's legacy coremods. Each 26.1.2 module has an independent Gradle 9.2.1 wrapper because the Minecraft 26 toolchain differs from the older Loom builds. `tools/build.py` selects the correct build root and verifies each production jar's metadata, entrypoint, included shared classes, and Java bytecode level.
 
+## Development client
+
+The Forge 1.20.1 development client includes JEI 15.20.0.106 for browsing mirror items and recipes. JEI is a development-only dependency and is not bundled with Simply Mirrors or published as a required dependency.
+
+```sh
+./gradlew -Ptarget=forge-1.20.1 :forge-1.20.1:runClient
+```
+
 ## Layout
 
 - `common`: loader- and Minecraft-independent Java 8 sources and reflection-math regression tests.
