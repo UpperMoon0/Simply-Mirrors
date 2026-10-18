@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.nstut.simplymirrors.client.mixin",
+  "refmap": "simplymirrors.refmap.json",
+  "client": [
+    "CameraAccessor",
+    "MinecraftMixin",
+    "LevelRendererMixin",
+    "MatrixAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,0 +1,7 @@
+Simply Mirrors
+Copyright (c) 2026 NsTut
+SPDX-License-Identifier: MIT
+
+Inspired by the mirror feature in Immersive Portals CE.
+The standalone reflection renderer and planar-reflection mathematics are implemented in this project.
+No Immersive Portals runtime or source files are bundled.

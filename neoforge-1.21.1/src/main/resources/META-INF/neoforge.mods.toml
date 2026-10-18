@@ -6,8 +6,9 @@ issueTrackerURL = "https://github.com/UpperMoon0/Simply-Mirrors/issues"
 modId = "simply_mirrors"
 version = "${version}"
 displayName = "Simply Mirrors"
+logoFile = "assets/simply_mirrors/icon.png"
 authors = "NsTut"
-description = "Development foundation. Reflective mirror gameplay is under development."
+description = "Craftable full-block frameless mirrors with live reflections on all six faces and a dedicated creative tab."
 [[dependencies.simply_mirrors]]
 modId = "neoforge"
 type = "required"
@@ -20,3 +21,6 @@ type = "required"
 versionRange = "[1.21.1]"
 ordering = "NONE"
 side = "BOTH"
+
+[[mixins]]
+config = "simplymirrors.mixins.json"

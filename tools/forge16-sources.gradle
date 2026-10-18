@@ -1,0 +1,38 @@
+// Forge 1.16's official channel maps members but retains MCP class names.
+// Only the type names actually used by this mod are listed; shared sources remain Mojang-named.
+def typeNamesFile = file('../tools/forge16-class-names.json')
+def typeNames = new groovy.json.JsonSlurper().parse(typeNamesFile)
+def roots = ['../common/src/main/java', '../common-client/src/main/java', '../common-1.16.5/src/main/java', 'src/main/java']
+if (providers.gradleProperty('visualTest').isPresent()) roots.addAll(['../visual-tests/common/java', '../visual-tests/1.16.5/java'])
+def sources = files(roots.collect { fileTree(it) { include '**/*.java' } })
+def output = layout.buildDirectory.dir('generated/forgeSources')
+sourceSets.main.java.setSrcDirs([output])
+def generate = tasks.register('generateForgeSources') {
+    inputs.files sources, typeNamesFile
+    outputs.dir output
+    doLast {
+        def out = output.get().asFile
+        delete out
+        sources.files.each { source ->
+            String text = source.getText('UTF-8')
+            def imports = []
+            def simpleNames = [:]
+            def matcher = text =~ /import\s+([\w.*]+);/
+            matcher.each { match ->
+                String name = match[1]
+                def types = name.endsWith('.*') ? typeNames.findAll { k,v -> k.startsWith(name[0..-2]) && !k.substring(name.length()-1).contains('.') } : typeNames.findAll { k,v -> k == name }
+                if (!types.isEmpty()) {
+                    imports.add([match[0], types.values().toList().unique().collect { 'import '+it+';' }.join('\n')])
+                    types.each { k,v -> simpleNames[k.tokenize('.').last()] = v.tokenize('.').last() }
+                }
+            }
+            imports.each { text = text.replace(it[0], it[1]) }
+            typeNames.each { k,v -> text = text.replace(k, v).replace(k.replace('.', '/'), v.replace('.', '/')) }
+            simpleNames.each { k,v -> text = text.replaceAll('(?<![\\w.])'+java.util.regex.Pattern.quote(k)+'\\b', java.util.regex.Matcher.quoteReplacement(v)) }
+            def packageName = (text =~ /package\s+([\w.]+);/)[0][1]
+            def target = new File(out, packageName.replace('.', '/')+'/'+source.name)
+            target.parentFile.mkdirs();target.setText(text, 'UTF-8')
+        }
+    }
+}
+tasks.named('compileJava') { dependsOn generate }

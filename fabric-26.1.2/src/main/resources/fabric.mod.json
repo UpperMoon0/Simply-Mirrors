@@ -3,7 +3,7 @@
   "id": "simply_mirrors",
   "version": "${version}",
   "name": "Simply Mirrors",
-  "description": "Simply Mirrors development foundation. Reflective mirror gameplay is under development.",
+  "description": "Craftable full-block frameless mirrors with live reflections on all six faces and a dedicated creative tab.",
   "authors": [
     "NsTut"
   ],
@@ -21,6 +21,11 @@
   "depends": {
     "fabricloader": ">=0.18.6",
     "minecraft": "26.1.2",
-    "java": ">=25"
-  }
+    "java": ">=25",
+    "fabric-api": "*"
+  },
+  "mixins": [
+    "simplymirrors.mixins.json"
+  ],
+  "icon": "assets/simply_mirrors/icon.png"
 }

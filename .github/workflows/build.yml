@@ -1,7 +1,8 @@
 name: Build and verify
 on:
+  workflow_call:
   push:
-    branches: [main, 'codex/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -22,6 +23,10 @@ jobs:
             8
             21
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tools -p 'test_*.py'
       - run: chmod +x gradlew
       - run: ./gradlew -Ptarget=common :common:test --no-daemon --console=plain
       - uses: actions/upload-artifact@v4
@@ -56,7 +61,7 @@ jobs:
             ${{ matrix.java }}
             ${{ matrix.gradle_java }}
       - uses: gradle/actions/setup-gradle@v4
-      - run: chmod +x gradlew fabric-26.1.2/gradlew neoforge-26.1.2/gradlew
+      - run: chmod +x gradlew forge-1.16.5/gradlew fabric-26.1.2/gradlew neoforge-26.1.2/gradlew
       - run: python tools/build.py --target ${{ matrix.target }} --skip-tests
       - uses: actions/upload-artifact@v4
         with:
@@ -66,4 +71,23 @@ jobs:
             !${{ matrix.target }}/build/libs/*-sources.jar
             !${{ matrix.target }}/build/libs/*-dev.jar
             !${{ matrix.target }}/build/libs/*-dev-shadow.jar
+          if-no-files-found: error
+  release-package:
+    name: Verify eight-target release bundle
+    needs: [reflection-core, builds]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: simply-mirrors-*
+          path: release-input
+      - run: python tools/release.py collect --input release-input --output release-output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-release-bundle
+          path: release-output/*
           if-no-files-found: error

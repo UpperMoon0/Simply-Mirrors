@@ -20,14 +20,14 @@ public final class MirrorPlane {
     }
 
     public double[] reflectPoint(double px, double py, double pz) {
-        double d = 2.0 * signedDistance(px, py, pz);
-        return new double[] {px - d * nx, py - d * ny, pz - d * nz};
+        requireFinite(px, py, pz);
+        double[] v = ReflectionTransform.reflectVector(px - x, py - y, pz - z, nx, ny, nz);
+        return new double[] {v[0] + x, v[1] + y, v[2] + z};
     }
 
     public double[] reflectDirection(double dx, double dy, double dz) {
         requireFinite(dx, dy, dz);
-        double d = 2.0 * (dx * nx + dy * ny + dz * nz);
-        return new double[] {dx - d * nx, dy - d * ny, dz - d * nz};
+        return ReflectionTransform.reflectVector(dx, dy, dz, nx, ny, nz);
     }
 
     /** The viewer must be on the front side of the surface, beyond the numerical tolerance. */

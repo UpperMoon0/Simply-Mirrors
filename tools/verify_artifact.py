@@ -1,6 +1,7 @@
 """Check a production jar's identity, loader, version range and Java compatibility."""
 from __future__ import annotations
 import json
+import struct
 from pathlib import Path
 import sys
 import tomllib
@@ -12,7 +13,34 @@ TARGETS = {t["target"]: t for t in json.loads((ROOT / "tools/targets.json").read
 def verify(path, target):
     with zipfile.ZipFile(path) as jar:
         names = set(jar.namelist())
+        assert "pack.mcmeta" in names, "Mod resource pack metadata missing"
+        pack = json.loads(jar.read("pack.mcmeta"))["pack"]
+        if target["minecraft"] == "26.1.2":
+            assert pack["min_format"] == 84 and pack["max_format"] == [101, 1], "Modern resource/data pack format range incorrect"
+        else:
+            assert pack["pack_format"] == {"1.16.5": 6, "1.20.1": 15, "1.21.1": 34}[target["minecraft"]]
         assert "LICENSE" in names, "License missing"
+        assert "NOTICE" in names, "Copyright notice missing"
+        assert b"MIT License" in jar.read("LICENSE"), "MIT license missing"
+        for cl in ["block/MirrorBlock", "block/MirrorBlockEntity", "client/MirrorRenderer", "math/ReflectionTransform"]:
+            assert f"com/nstut/simplymirrors/{cl}.class" in names, f"Missing implementation: {cl}"
+        assert "simplymirrors.mixins.json" in names, "Client rendering mixins missing"
+        mixins = json.loads(jar.read("simplymirrors.mixins.json"))
+        assert mixins.get("client") and not mixins.get("mixins"), "Renderer mixins must remain client-only"
+        for resource in ["blockstates/mirror.json", "models/block/mirror.json", "models/item/mirror.json", "lang/en_us.json"]:
+            json.loads(jar.read(f"assets/simply_mirrors/{resource}"))
+        model = json.loads(jar.read("assets/simply_mirrors/models/block/mirror.json"))
+        assert model["parent"] == "minecraft:block/cube_all" and "elements" not in model, "Mirror must be a frameless full cube"
+        assert model["textures"] == {"all": "simply_mirrors:block/mirror"}, "Custom frameless mirror texture missing"
+        for resource, size in [("textures/block/mirror.png", (16, 16)), ("icon.png", (512, 512))]:
+            png = jar.read(f"assets/simply_mirrors/{resource}")
+            assert png[:8] == b"\x89PNG\r\n\x1a\n", f"Invalid PNG: {resource}"
+            assert struct.unpack(">II", png[16:24]) == size, f"Incorrect asset size: {resource}"
+        singular = target["minecraft"] in ["1.21.1", "26.1.2"]
+        folder = "recipe" if singular else "recipes"
+        recipe = json.loads(jar.read(f"data/simply_mirrors/{folder}/mirror.json"))
+        assert recipe["result"].get("id", recipe["result"].get("item")) == "simply_mirrors:mirror"
+        assert not any("VisualProbe" in name or "/visualtest/" in name or "/visualsupport/" in name for name in names), "Visual test code packaged"
         assert "com/nstut/simplymirrors/SimplyMirrors.class" in names, "Shared bootstrap missing"
         assert "com/nstut/simplymirrors/math/MirrorPlane.class" in names, "Shared reflection core missing"
         expected_java = int(target["java"]) + 44
@@ -28,6 +56,9 @@ def verify(path, target):
         if loader == "fabric":
             data = json.loads(raw)
             assert data["id"] == "simply_mirrors"
+            assert data["license"] == "MIT"
+            assert data["icon"] == "assets/simply_mirrors/icon.png"
+            packaged_version = data["version"]
             assert data["depends"]["minecraft"] == target["minecraft"]
             assert data["depends"]["java"] == f">={target['java']}"
             for entry in data["entrypoints"]["main"]:
@@ -35,11 +66,16 @@ def verify(path, target):
         else:
             data = tomllib.loads(raw)
             assert data["mods"][0]["modId"] == "simply_mirrors"
+            assert data["license"] == "MIT"
+            assert data["mods"][0]["logoFile"] == "assets/simply_mirrors/icon.png"
+            packaged_version = data["mods"][0]["version"]
             dependencies = {d["modId"]: d for d in data["dependencies"]["simply_mirrors"]}
             assert dependencies["minecraft"]["versionRange"] == f"[{target['minecraft']}]"
             assert loader in dependencies
             expected = f"com/nstut/simplymirrors/{loader}/SimplyMirrors{loader.title()}.class"
             assert expected in names, "Entrypoint missing"
+        expected_version = next(line.split("=", 1)[1].strip() for line in (ROOT / "gradle.properties").read_text().splitlines() if line.startswith("mod_version="))
+        assert packaged_version == expected_version, "Stale release jar version"
         assert not any(n.startswith("org/junit/") for n in names), "Test dependency packaged"
         for other in ["fabric.mod.json", "META-INF/mods.toml", "META-INF/neoforge.mods.toml"]:
             assert other == metadata or other not in names, f"Wrong loader metadata: {other}"

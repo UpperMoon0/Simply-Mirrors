@@ -1,0 +1,81 @@
+if (!providers.gradleProperty('visualTest').isPresent()) return
+
+def mc = providers.gradleProperty('visualMc').get()
+def loader = providers.gradleProperty('visualLoader').get()
+def port = providers.gradleProperty('visualPort').get()
+logger.lifecycle("Visual target: ${mc}/${loader}")
+layout.buildDirectory = file('build/visual')
+if (!(mc == '1.16.5' && loader == 'forge')) {
+sourceSets.main.java.srcDir(rootProject.file(rootProject == project ? '../visual-tests/common/java' : 'visual-tests/common/java'))
+sourceSets.main.java.srcDir(rootProject.file(rootProject == project ? "../visual-tests/${mc}/java" : "visual-tests/${mc}/java"))
+}
+sourceSets.main.resources.srcDir(rootProject.file(rootProject == project ? '../visual-tests/resources' : 'visual-tests/resources'))
+processResources {
+    inputs.property 'visualTest', true
+    doLast {
+        def fabric = new File(destinationDir, 'fabric.mod.json')
+        if (fabric.exists()) {
+            def json = new groovy.json.JsonSlurper().parse(fabric)
+            json.mixins.add('simplymirrors.visual.mixins.json')
+            fabric.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(json))
+        }
+        def neo = new File(destinationDir, 'META-INF/neoforge.mods.toml')
+        if (neo.exists()) neo.append('\n[[mixins]]\nconfig = "simplymirrors.visual.mixins.json"\n')
+    }
+}
+if (mc == '1.16.5' && loader == 'forge') {
+    minecraft.runs {
+        visualClient {
+            taskName 'runVisualClient'
+            parent project.minecraft.runs.getByName('client')
+            workingDirectory project.file('run/visual-client')
+            property 'simplymirrors.visualPort', port
+            jvmArgs '-Xmx1024m'
+            args '--width', '960', '--height', '540', '--mixin', 'simplymirrors.visual.mixins.json'
+            mods { simply_mirrors { source sourceSets.main } }
+        }
+        visualServer {
+            taskName 'runVisualServer'
+            parent project.minecraft.runs.getByName('server')
+            workingDirectory project.file('run/visual-server')
+            jvmArgs '-Xmx1024m'
+            args '--nogui'
+            mods { simply_mirrors { source sourceSets.main } }
+        }
+    }
+} else if (mc == '26.1.2' && loader == 'neoforge') {
+    neoForge.runs {
+        visualClient {
+            client()
+            gameDirectory = project.file('run/visual-client')
+            systemProperty 'simplymirrors.visualTest', 'true'
+            systemProperty 'simplymirrors.visualPort', port
+            jvmArguments.addAll '-Xmx1024m'
+            programArguments.addAll '--width', '960', '--height', '540'
+        }
+        visualServer {
+            server()
+            gameDirectory = project.file('run/visual-server')
+            jvmArguments.addAll '-Xmx1024m'
+            programArgument '--nogui'
+        }
+    }
+} else {
+    loom.runs {
+        visualClient {
+            client()
+            runDir('run/visual-client')
+            property 'simplymirrors.visualTest', 'true'
+            property 'simplymirrors.visualPort', port
+            vmArg '-Xmx1024m'
+            programArgs '--width', '960', '--height', '540'
+        }
+        visualServer {
+            server()
+            runDir('run/visual-server')
+            vmArg '-Xmx1024m'
+            programArg 'nogui'
+        }
+    }
+    if (loader == 'forge') loom.forge.mixinConfig('simplymirrors.visual.mixins.json')
+}
