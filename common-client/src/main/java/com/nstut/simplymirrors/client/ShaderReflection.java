@@ -6,6 +6,7 @@ import static org.lwjgl.opengl.GL33.*;
 public final class ShaderReflection {
     public static Object camera;
     private static float[] plane,projection;
+    private static int suspensions;
     private static Method active;
     private static boolean searched;
     public static boolean terrainRendererPresent() {
@@ -24,16 +25,28 @@ public final class ShaderReflection {
     }
     public static void begin(float[] perspective,float[] view,double nx,double ny,double nz,double x,double y,double z,Object reflectedCamera) {
         plane=MirrorMatrices.clipPlane(view,nx,ny,nz,x,y,z);
-        projection=MirrorMatrices.inverse(perspective);camera=reflectedCamera;glEnable(GL_CLIP_DISTANCE0);
+        projection=MirrorMatrices.inverse(perspective);camera=reflectedCamera;suspensions=0;glEnable(GL_CLIP_DISTANCE0);
     }
-    public static void end() {camera=null;plane=null;projection=null;glDisable(GL_CLIP_DISTANCE0);}
+    public static void end() {camera=null;plane=null;projection=null;suspensions=0;glDisable(GL_CLIP_DISTANCE0);}
+    public static boolean suspend() {
+        boolean enabled=glIsEnabled(GL_CLIP_DISTANCE0);
+        suspensions++;glDisable(GL_CLIP_DISTANCE0);return enabled;
+    }
+    public static void resume(boolean enabled) {
+        if(suspensions>0)suspensions--;
+        if(enabled)glEnable(GL_CLIP_DISTANCE0);else glDisable(GL_CLIP_DISTANCE0);
+    }
     public static void upload() {
         int program=glGetInteger(GL_CURRENT_PROGRAM);
         if(program==0)return;
         int location=glGetUniformLocation(program,"simplymirrors_ClipPlane");
+        // Unpatched sky/fallback programs do not define gl_ClipDistance.
+        // Re-enable it when a transformed world program is bound again.
+        boolean clip=plane!=null && suspensions==0 && location>=0;
+        if(plane!=null){if(clip)glEnable(GL_CLIP_DISTANCE0);else glDisable(GL_CLIP_DISTANCE0);}
         if(location<0)return;
         if(projection!=null){int matrix=glGetUniformLocation(program,"simplymirrors_InverseProjection");if(matrix>=0)glUniformMatrix4fv(matrix,false,projection);}
-        if(plane!=null && glIsEnabled(GL_CLIP_DISTANCE0))glUniform4f(location,plane[0],plane[1],plane[2],plane[3]);
+        if(clip)glUniform4f(location,plane[0],plane[1],plane[2],plane[3]);
         else glUniform4f(location,0,0,0,1);
     }
 }

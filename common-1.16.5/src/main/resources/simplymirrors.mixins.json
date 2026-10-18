@@ -14,7 +14,8 @@
     "IrisUniformMixin",
     "ReflectionCameraMixin",
     "IrisShadowMixin",
-    "IrisLegacyTransformMixin"
+    "IrisLegacyTransformMixin",
+    "IrisFallbackMixin"
   ],
   "injectors": {
     "defaultRequire": 1

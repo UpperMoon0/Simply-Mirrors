@@ -5,6 +5,7 @@ The 0.1.1 renderer adds standalone Iris/Oculus integration. Shader mods and Comp
 ## What changed
 
 - Keep perspective projection for shader depth reconstruction. Clip world geometry at the mirror using a view-space plane in the final vertex-producing stage, including geometry and tessellation evaluation output.
+- Disable clip distances for unpatched sky/fallback programs; restore them when a transformed world program is bound. Fallback shaders bind programs directly, bypassing Iris's uniform updater.
 - Suspend mirror clipping and reflected winding during shadow maps and fullscreen processing. Iris 1.11.4 uses GPU render passes for composites and finals, so hooking the older fullscreen-quad method alone is insufficient.
 - Enable depth writes before clearing a reflection target. Oculus final processing leaves depth writes disabled, and OpenGL depth clears obey that mask.
 - Compare depth texture identity when changing targets. Separate framebuffers can share the same allocation-version number.

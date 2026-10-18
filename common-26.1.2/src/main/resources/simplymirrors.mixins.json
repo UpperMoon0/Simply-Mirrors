@@ -15,7 +15,8 @@
     "ReflectionCameraMixin",
     "IrisShadowMixin",
     "SodiumReflectionMixin",
-    "SodiumProjectionMixin"
+    "SodiumProjectionMixin",
+    "IrisFallbackMixin"
   ],
   "injectors": {
     "defaultRequire": 1

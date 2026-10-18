@@ -1,5 +1,6 @@
 package com.nstut.simplymirrors.client.mixin;
 import com.nstut.simplymirrors.client.MirrorRenderer;
+import com.nstut.simplymirrors.client.ShaderReflection;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -15,7 +16,7 @@ public abstract class IrisShadowMixin {
     @Unique private boolean simplymirrors$clip;
     @Unique private int simplymirrors$front;
     @Inject(method="renderShadows",at=@At("HEAD"),require=0)
-    private void simplymirrors$shadow(CallbackInfo ci){if(MirrorRenderer.redirect!=null){simplymirrors$clip=glIsEnabled(GL_CLIP_DISTANCE0);simplymirrors$front=glGetInteger(GL_FRONT_FACE);glDisable(GL_CLIP_DISTANCE0);glFrontFace(GL_CCW);}}
+    private void simplymirrors$shadow(CallbackInfo ci){if(MirrorRenderer.redirect!=null){simplymirrors$clip=ShaderReflection.suspend();simplymirrors$front=glGetInteger(GL_FRONT_FACE);glFrontFace(GL_CCW);}}
     @Inject(method="renderShadows",at=@At("RETURN"),require=0)
-    private void simplymirrors$restore(CallbackInfo ci){if(MirrorRenderer.redirect!=null){if(simplymirrors$clip)glEnable(GL_CLIP_DISTANCE0);glFrontFace(simplymirrors$front);}}
+    private void simplymirrors$restore(CallbackInfo ci){if(MirrorRenderer.redirect!=null){ShaderReflection.resume(simplymirrors$clip);glFrontFace(simplymirrors$front);}}
 }

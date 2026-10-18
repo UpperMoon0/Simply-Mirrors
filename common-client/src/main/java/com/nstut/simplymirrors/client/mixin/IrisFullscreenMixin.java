@@ -1,5 +1,6 @@
 package com.nstut.simplymirrors.client.mixin;
 import com.nstut.simplymirrors.client.MirrorRenderer;
+import com.nstut.simplymirrors.client.ShaderReflection;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
@@ -17,10 +18,10 @@ public abstract class IrisFullscreenMixin {
     @Unique private boolean simplymirrors$clip;
     @Inject(method={"renderQuad","renderAll","renderFinalPass","renderHorizon"},at=@At("HEAD"),require=0)
     private void simplymirrors$screenWinding(CallbackInfo ci) {
-        if(MirrorRenderer.redirect!=null){simplymirrors$frontFace=glGetInteger(GL_FRONT_FACE);glFrontFace(GL_CCW);simplymirrors$clip=glIsEnabled(GL_CLIP_DISTANCE0);glDisable(GL_CLIP_DISTANCE0);}
+        if(MirrorRenderer.redirect!=null){simplymirrors$frontFace=glGetInteger(GL_FRONT_FACE);glFrontFace(GL_CCW);simplymirrors$clip=ShaderReflection.suspend();}
     }
     @Inject(method={"renderQuad","renderAll","renderFinalPass","renderHorizon"},at=@At("RETURN"),require=0)
     private void simplymirrors$restoreWinding(CallbackInfo ci) {
-        if(MirrorRenderer.redirect!=null){glFrontFace(simplymirrors$frontFace);if(simplymirrors$clip)glEnable(GL_CLIP_DISTANCE0);}
+        if(MirrorRenderer.redirect!=null){glFrontFace(simplymirrors$frontFace);ShaderReflection.resume(simplymirrors$clip);}
     }
 }
