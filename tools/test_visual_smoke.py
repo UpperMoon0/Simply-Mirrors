@@ -46,7 +46,8 @@ class ShaderImageTests(unittest.TestCase):
     def test_shadowed_and_sunlit_shader_bands(self):
         with tempfile.TemporaryDirectory() as temp:
             path=Path(temp)/"reflection.png"
-            for colors in [[(32,35,77),(38,71,35),(48,31,36)],[(77,72,161),(145,195,37),(191,53,47)]]:
+            for colors in [[(32,35,77),(38,71,35),(48,31,36)],[(77,72,161),(145,195,37),(191,53,47)],
+                           [(14,19,50),(24,47,25),(31,19,26)]]:
                 self.image(path,colors)
                 result=visual_smoke.image_check(path,shaders=True)
                 self.assertGreater(result["redMeanX"],result["blueMeanX"]+100)
@@ -57,6 +58,17 @@ class ShaderImageTests(unittest.TestCase):
             for colors in [[(176,204,255)]*3,[(32,35,77),(38,71,35),(160,183,204)]]:
                 self.image(path,colors)
                 with self.assertRaises(AssertionError):visual_smoke.image_check(path,shaders=True)
+
+    def test_colored_surroundings_cannot_replace_missing_reflection(self):
+        from PIL import Image,ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"reflection.png"
+            image=Image.new("RGB",(960,540),(176,204,255));draw=ImageDraw.Draw(image)
+            draw.rectangle((0,0,150,539),fill=(20,20,180))
+            draw.rectangle((151,0,300,539),fill=(20,180,20))
+            draw.rectangle((700,0,959,539),fill=(180,20,20))
+            image.save(path)
+            with self.assertRaises(AssertionError):visual_smoke.image_check(path,shaders=True)
 
     def test_unmirrored_band_order_fails(self):
         with tempfile.TemporaryDirectory() as temp:

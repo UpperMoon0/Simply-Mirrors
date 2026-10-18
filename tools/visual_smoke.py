@@ -85,16 +85,19 @@ def image_check(path,shaders=False):
     import colorsys
     image=Image.open(path).convert("RGB");w,h=image.size
     hits={"red":[],"green":[],"blue":[]}
-    for y in range(int(h*.2),int(h*.8)):
-        for x in range(int(w*.3),int(w*.7)):
+    # The centered fixture's marker panels occupy this inset of the mirror.
+    # Exclude the blue sky and surrounding shaded wall from shader band centroids.
+    left,right,top,bottom=(.35,.65,.3,.6) if shaders else (.3,.7,.2,.8)
+    for y in range(int(h*top),int(h*bottom)):
+        for x in range(int(w*left),int(w*right)):
             r,g,b=image.getpixel((x,y))
             if shaders:
                 # Shader lighting changes brightness and warms lime toward yellow.
                 # Require substantial chroma and all three ordered marker bands.
                 hue,saturation,value=colorsys.rgb_to_hsv(r/255,g/255,b/255)
                 hue*=360
-                if saturation<.28 or value<.08 or max(r,g,b)-min(r,g,b)<12:continue
-                if hue<30 or hue>330:hits["red"].append(x)
+                if saturation<.28 or value<.08 or max(r,g,b)-min(r,g,b)<8:continue
+                if hue<30 or hue>300:hits["red"].append(x)
                 if 65<hue<165:hits["green"].append(x)
                 if 190<hue<265:hits["blue"].append(x)
             else:
