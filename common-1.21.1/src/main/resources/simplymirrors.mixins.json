@@ -6,7 +6,14 @@
   "client": [
     "CameraAccessor",
     "MinecraftMixin",
-    "LevelRendererMixin"
+    "LevelRendererMixin",
+    "IrisDepthTargetMixin",
+    "ReflectionCullingMixin",
+    "IrisFullscreenMixin",
+    "IrisTransformMixin",
+    "IrisUniformMixin",
+    "ReflectionCameraMixin",
+    "IrisShadowMixin"
   ],
   "injectors": {
     "defaultRequire": 1

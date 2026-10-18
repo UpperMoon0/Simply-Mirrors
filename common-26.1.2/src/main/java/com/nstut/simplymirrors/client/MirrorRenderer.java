@@ -88,7 +88,8 @@ public final class MirrorRenderer {
                 MirrorSurface s=surfaces.get(0);double[] reflected=s.plane().reflectPoint(eye.x,eye.y,eye.z);
                 Vec3 reflectedEye=new Vec3(reflected[0],reflected[1],reflected[2]);
                 Matrix4f reflectedView=new Matrix4f().set(MirrorMatrices.multiply(view,ReflectionTransform.matrix(s.nx,s.ny,s.nz)));
-                Matrix4f projection=new Matrix4f().set(MirrorMatrices.oblique(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,
+                boolean shaders=ShaderReflection.enabled();
+                Matrix4f projection=shaders?new Matrix4f(renderedProjection):new Matrix4f().set(MirrorMatrices.oblique(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,
                         s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],RenderSystem.getDevice().isZZeroToOne()));
                 Camera virtual=new ReflectionCamera(reflectedView);virtual.setLevel(mc.level);virtual.setEntity(mc.getCameraEntity());virtual.update(delta);
                 CameraAccessor ca=(CameraAccessor)(Object)virtual;ca.simplymirrors$position(reflectedEye);
@@ -107,10 +108,13 @@ public final class MirrorRenderer {
                 int oldFront=glGetInteger(GL_FRONT_FACE);
                 var mv=RenderSystem.getModelViewStack();mv.pushMatrix();mv.identity();
                 try(GpuBuffer globals=globals(reflectedEye,main.width,main.height,mc,partial)) {
-                    redirect=target;RenderSystem.setGlobalSettingsUniform(globals);
+                    redirect=target;
+                    if(shaders)ShaderReflection.begin(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],virtual);
+                    RenderSystem.setGlobalSettingsUniform(globals);
                     RenderSystem.setProjectionMatrix(projectionBuffer.getBuffer(projection),ProjectionType.PERSPECTIVE);glFrontFace(GL_CW);
                     mc.levelRenderer.renderLevel(allocator,delta,false,state.cameraRenderState,reflectedView,fog,new Vector4f(color),sky,state.chunkSectionsToRender);
                 } finally {
+                    if(shaders)ShaderReflection.end();
                     glFrontFace(oldFront);redirect=null;mv.popMatrix();
                     RenderSystem.setGlobalSettingsUniform(savedGlobals);RenderSystem.setProjectionMatrix(savedProj,savedType);RenderSystem.setShaderFog(savedFog);
                 }

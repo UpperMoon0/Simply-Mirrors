@@ -112,7 +112,8 @@ if (stackDirectory.isPresent()) {
         if (plugins.hasPlugin('net.neoforged.moddev')) runtimeOnly files(jars)
         else if (stackTarget == 'fabric-26.1.2') runtimeOnly files(jars + nestedMods + nestedLibraries)
         else {
-            modLocalRuntime files(jars + nestedMods)
+            // Separate file components keep old Fabric Loader classpath groups distinct.
+            (jars + nestedMods).each { jar -> modLocalRuntime files(jar) }
             if (stackTarget.startsWith('fabric-')) localRuntime files(nestedLibraries)
             else forgeRuntimeLibrary files(nestedLibraries) // FML bootstrap discovery requires this classpath.
         }

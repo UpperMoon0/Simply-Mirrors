@@ -26,6 +26,13 @@ public final class MirrorMatrices {
         }
         float[] out=new float[16];for(int row=0;row<4;row++) for(int col=0;col<4;col++) out[col*4+row]=(float)a[row][col+4];return out;
     }
+    /** Transform a camera-relative mirror plane with inverse transpose; positive distances survive. */
+    public static float[] clipPlane(float[] view,double nx,double ny,double nz,double x,double y,double z) {
+        float[] inverse=inverse(view), result=new float[4];
+        double[] plane={nx,ny,nz,-nx*x-ny*y-nz*z-0.002};
+        for(int row=0;row<4;row++)for(int k=0;k<4;k++)result[row]+=inverse[row*4+k]*plane[k];
+        return result;
+    }
     /** Clip everything behind the reflective surface. Supports both OpenGL and 26.x zero-to-one depth. */
     public static float[] oblique(float[] projection, float[] reflectedView, double nx, double ny, double nz,
                                   double cx, double cy, double cz, boolean zeroToOne) {
