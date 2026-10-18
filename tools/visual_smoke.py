@@ -113,6 +113,16 @@ def image_check(path,shaders=False):
         assert blue+20<green<red-20,"Reflected marker bands are not ordered blue, green, red"
     return {"pixels":{key:len(value) for key,value in hits.items()},"redMeanX":red,"blueMeanX":blue}
 
+def finish_capture(client_dir,evidence,results,failures,client):
+    # Preserve diagnostic captures even when shutdown or image acceptance fails.
+    (evidence/"results.json").write_text(json.dumps(results,indent=2)+"\n")
+    scene_file(client_dir,6)
+    # Gradle must release its cache lock and exit cleanly before success is recorded.
+    exit_code=client.wait(timeout=60)
+    if exit_code!=0:raise RuntimeError(f"Client failed after capture ({exit_code}): {evidence/'client.log'}")
+    if failures:raise AssertionError("Reflection image checks failed: "+json.dumps(failures))
+    (evidence/"verified.json").write_text(json.dumps(results,indent=2)+"\n")
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
@@ -180,13 +190,7 @@ def main():
                     failures[face]=str(error);data['imageError']=str(error)
                 results[face]=data
                 print("Failed reflective face" if face in failures else "Verified reflective face",args.target,face,json.dumps(data),flush=True)
-            (evidence/("results.json" if failures else "verified.json")).write_text(json.dumps(results,indent=2)+"\n")
-            scene_file(client_dir,6)
-            # The probe quits normally after capture. Do not kill Gradle while it releases
-            # Loom's cache lock, or accept a process that crashes after writing its result.
-            exit_code=client.wait(timeout=60)
-            if exit_code!=0:raise RuntimeError(f"Client failed after capture ({exit_code}): {evidence/'client.log'}")
-            if failures:raise AssertionError("Reflection image checks failed: "+json.dumps(failures))
+            finish_capture(client_dir,evidence,results,failures,client)
             print("SIMPLY_MIRRORS_VISUAL_PASS",args.target,json.dumps(results),flush=True)
         except BaseException as error:
             (evidence/"failure.txt").write_text(f"{type(error).__name__}: {error}\n")

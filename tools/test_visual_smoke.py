@@ -1,6 +1,8 @@
 """Regression checks for server-authorized visual scene transitions."""
 from pathlib import Path
 import tempfile
+import subprocess
+import json
 import unittest
 from unittest.mock import Mock, patch
 import visual_smoke
@@ -35,6 +37,29 @@ class SceneActivationTests(unittest.TestCase):
                 visual_smoke.activate_scene(rcon,directory,0,Mock(poll=Mock(return_value=1)))
             rcon.command.assert_not_called()
             self.assertEqual("-1",(directory/"visual-scene.txt").read_text())
+
+class CaptureCompletionTests(unittest.TestCase):
+    def test_only_clean_exit_and_passing_images_write_verified_evidence(self):
+        for exit_code, failures, error in [(0, {}, None), (1, {}, RuntimeError),
+                                           (0, {"north":"missing marker"}, AssertionError),
+                                           (None, {}, subprocess.TimeoutExpired)]:
+            with self.subTest(exit_code=exit_code, failures=failures), tempfile.TemporaryDirectory() as temp:
+                directory=Path(temp);client=Mock();results={"north":{"passes":120}}
+                def wait(timeout):
+                    self.assertEqual(60,timeout)
+                    self.assertFalse((directory/"verified.json").exists())
+                    self.assertEqual("6",(directory/"visual-scene.txt").read_text())
+                    if exit_code is None:raise subprocess.TimeoutExpired("client",timeout)
+                    return exit_code
+                client.wait.side_effect=wait
+                if error:
+                    with self.assertRaises(error):
+                        visual_smoke.finish_capture(directory,directory,results,failures,client)
+                    self.assertFalse((directory/"verified.json").exists())
+                else:
+                    visual_smoke.finish_capture(directory,directory,results,failures,client)
+                    self.assertEqual(results,json.loads((directory/"verified.json").read_text()))
+                self.assertEqual(results,json.loads((directory/"results.json").read_text()))
 
 class ShaderImageTests(unittest.TestCase):
     def image(self,path,colors):
