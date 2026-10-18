@@ -38,6 +38,7 @@ public abstract class VisualProbeMixin {
             }
             return;
         }
+        mc.player.getAbilities().flying=true;
         int requested=VisualScene.index(mc.gameDirectory.toPath());
         if(requested==6){simplymirrors$done=true;mc.stop();return;}
         if(requested!=simplymirrors$scene){simplymirrors$scene=requested;simplymirrors$mirrorFrames=0;simplymirrors$sceneFrames=0;simplymirrors$startPasses=MirrorRenderer.completedPasses;simplymirrors$captured=false;}

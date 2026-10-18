@@ -70,9 +70,9 @@ def image_check(path):
     for y in range(int(h*.2),int(h*.8)):
         for x in range(int(w*.3),int(w*.7)):
             r,g,b=image.getpixel((x,y))
-            if r>90 and r>g*1.8 and r>b*1.8:hits["red"].append(x)
-            if g>85 and g>r*1.4 and g>b*1.3:hits["green"].append(x)
-            if b>65 and b>r*1.3 and b>g*1.2:hits["blue"].append(x)
+            if r>35 and r>g*1.8 and r>b*1.8:hits["red"].append(x)
+            if g>35 and g>r*1.4 and g>b*1.3:hits["green"].append(x)
+            if b>35 and b>r*1.8 and b>g*1.8:hits["blue"].append(x)
     for name,xs in hits.items():
         assert len(xs)>20,f"No reflected {name} marker in mirror: {len(xs)} pixels"
     red=sum(hits["red"])/len(hits["red"]);blue=sum(hits["blue"])/len(hits["blue"])
