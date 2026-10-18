@@ -20,8 +20,9 @@ def verify(path, target):
         else:
             assert pack["pack_format"] == {"1.16.5": 6, "1.20.1": 15, "1.21.1": 34}[target["minecraft"]]
         assert "LICENSE" in names, "License missing"
-        assert "NOTICE" in names and "licenses/Immersive-Portals-CE-Apache-2.0.txt" in names, "CE attribution missing"
-        for cl in ["block/MirrorBlock", "block/MirrorBlockEntity", "client/MirrorRenderer", "math/ImmersiveMirrorTransform"]:
+        assert "NOTICE" in names, "Copyright notice missing"
+        assert b"MIT License" in jar.read("LICENSE"), "MIT license missing"
+        for cl in ["block/MirrorBlock", "block/MirrorBlockEntity", "client/MirrorRenderer", "math/ReflectionTransform"]:
             assert f"com/nstut/simplymirrors/{cl}.class" in names, f"Missing implementation: {cl}"
         assert "simplymirrors.mixins.json" in names, "Client rendering mixins missing"
         mixins = json.loads(jar.read("simplymirrors.mixins.json"))
@@ -55,6 +56,7 @@ def verify(path, target):
         if loader == "fabric":
             data = json.loads(raw)
             assert data["id"] == "simply_mirrors"
+            assert data["license"] == "MIT"
             assert data["icon"] == "assets/simply_mirrors/icon.png"
             packaged_version = data["version"]
             assert data["depends"]["minecraft"] == target["minecraft"]
@@ -64,6 +66,7 @@ def verify(path, target):
         else:
             data = tomllib.loads(raw)
             assert data["mods"][0]["modId"] == "simply_mirrors"
+            assert data["license"] == "MIT"
             assert data["mods"][0]["logoFile"] == "assets/simply_mirrors/icon.png"
             packaged_version = data["mods"][0]["version"]
             dependencies = {d["modId"]: d for d in data["dependencies"]["simply_mirrors"]}

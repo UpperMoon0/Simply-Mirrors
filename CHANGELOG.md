@@ -3,7 +3,7 @@
 ## 0.1.0
 
 - First Release: six-sided frameless mirrors on all eight supported targets.
-- Set MIT as the project license while preserving third-party attribution.
+- License Simply Mirrors under MIT with independent planar-reflection mathematics.
 - Fix visual CI camera corrections by authorizing scene teleports on the server.
 
 

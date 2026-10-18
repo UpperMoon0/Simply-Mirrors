@@ -22,7 +22,7 @@ import java.nio.FloatBuffer;
 import java.util.*;
 import static org.lwjgl.opengl.GL33.*;
 
-/** CE reflection transform adapted to a bounded, same-dimension vanilla world render. */
+/** Bounded, same-dimension planar reflection renderer. */
 public final class MirrorRenderer {
     public static RenderTarget redirect;
     public static long completedPasses;
@@ -64,7 +64,7 @@ public final class MirrorRenderer {
                 MirrorSurface surface=surfaces.get(0);
                 double[] reflected=surface.plane().reflectPoint(eye.x,eye.y,eye.z);
                 Vec3 reflectedEye=new Vec3(reflected[0],reflected[1],reflected[2]);
-                Matrix4f reflectedView=matrix(MirrorMatrices.multiply(view,ImmersiveMirrorTransform.matrix(surface.nx,surface.ny,surface.nz)));
+                Matrix4f reflectedView=matrix(MirrorMatrices.multiply(view,ReflectionTransform.matrix(surface.nx,surface.ny,surface.nz)));
                 Matrix4f projection=matrix(MirrorMatrices.oblique(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,
                     surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],false));
                 Camera virtual=new Camera();virtual.setup(mc.level,mc.getCameraEntity(),true,false,partial);

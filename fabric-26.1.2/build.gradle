@@ -27,7 +27,7 @@ processResources {
     inputs.property 'version', project.version
     filesMatching(['fabric.mod.json', 'META-INF/neoforge.mods.toml']) { expand version: project.version }
 }
-tasks.withType(Jar).configureEach { from('../LICENSE'); from('../NOTICE'); from('../licenses') { into 'licenses' } }
+tasks.withType(Jar).configureEach { from('../LICENSE'); from('../NOTICE') }
 publishing { publications { mavenJava(MavenPublication) { from components.java } } }
 
 apply from: file('../tools/visual.gradle')

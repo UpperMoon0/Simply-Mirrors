@@ -26,7 +26,7 @@ import org.lwjgl.system.MemoryStack;
 import java.util.*;
 import static org.lwjgl.opengl.GL33.*;
 
-/** CE's reflection transform on the 26.1.2 extracted-state renderer. OpenGL compositor, no portal runtime. */
+/** Planar reflections on the 26.1.2 extracted-state renderer. OpenGL compositor, no portal runtime. */
 public final class MirrorRenderer {
     public static RenderTarget redirect;
     public static long completedPasses;
@@ -87,7 +87,7 @@ public final class MirrorRenderer {
                 if(passes++>=6)break;
                 MirrorSurface s=surfaces.get(0);double[] reflected=s.plane().reflectPoint(eye.x,eye.y,eye.z);
                 Vec3 reflectedEye=new Vec3(reflected[0],reflected[1],reflected[2]);
-                Matrix4f reflectedView=new Matrix4f().set(MirrorMatrices.multiply(view,ImmersiveMirrorTransform.matrix(s.nx,s.ny,s.nz)));
+                Matrix4f reflectedView=new Matrix4f().set(MirrorMatrices.multiply(view,ReflectionTransform.matrix(s.nx,s.ny,s.nz)));
                 Matrix4f projection=new Matrix4f().set(MirrorMatrices.oblique(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,
                         s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],RenderSystem.getDevice().isZZeroToOne()));
                 Camera virtual=new ReflectionCamera(reflectedView);virtual.setLevel(mc.level);virtual.setEntity(mc.getCameraEntity());virtual.update(delta);

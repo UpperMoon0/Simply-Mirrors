@@ -30,7 +30,7 @@ processResources { inputs.property 'version', version; filesMatching('META-INF/m
 tasks.withType(JavaCompile).configureEach { options.encoding='UTF-8'; sourceCompatibility='1.8'; targetCompatibility='1.8' }
 tasks.withType(JavaExec).configureEach { javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) } }
 jar {
-    from('../LICENSE'); from('../NOTICE'); from('../licenses') { into 'licenses' }
+    from('../LICENSE'); from('../NOTICE')
     manifest { attributes 'MixinConfigs': 'simplymirrors.mixins.json' }
     finalizedBy 'reobfJar'
 }

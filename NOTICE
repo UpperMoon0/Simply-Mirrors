@@ -1,17 +1,7 @@
 Simply Mirrors
-Copyright 2026 NsTut
+Copyright (c) 2026 NsTut
+SPDX-License-Identifier: MIT
 
-Includes reflection-transform logic adapted from Immersive Portals CE.
-Immersive Portals - CE
-Copyright 2020 qouteall and contributors
-
-The Community Edition is maintained by NsTut and contributors, based on
-https://github.com/iPortalTeam/ImmersivePortalsModForNeo .
-Original upstream: https://github.com/qouteall/ImmersivePortalsMod .
-Source: https://github.com/UpperMoon0/ImmersivePortals
-Reference commit: ad2e7ee5d73e4ff78bd0befade4f797265e65939
-Adaptations: Java 8 compatible vector/matrix representation and standalone
-reflection passes; portal entities, teleportation, and dimension infrastructure are omitted.
-
-The adapted portions remain under Apache-2.0; see
-licenses/Immersive-Portals-CE-Apache-2.0.txt. Original Simply Mirrors code is MIT.
+Inspired by the mirror feature in Immersive Portals CE.
+The standalone reflection renderer and planar-reflection mathematics are implemented in this project.
+No Immersive Portals runtime or source files are bundled.

@@ -70,7 +70,7 @@ subprojects { p ->
             expand version: project.version
         }
     }
-    tasks.withType(Jar).configureEach { from(rootProject.file('LICENSE')); from(rootProject.file('NOTICE')); from(rootProject.file('licenses')) { into 'licenses' } }
+    tasks.withType(Jar).configureEach { from(rootProject.file('LICENSE')); from(rootProject.file('NOTICE')) }
     apply from: rootProject.file('tools/visual.gradle')
     publishing {
         publications {

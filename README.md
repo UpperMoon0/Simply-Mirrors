@@ -6,7 +6,7 @@
 
 A standalone Minecraft mod project for placeable mirrors that reflect the surrounding world.
 
-**Version 0.1.0.** Includes a craftable full-block frameless mirror, a dedicated Simply Mirrors creative tab, and native reflection adapters for all four Minecraft versions. Reflection geometry is adapted from Immersive Portals CE; no portal mod is required. Runtime acceptance is tracked per target; the first verified capture is shown below.
+**Version 0.1.0.** Includes a craftable full-block frameless mirror, a dedicated Simply Mirrors creative tab, and native reflection adapters for all four Minecraft versions. Inspired by the mirrors in Immersive Portals CE; no portal mod is required. Runtime acceptance is tracked per target; the first verified capture is shown below.
 
 Every face of the full solid cube reflects: north, south, east, west, top, and bottom. Placement direction does not limit reflections. Adjacent mirrors form continuous surfaces, including floors and ceilings. Build your own frame using any blocks you like. Take a mirror from the Simply Mirrors tab or craft one with eight glass blocks around an iron ingot.
 
@@ -65,14 +65,14 @@ The Forge 1.20.1 development client includes JEI 15.20.0.106 for browsing mirror
 
 ## Validation
 
-Shared tests cover CE vector/matrix parity, inverse transforms, glass projection alignment, oblique wall clipping, and coplanar grouping. Every production artifact is checked for version/loader identity, Java level, block/item resources, mixin metadata, and license notices. The isolated visual workflow launches a disposable dedicated server and client, places an asymmetric red/green/blue fixture behind the player and an opaque wall behind the mirrors, then checks the captured reflection's colors, handedness, completed render passes, creative tab, and OpenGL error state. Artifacts include the capture and logs for each target. The fixture is rebuilt in all six orientations, checking side walls, floors, and ceilings independently of the saved placement direction. Each orientation also exercises angled views and must complete at least 120 reflection frames before capture.
+Shared tests cover reflection vector/matrix parity, inverse transforms, glass projection alignment, oblique wall clipping, and coplanar grouping. Every production artifact is checked for version/loader identity, Java level, block/item resources, mixin metadata, and license notices. The isolated visual workflow launches a disposable dedicated server and client, places an asymmetric red/green/blue fixture behind the player and an opaque wall behind the mirrors, then checks the captured reflection's colors, handedness, completed render passes, creative tab, and OpenGL error state. Artifacts include the capture and logs for each target. The fixture is rebuilt in all six orientations, checking side walls, floors, and ceilings independently of the saved placement direction. Each orientation also exercises angled views and must complete at least 120 reflection frames before capture.
 
 To run one target locally, install Pillow and use `python tools/visual_smoke.py --target fabric-1.20.1`. Linux CI supplies Xvfb and Mesa software rendering. The script refuses to reuse an existing test world. Test probes are compiled into a separate build directory and are rejected by the production packaging check.
 
 ## Rendering implementation
 
-Each exposed cube face defines its own reflection plane; the legacy placement-facing property is retained only for compatibility with existing blocks. The camera position and view are reflected using Immersive Portals CE's vector reflection and reflection matrix. A version adapter renders the same world to an offscreen target with an oblique near plane at the glass, then projects that texture onto the full mirror face with world depth testing. This excludes blocks behind the mirror and prevents the wall from obscuring the reflected room. Render targets and projection resources are released on world unload and shutdown.
+Each exposed cube face defines its own reflection plane; the legacy placement-facing property is retained only for compatibility with existing blocks. The camera position and view are reflected using the standalone planar-reflection vector and matrix helpers. A version adapter renders the same world to an offscreen target with an oblique near plane at the glass, then projects that texture onto the full mirror face with world depth testing. This excludes blocks behind the mirror and prevents the wall from obscuring the reflected room. Render targets and projection resources are released on world unload and shutdown.
 
 ## License
 
-Original Simply Mirrors code is MIT, copyright 2026 NsTut. Adapted Immersive Portals CE reflection-transform code remains Apache-2.0, copyright qouteall and contributors; see [NOTICE](NOTICE) and [the bundled license](licenses/Immersive-Portals-CE-Apache-2.0.txt). Part of the Simply series alongside [Simply Speakers](https://github.com/UpperMoon0/Simply-Speakers) and [Simply Screens](https://github.com/UpperMoon0/Simply-Screens).
+Simply Mirrors is licensed under [MIT](LICENSE), copyright 2026 NsTut. See [NOTICE](NOTICE). Part of the Simply series alongside [Simply Speakers](https://github.com/UpperMoon0/Simply-Speakers) and [Simply Screens](https://github.com/UpperMoon0/Simply-Screens).

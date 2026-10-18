@@ -37,6 +37,6 @@ Mirrors reflecting other mirrors recursively and shader-pack compatibility are n
 
 Found a problem? Please include your Minecraft version, mod loader, and latest log when [reporting an issue](https://github.com/UpperMoon0/Simply-Mirrors/issues).
 
-Reflection geometry is adapted from **Immersive Portals CE**, with attribution included in the mod. Simply Mirrors runs independently.
+Inspired by the mirrors in **Immersive Portals CE**. Simply Mirrors runs independently and is licensed under **MIT**.
 
 [Source code](https://github.com/UpperMoon0/Simply-Mirrors)

@@ -5,15 +5,15 @@ import static org.junit.Assert.*;
 public class MirrorMatricesTest {
     private static final float[] VIEW = {-1,0,0,0, 0,1,0,0, 0,0,-1,0, 0,0,0,1};
     private static final float[] PROJECTION = {1.73205f,0,0,0, 0,1.73205f,0,0, 0,0,-1.002002f,-1, 0,0,-.2002002f,0};
-    @Test public void ceReflectionMatrixAndVectorAgree() {
+    @Test public void reflectionMatrixAndVectorAgree() {
         for(double[] normal:new double[][]{{1,0,0},{0,0,1},{0,1,0},{.6,.8,0}}) {
-            double[] vector=ImmersiveMirrorTransform.mirroredVector(2,3,4,normal[0],normal[1],normal[2]);
-            double[] matrix=MirrorMatrices.transform(ImmersiveMirrorTransform.matrix(normal[0],normal[1],normal[2]),2,3,4,0);
+            double[] vector=ReflectionTransform.reflectVector(2,3,4,normal[0],normal[1],normal[2]);
+            double[] matrix=MirrorMatrices.transform(ReflectionTransform.matrix(normal[0],normal[1],normal[2]),2,3,4,0);
             assertArrayEquals(new double[]{vector[0],vector[1],vector[2],0},matrix,1e-5);
         }
     }
     @Test public void doubleReflectionIsIdentity() {
-        float[] r=ImmersiveMirrorTransform.matrix(.6,.8,0);
+        float[] r=ReflectionTransform.matrix(.6,.8,0);
         float[] identity=MirrorMatrices.multiply(r,r);
         for(int i=0;i<16;i++)assertEquals(i%5==0?1:0,identity[i],1e-5);
     }
@@ -22,7 +22,7 @@ public class MirrorMatricesTest {
         for(int i=0;i<16;i++)assertEquals(i%5==0?1:0,product[i],1e-5);
     }
     @Test public void reflectionPreservesScreenCoordinatesOnGlass() {
-        float[] reflectedView=MirrorMatrices.multiply(VIEW,ImmersiveMirrorTransform.matrix(0,0,-1));
+        float[] reflectedView=MirrorMatrices.multiply(VIEW,ReflectionTransform.matrix(0,0,-1));
         float[] clipped=MirrorMatrices.oblique(PROJECTION,reflectedView,0,0,-1,0,0,-3.875,false);
         double[] main=MirrorMatrices.transform(MirrorMatrices.multiply(PROJECTION,VIEW),.25,.5,3.875,1);
         double[] mirror=MirrorMatrices.transform(MirrorMatrices.multiply(clipped,reflectedView),.25,.5,-3.875,1);
@@ -30,7 +30,7 @@ public class MirrorMatricesTest {
         assertEquals(main[1]/main[3],mirror[1]/mirror[3],1e-6);
     }
     @Test public void wallBehindMirrorIsClippedAndRoomInFrontSurvives() {
-        float[] view=MirrorMatrices.multiply(VIEW,ImmersiveMirrorTransform.matrix(0,0,-1));
+        float[] view=MirrorMatrices.multiply(VIEW,ReflectionTransform.matrix(0,0,-1));
         float[] projection=MirrorMatrices.oblique(PROJECTION,view,0,0,-1,0,0,-3.875,false);
         float[] vp=MirrorMatrices.multiply(projection,view);
         double[] wall=MirrorMatrices.transform(vp,0,0,-3.25,1);
@@ -41,7 +41,7 @@ public class MirrorMatricesTest {
     @Test public void zeroToOneProjectionClipsWallAndPreservesGlassAlignment() {
         float[] projection=PROJECTION.clone();
         for(int col=0;col<4;col++)projection[col*4+2]=(PROJECTION[col*4+2]+PROJECTION[col*4+3])*.5f;
-        float[] view=MirrorMatrices.multiply(VIEW,ImmersiveMirrorTransform.matrix(0,0,-1));
+        float[] view=MirrorMatrices.multiply(VIEW,ReflectionTransform.matrix(0,0,-1));
         float[] clipped=MirrorMatrices.oblique(projection,view,0,0,-1,0,0,-3.875,true);
         float[] vp=MirrorMatrices.multiply(clipped,view);
         double[] wall=MirrorMatrices.transform(vp,0,0,-3.25,1),room=MirrorMatrices.transform(vp,0,0,-4.75,1);
