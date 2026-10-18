@@ -164,6 +164,10 @@ def main():
             exit_code=client.wait(timeout=60)
             if exit_code!=0:raise RuntimeError(f"Client failed after capture ({exit_code}): {evidence/'client.log'}")
             print("SIMPLY_MIRRORS_VISUAL_PASS",args.target,json.dumps(results),flush=True)
+        except BaseException as error:
+            (evidence/"failure.txt").write_text(f"{type(error).__name__}: {error}\n")
+            print("SIMPLY_MIRRORS_VISUAL_FAIL",args.target,repr(error),flush=True)
+            raise
         finally:
             stop(client)
             if rcon:

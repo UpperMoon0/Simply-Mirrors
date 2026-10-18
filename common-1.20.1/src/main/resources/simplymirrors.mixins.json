@@ -8,7 +8,8 @@
     "MinecraftMixin",
     "LevelRendererMixin",
     "ReflectionCullingMixin",
-    "IrisFullscreenMixin"
+    "IrisFullscreenMixin",
+    "IrisDepthTargetMixin"
   ],
   "injectors": {
     "defaultRequire": 1

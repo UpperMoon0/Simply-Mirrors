@@ -9,7 +9,8 @@
     "LevelRendererMixin",
     "MatrixAccessor",
     "IrisFullscreenMixin",
-    "ReflectionCullingMixin"
+    "ReflectionCullingMixin",
+    "IrisDepthTargetMixin"
   ],
   "injectors": {
     "defaultRequire": 1

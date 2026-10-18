@@ -5,6 +5,7 @@
 def stackLockFile = project.file('../tools/shader/stack-lock.json')
 def stackTarget = project.projectDir.name
 if (providers.gradleProperty('mirrorsShaderStack').orNull == 'off') return
+if (gradle.startParameter.taskNames.any { it.toLowerCase(java.util.Locale.ROOT).contains('server') }) return
 def defaultStackDirectory = project.file('../build/shader-dependencies')
 def stackDirectory = providers.gradleProperty('mirrorsShaderStack').orElse(
         providers.provider {
