@@ -9,6 +9,10 @@ on:
         description: Publish this version to GitHub and CurseForge (main only)
         type: boolean
         default: false
+      resume_run:
+        description: Inspected failed run with accepted CurseForge receipts (recovery only)
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -16,8 +20,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    if: inputs.resume_run == ''
     uses: ./.github/workflows/build.yml
   visual:
+    if: inputs.resume_run == ''
     uses: ./.github/workflows/visual.yml
   release:
     needs: [build, visual]
@@ -83,6 +89,40 @@ jobs:
           CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
           CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
         run: python tools/release.py publish --input release-output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: curseforge-upload-receipts
+          path: release-output/curseforge-receipts.json
+          if-no-files-found: ignore
+  resume-curseforge:
+    if: github.event_name == 'workflow_dispatch' && inputs.resume_run != '' && inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Recover verified release artifacts and inspected receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.resume_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+          gh run download "$SOURCE_RUN" -n simply-mirrors-release-bundle -D release-output
+          gh run download "$SOURCE_RUN" -n curseforge-upload-receipts -D release-output
+          python -m unittest discover -s tools -p 'test_*.py'
+          python tools/verify_recovery.py "$SOURCE_RUN" release-output
+      - name: Resume only missing CurseForge uploads
+        env:
+          CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
+        run: python tools/release.py publish --input release-output --resume
       - uses: actions/upload-artifact@v4
         if: always()
         with:
