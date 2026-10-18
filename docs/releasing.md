@@ -4,7 +4,7 @@ The **Build and release** workflow follows the Simply Speakers/Simply Screens pa
 
 Configure these on **UpperMoon0/Simply-Mirrors → Settings → Secrets and variables → Actions**:
 
-- Repository variable `CURSEFORGE_PROJECT_ID`: the Simply Mirrors project ID. It is intentionally unset until the project is supplied.
+- Repository variable `CURSEFORGE_PROJECT_ID`: `1751860`, already configured for [Simply Mirrors](https://authors.curseforge.com/#/projects/1751860).
 - Repository secret `CURSEFORGE_API_TOKEN`: a CurseForge Upload API token with access to that project, using the same secret name as Simply Speakers. Repository secrets are not inherited from other repositories.
 
 The artwork for the CurseForge project is `common-assets/src/main/resources/assets/simply_mirrors/icon.png` (512 × 512, transparent PNG).

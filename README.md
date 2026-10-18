@@ -2,7 +2,7 @@
 
 <img src="common-assets/src/main/resources/assets/simply_mirrors/icon.png" width="128" alt="Simply Mirrors icon">
 
-[Release and CurseForge setup](docs/releasing.md)
+[CurseForge description](docs/curseforge-description.md) · [Release and CurseForge setup](docs/releasing.md)
 
 A standalone Minecraft mod project for placeable mirrors that reflect the surrounding world.
 
