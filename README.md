@@ -8,7 +8,7 @@ The reflective face points in the direction of the surface you click, or toward 
 
 The first renderer is bounded to two visible mirror planes per frame within 32 blocks. Coplanar mirrors share a reflection render. Reflections show loaded terrain and entities; recursive mirror reflections and shader-pack compatibility are not yet supported. The 26.1.2 compositor currently targets Minecraft's OpenGL renderer.
 
-![Live reflections in the Fabric 1.16.5 acceptance scene](docs/images/mirror-fabric-1.16.5.png)
+![Frameless reflections in the Fabric 26.1.2 acceptance scene](docs/images/mirror-frameless.png)
 
 The capture shows the player and colored blocks behind the camera reflected in a 3 x 3 mirror surface, with a solid wall behind the glass.
 
