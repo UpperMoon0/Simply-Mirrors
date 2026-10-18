@@ -1,0 +1,130 @@
+// Installed development dependencies only. Production jars never bundle shader mods.
+// First run python tools/shader_stack.py --target <target> --client <run directory>.
+// Normal dev runs use the local cache after installation. An explicit property
+// still selects a different cache for the isolated shader regression harness.
+def stackLockFile = project.file('../tools/shader/stack-lock.json')
+def stackTarget = project.projectDir.name
+if (providers.gradleProperty('mirrorsShaderStack').orNull == 'off') return
+if (gradle.startParameter.taskNames.any { it.toLowerCase(java.util.Locale.ROOT).contains('server') }) return
+def defaultStackDirectory = project.file('../build/shader-dependencies')
+def stackDirectory = providers.gradleProperty('mirrorsShaderStack').orElse(
+        providers.provider {
+            def lock = new groovy.json.JsonSlurper().parse(stackLockFile)
+            def artifacts = lock.stacks[stackTarget]
+            artifacts != null && artifacts.every { new File(defaultStackDirectory, it.filename).isFile() }
+                    ? defaultStackDirectory.absolutePath : null
+        })
+if (stackDirectory.isPresent()) {
+    def lock = new groovy.json.JsonSlurper().parse(stackLockFile)
+    def artifacts = lock.stacks[stackTarget]
+    if (artifacts == null) throw new GradleException("No shader stack for ${project.name}")
+    def jars = artifacts.collect { artifact ->
+        def jar = new File(stackDirectory.get(), artifact.filename)
+        if (!jar.isFile()) throw new GradleException("Missing shader dependency ${jar}; run shader_stack.py first")
+        def digest = java.security.MessageDigest.getInstance('SHA-512').digest(jar.bytes).encodeHex().toString()
+        if (digest != artifact.sha512) throw new GradleException("Shader dependency checksum mismatch: ${jar}")
+        jar
+    }
+    if (plugins.hasPlugin('net.minecraftforge.gradle')) {
+        // ForgeGradle remaps external module coordinates. Give the verified,
+        // unchanged downloads local coordinates rather than editing their metadata.
+        def repository = layout.buildDirectory.dir('shader-maven').get().asFile
+        artifacts.eachWithIndex { artifact, index ->
+            def location = new File(repository, "dev/simplymirrors/shadertest/${artifact.project_id}/${artifact.version_id}")
+            location.mkdirs()
+            new File(location, "${artifact.project_id}-${artifact.version_id}.jar").bytes = jars[index].bytes
+            new File(location, "${artifact.project_id}-${artifact.version_id}.pom").text = """<project><modelVersion>4.0.0</modelVersion><groupId>dev.simplymirrors.shadertest</groupId><artifactId>${artifact.project_id}</artifactId><version>${artifact.version_id}</version></project>"""
+        }
+        repositories.maven { url = uri(repository); content { includeGroup 'dev.simplymirrors.shadertest' } }
+        dependencies {
+            artifacts.each { artifact -> runtimeOnly(project.fg.deobf("dev.simplymirrors.shadertest:${artifact.project_id}:${artifact.version_id}")) { transitive = false } }
+        }
+        return
+    }
+    // Loom strips jar-in-jar metadata while remapping dev mods. Expand children from
+    // verified parent bytes; never edit third-party manifests or download loose libraries.
+    def nestedMods = []
+    def nestedLibraries = []
+    if (!plugins.hasPlugin('net.neoforged.moddev')) {
+        def selected = [:]
+        // Explicit reviewed resolutions for the pinned parents' overlapping JarJar ranges.
+        def compatibleVersions = [
+            'org.sinytra.forgified-fabric-api:fabric-renderer-api-v1': ['3.4.0+9c40919e19', '3.4.0+acb05a3919'],
+            'io.github.llamalad7:mixinextras-forge': ['0.3.5', '0.4.1'],
+            'com.github.LlamaLad7:MixinExtras': ['0.3.5', '0.4.1']
+        ]
+        def expand
+        expand = { File parent ->
+            new java.util.zip.ZipFile(parent).withCloseable { zip ->
+                def fabric = zip.getEntry('fabric.mod.json')
+                def metadata = fabric ?: zip.getEntry('META-INF/jarjar/metadata.json')
+                if (metadata == null) return
+                def data = new groovy.json.JsonSlurper().parse(zip.getInputStream(metadata))
+                (data.jars ?: []).each { entry ->
+                    def path = entry.file ?: entry.path
+                    def childEntry = zip.getEntry(path)
+                    if (childEntry == null) throw new GradleException("Missing nested shader dependency ${path}")
+                    def bytes = zip.getInputStream(childEntry).bytes
+                    def digest = java.security.MessageDigest.getInstance('SHA-512').digest(bytes).encodeHex().toString()
+                    def child = layout.buildDirectory.file("shader-nested/${digest}.jar").get().asFile
+                    child.parentFile.mkdirs()
+                    child.bytes = bytes
+                    def id = entry.identifier ? "${entry.identifier.group}:${entry.identifier.artifact}".toString() : path
+                    def version = entry.version?.artifactVersion
+                    def nativeMod = false
+                    new java.util.zip.ZipFile(child).withCloseable { nested ->
+                        if (nested.getEntry('fabric.mod.json') != null) {
+                            def manifest = new groovy.json.JsonSlurper().parse(nested.getInputStream(nested.getEntry('fabric.mod.json')))
+                            id = manifest.id
+                            version = manifest.version
+                            nativeMod = true
+                        } else nativeMod = nested.getEntry('META-INF/mods.toml') != null || nested.getEntry('META-INF/neoforge.mods.toml') != null
+                    }
+                    // Loader 0.16's KnotClassLoader.getResources returns only preloaded
+                    // logging-jar resources when one exists. Iris's generated SLF4J
+                    // fabric.mod.json then hides every development mod, including Loader.
+                    // Use the unmodified upstream library at the same version below.
+                    if (stackTarget == 'fabric-1.16.5' && id == 'org_slf4j_slf4j-api') return
+                    // The Fabric API dependency already supplies these components.
+                    if (stackTarget.startsWith('fabric-') && id.startsWith('fabric-')) return
+                    if (selected.containsKey(id)) {
+                        def old = selected[id]
+                        if (old.version == version) return
+                        def accepted = compatibleVersions[id]
+                        if (accepted == null || !accepted.contains(old.version) || !accepted.contains(version))
+                            throw new GradleException("Conflicting nested shader dependency ${id}: ${old.version} / ${version}")
+                        if (accepted.indexOf(version) < accepted.indexOf(old.version)) return
+                        nestedMods.remove(old.file)
+                        nestedLibraries.remove(old.file)
+                    }
+                    selected[id] = [version:version, file:child]
+                    (nativeMod ? nestedMods : nestedLibraries).add(child)
+                    expand(child)
+                }
+            }
+        }
+        jars.each { expand(it) }
+    }
+    if (stackTarget == 'fabric-1.16.5') {
+        dependencies { localRuntime 'org.slf4j:slf4j-api:1.7.12' }
+        project.ext.set('fabric.loom.runtimeJavaCompatibilityVersion', '8')
+    }
+    if (stackTarget == 'fabric-1.20.1') {
+        // Sodium 0.5 requires Minecraft's LWJGL 3.3.1. Run the game on Java17,
+        // not Gradle's Java21, so Loom does not substitute LWJGL3.3.2-snapshot.
+        project.ext.set('fabric.loom.runtimeJavaCompatibilityVersion', '17')
+        tasks.withType(JavaExec).configureEach {
+            javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(17)) })
+        }
+    }
+    dependencies {
+        if (plugins.hasPlugin('net.neoforged.moddev')) runtimeOnly files(jars)
+        else if (stackTarget == 'fabric-26.1.2') runtimeOnly files(jars + nestedMods + nestedLibraries)
+        else {
+            // Separate file components keep old Fabric Loader classpath groups distinct.
+            (jars + nestedMods).each { jar -> modLocalRuntime files(jar) }
+            if (stackTarget.startsWith('fabric-')) localRuntime files(nestedLibraries)
+            else forgeRuntimeLibrary files(nestedLibraries) // FML bootstrap discovery requires this classpath.
+        }
+    }
+}

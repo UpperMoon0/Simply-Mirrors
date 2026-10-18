@@ -72,6 +72,7 @@ subprojects { p ->
     }
     tasks.withType(Jar).configureEach { from(rootProject.file('LICENSE')); from(rootProject.file('NOTICE')) }
     apply from: rootProject.file('tools/visual.gradle')
+    apply from: rootProject.file('tools/shader-runtime.gradle')
     publishing {
         publications {
             mavenJava(MavenPublication) { from components.java }

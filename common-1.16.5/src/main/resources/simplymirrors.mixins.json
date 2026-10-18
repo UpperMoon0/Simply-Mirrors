@@ -7,7 +7,16 @@
     "CameraAccessor",
     "MinecraftMixin",
     "LevelRendererMixin",
-    "MatrixAccessor"
+    "MatrixAccessor",
+    "IrisDepthTargetMixin",
+    "ReflectionCullingMixin",
+    "IrisFullscreenMixin",
+    "IrisUniformMixin",
+    "IrisFrameMixin",
+    "ReflectionCameraMixin",
+    "IrisShadowMixin",
+    "IrisLegacyTransformMixin",
+    "IrisFallbackMixin"
   ],
   "injectors": {
     "defaultRequire": 1

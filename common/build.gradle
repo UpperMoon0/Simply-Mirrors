@@ -6,3 +6,32 @@ dependencies {
     testImplementation 'org.joml:joml:1.10.5'
 }
 test { useJUnit(); testLogging { events 'failed', 'skipped' } }
+
+// Exercise the optional bridge without loading Minecraft or an OpenGL context.
+tasks.named('compileTestJava') {
+    source rootProject.file('common-client/src/main/java/com/nstut/simplymirrors/client/IrisCameraState.java')
+    source rootProject.file('common-1.21.1/src/main/java/com/nstut/simplymirrors/client/ShaderMatrices.java')
+}
+
+// Run the production GL history transaction against a native, software-rendered context.
+sourceSets { shaderGlTest { java.srcDir rootProject.file('tools/gl-tests') } }
+dependencies {
+    shaderGlTestImplementation 'org.lwjgl:lwjgl:3.3.3'
+    shaderGlTestImplementation 'org.lwjgl:lwjgl-opengl:3.3.3'
+    shaderGlTestImplementation 'org.lwjgl:lwjgl-glfw:3.3.3'
+    shaderGlTestRuntimeOnly 'org.lwjgl:lwjgl:3.3.3:natives-linux'
+    shaderGlTestRuntimeOnly 'org.lwjgl:lwjgl-opengl:3.3.3:natives-linux'
+    shaderGlTestRuntimeOnly 'org.lwjgl:lwjgl-glfw:3.3.3:natives-linux'
+}
+tasks.named('compileShaderGlTestJava') {
+    source rootProject.file('common-client/src/main/java/com/nstut/simplymirrors/client/GlTextureSnapshot.java')
+    source rootProject.file('common-client/src/main/java/com/nstut/simplymirrors/client/ShaderRenderTargetSnapshot.java')
+}
+tasks.register('shaderHistoryGlTest', JavaExec) {
+    group = 'verification'
+    description = 'Checks shader history isolation in a real OpenGL context (Linux/Xvfb).'
+    dependsOn tasks.named('shaderGlTestClasses')
+    classpath = sourceSets.shaderGlTest.runtimeClasspath
+    mainClass = 'com.nstut.simplymirrors.client.ShaderHistoryGlTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+}

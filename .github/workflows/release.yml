@@ -25,8 +25,11 @@ jobs:
   visual:
     if: inputs.resume_run == ''
     uses: ./.github/workflows/visual.yml
+  shaders:
+    if: inputs.resume_run == ''
+    uses: ./.github/workflows/shaders.yml
   release:
-    needs: [build, visual]
+    needs: [build, visual, shaders]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -116,6 +119,7 @@ jobs:
           [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
           gh run download "$SOURCE_RUN" -n simply-mirrors-release-bundle -D release-output
           gh run download "$SOURCE_RUN" -n curseforge-upload-receipts -D release-output
+          python -m pip install pillow
           python -m unittest discover -s tools -p 'test_*.py'
           python tools/verify_recovery.py "$SOURCE_RUN" release-output
       - name: Resume only missing CurseForge uploads

@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-@Mixin(LevelRenderer.class)
+@Mixin(value=LevelRenderer.class,priority=900)
 public abstract class LevelRendererMixin {
     @Inject(method="renderLevel",at=@At("TAIL"))
     private void simplymirrors$reflect(DeltaTracker delta, boolean outline, Camera camera, GameRenderer game, LightTexture light, Matrix4f view, Matrix4f projection, CallbackInfo ci) { MirrorRenderer.render(delta, camera, game, light, view, projection); }

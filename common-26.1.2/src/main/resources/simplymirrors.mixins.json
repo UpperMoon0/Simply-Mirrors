@@ -7,7 +7,17 @@
     "MinecraftMixin",
     "LevelRendererAccessor",
     "LevelRendererMixin",
-    "GameRendererMixin"
+    "GameRendererMixin",
+    "IrisDepthTargetMixin",
+    "IrisFullscreenMixin",
+    "IrisTransformMixin",
+    "IrisUniformMixin",
+    "IrisFrameMixin",
+    "ReflectionCameraMixin",
+    "IrisShadowMixin",
+    "SodiumReflectionMixin",
+    "SodiumProjectionMixin",
+    "IrisFallbackMixin"
   ],
   "injectors": {
     "defaultRequire": 1

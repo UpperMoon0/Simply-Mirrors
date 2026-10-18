@@ -30,6 +30,7 @@ import static org.lwjgl.opengl.GL33.*;
 public final class MirrorRenderer {
     public static RenderTarget redirect;
     public static long completedPasses;
+    public static Matrix4fc reflectionProjection;
     public static final Matrix4f mainProjection=new Matrix4f();
     private static TextureTarget target;
     private static ProjectionMatrixBuffer projectionBuffer;
@@ -75,6 +76,8 @@ public final class MirrorRenderer {
         GpuBufferSlice savedProj=RenderSystem.getProjectionMatrixBuffer(),savedFog=RenderSystem.getShaderFog();
         ProjectionType savedType=RenderSystem.getProjectionType();
         GpuBuffer savedGlobals=RenderSystem.getGlobalSettingsUniform();
+        boolean oldSmartCull=mc.smartCull;
+        boolean sodium=ShaderReflection.terrainRendererPresent();
         int passes=0;
         var visible=mc.levelRenderer.getVisibleSections();
         var savedVisible=new ArrayList<>(visible);
@@ -88,12 +91,18 @@ public final class MirrorRenderer {
                 MirrorSurface s=surfaces.get(0);double[] reflected=s.plane().reflectPoint(eye.x,eye.y,eye.z);
                 Vec3 reflectedEye=new Vec3(reflected[0],reflected[1],reflected[2]);
                 Matrix4f reflectedView=new Matrix4f().set(MirrorMatrices.multiply(view,ReflectionTransform.matrix(s.nx,s.ny,s.nz)));
-                Matrix4f projection=new Matrix4f().set(MirrorMatrices.oblique(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,
+                boolean shaders=ShaderReflection.enabled();
+                Matrix4f projection=shaders?new Matrix4f(renderedProjection):new Matrix4f().set(MirrorMatrices.oblique(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,
                         s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],RenderSystem.getDevice().isZZeroToOne()));
                 Camera virtual=new ReflectionCamera(reflectedView);virtual.setLevel(mc.level);virtual.setEntity(mc.getCameraEntity());virtual.update(delta);
                 CameraAccessor ca=(CameraAccessor)(Object)virtual;ca.simplymirrors$position(reflectedEye);
                 ca.simplymirrors$rotation(s.ny!=0?mc.gameRenderer.getMainCamera().yRot():s.nz!=0?180-mc.gameRenderer.getMainCamera().yRot():-mc.gameRenderer.getMainCamera().yRot(),s.ny!=0?-mc.gameRenderer.getMainCamera().xRot():mc.gameRenderer.getMainCamera().xRot());
-                ca.simplymirrors$detached(true);virtual.tick();ca.simplymirrors$frustum(reflectedView,projection,reflectedEye);
+                ca.simplymirrors$detached(true);virtual.tick();ca.simplymirrors$frustum(reflectedView,renderedProjection,reflectedEye);
+                if(sodium){
+                    // Sodium owns its section lists; updating vanilla visibleSections alone has no effect.
+                    redirect=target;reflectionProjection=projection;mc.smartCull=false;
+                    if(!shaders)mc.levelRenderer.update(virtual);
+                }
                 // Use loaded section geometry directly: the main camera's occlusion graph may
                 // omit a sealed room on the opposite side of the mirror wall.
                 visible.clear();
@@ -107,10 +116,14 @@ public final class MirrorRenderer {
                 int oldFront=glGetInteger(GL_FRONT_FACE);
                 var mv=RenderSystem.getModelViewStack();mv.pushMatrix();mv.identity();
                 try(GpuBuffer globals=globals(reflectedEye,main.width,main.height,mc,partial)) {
-                    redirect=target;RenderSystem.setGlobalSettingsUniform(globals);
+                    redirect=target;
+                    if(shaders)ShaderReflection.begin(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected);
+                    RenderSystem.setGlobalSettingsUniform(globals);
                     RenderSystem.setProjectionMatrix(projectionBuffer.getBuffer(projection),ProjectionType.PERSPECTIVE);glFrontFace(GL_CW);
                     mc.levelRenderer.renderLevel(allocator,delta,false,state.cameraRenderState,reflectedView,fog,new Vector4f(color),sky,state.chunkSectionsToRender);
                 } finally {
+                    if(shaders)ShaderReflection.end();
+                    reflectionProjection=null;
                     glFrontFace(oldFront);redirect=null;mv.popMatrix();
                     RenderSystem.setGlobalSettingsUniform(savedGlobals);RenderSystem.setProjectionMatrix(savedProj,savedType);RenderSystem.setShaderFog(savedFog);
                 }
@@ -129,8 +142,10 @@ public final class MirrorRenderer {
         } catch(RuntimeException exception) {
             failed=true;java.util.logging.Logger.getLogger("simply_mirrors").log(java.util.logging.Level.SEVERE,"Mirror reflection disabled for this world after a rendering error",exception);
         } finally {
+            mc.smartCull=oldSmartCull;reflectionProjection=null;ShaderReflection.end();
             visible.clear();visible.addAll(savedVisible);
             redirect=null;RenderSystem.setGlobalSettingsUniform(savedGlobals);RenderSystem.setProjectionMatrix(savedProj,savedType);RenderSystem.setShaderFog(savedFog);
+            if(sodium && !ShaderReflection.enabled())mc.levelRenderer.update(mc.gameRenderer.getMainCamera());
             state.reset();mc.levelRenderer.extractLevel(delta,mc.gameRenderer.getMainCamera(),partial);
             mc.gameRenderer.getMainCamera().extractRenderState(state.cameraRenderState,partial);
             state.cameraRenderState.viewRotationMatrix.set(savedView);state.cameraRenderState.projectionMatrix.set(savedProjection);

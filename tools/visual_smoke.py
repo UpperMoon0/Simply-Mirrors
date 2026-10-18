@@ -80,26 +80,63 @@ def stop(process):
         try:process.wait(timeout=10)
         except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL)
 
-def image_check(path):
+def image_check(path,shaders=False):
     from PIL import Image
+    import colorsys
     image=Image.open(path).convert("RGB");w,h=image.size
     hits={"red":[],"green":[],"blue":[]}
-    for y in range(int(h*.2),int(h*.8)):
-        for x in range(int(w*.3),int(w*.7)):
+    # The centered fixture's marker panels occupy this inset of the mirror.
+    # Exclude the blue sky and surrounding shaded wall from shader band centroids.
+    left,right,top,bottom=(.35,.65,.3,.6) if shaders else (.3,.7,.2,.8)
+    for y in range(int(h*top),int(h*bottom)):
+        for x in range(int(w*left),int(w*right)):
             r,g,b=image.getpixel((x,y))
-            if r>35 and r>g*1.8 and r>b*1.8:hits["red"].append(x)
-            if g>35 and g>r*1.4 and g>b*1.3:hits["green"].append(x)
-            if b>35 and b>r*1.8 and b>g*1.8:hits["blue"].append(x)
+            if shaders:
+                # Shader lighting changes brightness and warms lime toward yellow.
+                # Require substantial chroma and all three ordered marker bands.
+                hue,saturation,value=colorsys.rgb_to_hsv(r/255,g/255,b/255)
+                hue*=360
+                if saturation<.28 or value<.08 or max(r,g,b)-min(r,g,b)<8:continue
+                if hue<30 or hue>300:hits["red"].append(x)
+                if 65<hue<165:hits["green"].append(x)
+                if 190<hue<265:hits["blue"].append(x)
+            else:
+                if r>35 and r>g*1.8 and r>b*1.8:hits["red"].append(x)
+                if g>35 and g>r*1.4 and g>b*1.3:hits["green"].append(x)
+                if b>35 and b>r*1.8 and b>g*1.8:hits["blue"].append(x)
     for name,xs in hits.items():
-        assert len(xs)>20,f"No reflected {name} marker in mirror: {len(xs)} pixels"
+        assert len(xs)>(w*h*.003 if shaders else 20),f"No reflected {name} marker in mirror: {len(xs)} pixels"
     red=sum(hits["red"])/len(hits["red"]);blue=sum(hits["blue"])/len(hits["blue"])
     assert red>blue+5,f"Reflection handedness incorrect: red x={red}, blue x={blue}"
+    if shaders:
+        green=sum(hits["green"])/len(hits["green"])
+        assert blue+20<green<red-20,"Reflected marker bands are not ordered blue, green, red"
     return {"pixels":{key:len(value) for key,value in hits.items()},"redMeanX":red,"blueMeanX":blue}
 
+def finish_capture(client_dir,evidence,results,failures,client):
+    # Preserve diagnostic captures even when shutdown or image acceptance fails.
+    (evidence/"results.json").write_text(json.dumps(results,indent=2)+"\n")
+    scene_file(client_dir,6)
+    # Gradle must release its cache lock and exit cleanly before success is recorded.
+    exit_code=client.wait(timeout=60)
+    if exit_code!=0:raise RuntimeError(f"Client failed after capture ({exit_code}): {evidence/'client.log'}")
+    if failures:raise AssertionError("Reflection image checks failed: "+json.dumps(failures))
+    (evidence/"verified.json").write_text(json.dumps(results,indent=2)+"\n")
+
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True);args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
+    parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
+    parser.add_argument("--run-name",help="Isolated test directory prefix")
+    args=parser.parse_args()
     t=TARGETS[args.target];module=ROOT/args.target;cwd=ROOT/t["build_root"]
-    port=free_port();rcon_port=free_port();server_dir=module/"run/visual-server";server_dir.mkdir(parents=True,exist_ok=True)
+    run_name=args.run_name or ("shader" if args.shaders else "visual")
+    if not __import__('re').fullmatch('[a-z0-9-]+',run_name):raise ValueError('Invalid run name')
+    client_dir=module/f"run/{run_name}-client"
+    if args.shaders:
+        from shader_stack import prepare, install_pack
+        _,pack=prepare(args.target,ROOT/"build/shader-dependencies")
+        install_pack(client_dir,pack,loader=t['loader'])
+    port=free_port();rcon_port=free_port();server_dir=module/f"run/{run_name}-server";server_dir.mkdir(parents=True,exist_ok=True)
     if (server_dir/"visual-world").exists():raise SystemExit("Existing test world found; use a fresh checkout or preserve/rename the old test world before retrying")
     (server_dir/"eula.txt").write_text("eula=true\n")
     props={"server-ip":"127.0.0.1","server-port":port,"enable-rcon":"true","rcon.port":rcon_port,"rcon.password":"simply-mirrors-disposable-test","online-mode":"false","gamemode":"creative","force-gamemode":"true","allow-flight":"true","spawn-protection":0,"view-distance":4,"simulation-distance":4,"level-name":"visual-world","level-type":"flat" if t["minecraft"]=="1.16.5" else "minecraft:flat","max-players":2}
@@ -107,13 +144,15 @@ def main():
     command=[str(cwd/"gradlew.bat")] if os.name=="nt" else ["./gradlew"]
     if t["build_root"]==".":command.append(f"-Ptarget={args.target}")
     command += ["-PvisualTest",f"-PvisualMc={t['minecraft']}",f"-PvisualLoader={t['loader']}",f"-PvisualPort={port}","--no-daemon","--console=plain","-Dorg.gradle.jvmargs=-Xmx1024m","--max-workers=2"]
+    command += [f"-PvisualRunName={run_name}",f"-PmirrorsShaderStack={ROOT/'build/shader-dependencies' if args.shaders else 'off'}"]
     task_prefix=f":{args.target}:" if t["build_root"]=="." else ""
-    evidence=module/"run/visual-evidence";evidence.mkdir(parents=True,exist_ok=True)
+    evidence=module/f"run/{run_name}-evidence";evidence.mkdir(parents=True,exist_ok=True)
     creation={"creationflags":subprocess.CREATE_NO_WINDOW} if os.name=="nt" else {"start_new_session":True}
     server=client=rcon=None
     with (evidence/"server.log").open("w") as server_log,(evidence/"client.log").open("w") as client_log:
         try:
-            server=subprocess.Popen(command+[task_prefix+"runVisualServer"],cwd=cwd,stdout=server_log,stderr=subprocess.STDOUT,**creation)
+            server_command=["-PmirrorsShaderStack=off" if item.startswith("-PmirrorsShaderStack=") else item for item in command]
+            server=subprocess.Popen(server_command+[task_prefix+"runVisualServer"],cwd=cwd,stdout=server_log,stderr=subprocess.STDOUT,**creation)
             print("Starting disposable server",args.target,flush=True)
             deadline=time.monotonic()+360
             while time.monotonic()<deadline:
@@ -122,14 +161,16 @@ def main():
                 except (OSError,ConnectionError):time.sleep(1)
             else:raise TimeoutError("Server startup timeout: "+(evidence/"server.log").read_text(errors="replace")[-8000:])
             print("Server and RCON ready",args.target,flush=True)
-            commands=["forceload add -16 -16 16 16","time set noon","weather clear","fill -12 53 -12 12 53 12 stone","setworldspawn 0 65 -4"]+fixture(0)
+            clock_rule="advance_time" if t["minecraft"]=="26.1.2" else "doDaylightCycle"
+            weather_rule="advance_weather" if t["minecraft"]=="26.1.2" else "doWeatherCycle"
+            commands=[f"gamerule {clock_rule} false",f"gamerule {weather_rule} false","forceload add -16 -16 16 16","time set noon","weather clear","fill -12 53 -12 12 53 12 stone","setworldspawn 0 65 -4"]+fixture(0)
             for text in commands:
                 reply=rcon.command(text)
                 if "Unknown" in reply or "Incorrect" in reply:raise RuntimeError(f"Fixture command failed: {text}: {reply}")
             print("Fixture ready; starting client",args.target,flush=True)
-            client_dir=module/"run/visual-client";client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
+            client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
             client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,stderr=subprocess.STDOUT,**creation)
-            results={}
+            results={};failures={}
             for scene,face in enumerate(FACES):
                 if scene:
                     for text in fixture(scene):
@@ -142,15 +183,19 @@ def main():
                     time.sleep(1)
                 if not result.exists():raise TimeoutError(f"Client visual probe timed out on {face}: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
-                data.update(image_check(result.with_name(f"mirror-{scene}.png")));results[face]=data
-                print("Verified reflective face",args.target,face,json.dumps(data),flush=True)
-            (evidence/"verified.json").write_text(json.dumps(results,indent=2)+"\n")
-            scene_file(client_dir,6)
-            # The probe quits normally after capture. Do not kill Gradle while it releases
-            # Loom's cache lock, or accept a process that crashes after writing its result.
-            exit_code=client.wait(timeout=60)
-            if exit_code!=0:raise RuntimeError(f"Client failed after capture ({exit_code}): {evidence/'client.log'}")
+                if args.shaders:assert data.get('shaderPackActive') is True,data
+                try:
+                    data.update(image_check(result.with_name(f"mirror-{scene}.png"),shaders=args.shaders))
+                except AssertionError as error:
+                    failures[face]=str(error);data['imageError']=str(error)
+                results[face]=data
+                print("Failed reflective face" if face in failures else "Verified reflective face",args.target,face,json.dumps(data),flush=True)
+            finish_capture(client_dir,evidence,results,failures,client)
             print("SIMPLY_MIRRORS_VISUAL_PASS",args.target,json.dumps(results),flush=True)
+        except BaseException as error:
+            (evidence/"failure.txt").write_text(f"{type(error).__name__}: {error}\n")
+            print("SIMPLY_MIRRORS_VISUAL_FAIL",args.target,repr(error),flush=True)
+            raise
         finally:
             stop(client)
             if rcon:

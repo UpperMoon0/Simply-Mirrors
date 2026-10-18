@@ -65,7 +65,8 @@ public final class MirrorRenderer {
                 double[] reflected=surface.plane().reflectPoint(eye.x,eye.y,eye.z);
                 Vec3 reflectedEye=new Vec3(reflected[0],reflected[1],reflected[2]);
                 Matrix4f reflectedView=matrix(MirrorMatrices.multiply(view,ReflectionTransform.matrix(surface.nx,surface.ny,surface.nz)));
-                Matrix4f projection=matrix(MirrorMatrices.oblique(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,
+                boolean shaders=ShaderReflection.enabled();
+                Matrix4f projection=shaders?matrix(proj):matrix(MirrorMatrices.oblique(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,
                     surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],false));
                 Camera virtual=new Camera();virtual.setup(mc.level,mc.getCameraEntity(),true,false,partial);
                 CameraAccessor accessor=(CameraAccessor)(Object)virtual;accessor.simplymirrors$position(reflectedEye);
@@ -73,14 +74,21 @@ public final class MirrorRenderer {
                 PoseStack pose=new PoseStack();pose.last().pose().multiply(reflectedView);pose.last().normal().load(new com.mojang.math.Matrix3f(reflectedView));
                 int oldFront=glGetInteger(GL_FRONT_FACE);
                 boolean oldSmartCull=mc.smartCull;
+                boolean oldDepthMask=glGetBoolean(GL_DEPTH_WRITEMASK);
                 // The virtual camera is behind the wall; portal clipping replaces ordinary wall occlusion.
                 mc.smartCull=false;
                 redirect=target;
                 try {
-                    target.bindWrite(true);game.resetProjectionMatrix(projection);glFrontFace(GL_CW);
+                    // Iris final compositing leaves depth writes disabled; clears obey that mask.
+                    RenderSystem.depthMask(true);
+                    target.setClearColor(0.615f,0.718f,0.792f,1);target.clear(Minecraft.ON_OSX);target.bindWrite(true);
+                    if(shaders)ShaderReflection.begin(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected);
+                    game.resetProjectionMatrix(projection);glFrontFace(GL_CW);
                     
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
                 } finally {
+                    if(shaders)ShaderReflection.end();
+                    RenderSystem.depthMask(oldDepthMask);
                     mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);game.resetProjectionMatrix(mainProjectionMatrix);
                     
                     mc.getEntityRenderDispatcher().prepare(mc.level,camera,mc.crosshairPickEntity);
