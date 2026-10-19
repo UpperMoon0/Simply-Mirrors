@@ -6,7 +6,7 @@
 
 A standalone Minecraft mod project for placeable mirrors that reflect the surrounding world.
 
-**Version 0.1.1.** Includes a craftable full-block frameless mirror, a dedicated Simply Mirrors creative tab, and native reflection adapters for all four Minecraft versions. Inspired by the mirrors in Immersive Portals CE; no portal mod is required. Runtime acceptance is tracked per target; the first verified capture is shown below.
+**Version 0.1.1.** Includes a craftable full-block frameless mirror, a dedicated Simply Mirrors creative tab, and Iris/Oculus shader reflections across all eight version/loader targets. Inspired by the mirrors in Immersive Portals CE; no portal mod is required. See the [0.1.1 release notes](changelog/0.1.1.md) and [shader validation](docs/shader-validation.md) for compatibility details and captures.
 
 Every face of the full solid cube reflects: north, south, east, west, top, and bottom. Placement direction does not limit reflections. Adjacent mirrors form continuous surfaces, including floors and ceilings. Build your own frame using any blocks you like. Take a mirror from the Simply Mirrors tab or craft one with eight glass blocks around an iron ingot.
 
@@ -15,6 +15,10 @@ The renderer is bounded to six visible mirror planes per frame within 32 blocks.
 ![Frameless reflections in the Fabric 26.1.2 acceptance scene](docs/images/mirror-frameless.png)
 
 The capture shows the player and colored blocks behind the camera reflected in a 3 x 3 mirror surface, with a solid wall behind the glass.
+
+![Complementary Reimagined reflections on NeoForge 26.1.2](docs/images/mirror-complementary-neoforge-26.png)
+
+The shader capture uses Iris 1.11.4, Sodium 0.9.2, and Complementary Reimagined r5.9.3. Shader mods and packs are optional client-side installations and are not bundled with Simply Mirrors. Reflected views preserve the main view's camera, shadow, and temporal state; separate per-mirror temporal accumulation is not yet implemented.
 
 ## Target matrix
 
@@ -78,7 +82,7 @@ All targets use Complementary Reimagined r5.9.3. Exact artifacts and upstream UR
 ## Layout
 
 - `common`: loader- and Minecraft-independent Java 8 sources and reflection-math regression tests.
-- `common-<version>`: locations reserved for version-specific Minecraft integrations shared by both loaders.
+- `common-<version>`: version-specific blocks, reflection renderers, and compatibility mixins shared by both loaders.
 - `fabric-<version>`, `forge-<version>`, `neoforge-<version>`: platform bootstraps, exact-version metadata, and development launch configurations.
 - `tools/targets.json`: complete eight-target packaging matrix.
 - `.github/workflows/build.yml`: shared tests and separate artifact builds for every target on pushes and pull requests.
