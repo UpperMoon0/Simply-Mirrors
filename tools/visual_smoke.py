@@ -9,7 +9,7 @@ NORMALS=[(0,0,-1),(0,0,1),(-1,0,0),(1,0,0),(0,1,0),(0,-1,0)]
 POSES=[(.5,65,-3.5,0,0),(.5,65,4.5,180,0),(-3.5,65,.5,-90,0),
        (4.5,65,.5,90,0),(.5,68.88,.62,0,90),(.5,60.88,.38,0,-90)]
 
-def fixture(scene):
+def fixture(scene, enclosed=False):
     nx,ny,nz=NORMALS[scene]
     right=(-nz,0,nx) if not ny else (1,0,0)
     up=(0,1,0) if not ny else (0,0,ny)
@@ -23,6 +23,18 @@ def fixture(scene):
     commands=["fill -12 54 -12 12 79 12 air",fill((-5,65,1),(5,70,1),"white_concrete"),
               fill((-4,65,-8),(-2,69,-8),"red_concrete"),fill((-1,65,-8),(1,69,-8),"lime_concrete"),
               fill((2,65,-8),(4,69,-8),"blue_concrete")]
+    if enclosed:
+        # Issue #5 reports an indoor mirror. Dense room walls catch a class of
+        # chunk/occlusion regressions that the original open fixture can miss.
+        # The outer opaque wall behind the mirror remains a clipping obstacle.
+        commands.extend([
+            fill((-9,63,-10),(9,63,0),"stone"),
+            fill((-9,73,-10),(9,73,0),"stone"),
+            fill((-9,63,-10),(-9,73,0),"stone"),
+            fill((9,63,-10),(9,73,0),"stone"),
+            fill((-9,63,-10),(9,73,-10),"stone"),
+            fill((-9,63,0),(9,73,0),"white_concrete")
+        ])
     # Every block retains the same legacy facing; the other five reflections must work independently of it.
     for x in range(-1,2):
         for y in range(65,68):
@@ -192,6 +204,7 @@ def main():
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
     parser.add_argument("--run-name",help="Isolated test directory prefix")
     parser.add_argument("--shader-pack", type=Path, help="Use an exact local shaderpack ZIP instead of the pinned default")
+    parser.add_argument("--enclosed", action="store_true", help="Build an indoor mirror room (issue #5 regression)")
     parser.add_argument("--extra-client-mod", type=Path, action="append", default=[],
                         help="Copy one optional rendering/modpack JAR into the isolated client only (repeatable)")
 
@@ -247,7 +260,7 @@ def main():
             print("Server and RCON ready",args.target,flush=True)
             clock_rule="advance_time" if t["minecraft"]=="26.1.2" else "doDaylightCycle"
             weather_rule="advance_weather" if t["minecraft"]=="26.1.2" else "doWeatherCycle"
-            commands=[f"gamerule {clock_rule} false",f"gamerule {weather_rule} false","forceload add -16 -16 16 16","time set noon","weather clear","fill -12 53 -12 12 53 12 stone","setworldspawn 0 65 -4"]+fixture(0)
+            commands=[f"gamerule {clock_rule} false",f"gamerule {weather_rule} false","forceload add -16 -16 16 16","time set noon","weather clear","fill -12 53 -12 12 53 12 stone","setworldspawn 0 65 -4"]+fixture(0,args.enclosed)
             for text in commands:
                 reply=rcon.command(text)
                 if "Unknown" in reply or "Incorrect" in reply:raise RuntimeError(f"Fixture command failed: {text}: {reply}")
@@ -257,7 +270,7 @@ def main():
             results={};failures={}
             for scene,face in enumerate(FACES):
                 if scene:
-                    for text in fixture(scene):
+                    for text in fixture(scene,args.enclosed):
                         reply=rcon.command(text)
                         if any(word in reply for word in ["Unknown","Incorrect","too many blocks"]):raise RuntimeError(f"Fixture failed: {text}: {reply}")
                 activate_scene(rcon,client_dir,scene,client)
