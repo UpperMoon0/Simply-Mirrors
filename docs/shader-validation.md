@@ -74,3 +74,30 @@ geometry rather than accepting sky-only output as a pass. If this test fails,
 retain logs, screenshots, the affected renderer versions and the smallest
 reproducible combination before changing production shaders or declaring
 compatibility. A passing plain shader smoke test does not certify ATM modpacks.
+
+
+### Enclosed-room shader regression
+
+A sky-only reflection can be missed by an open-air smoke fixture. Add
+`--enclosed` when checking reports involving indoor mirrors. The disposable
+server builds opaque side walls, floor, ceiling, and a wall around the mirror,
+then keeps the distinct colored objects *inside* the room for all six face
+orientations. The existing image checks still require the reflected objects,
+not just a successful shader render pass.
+
+```sh
+python tools/visual_smoke.py --target neoforge-1.21.1 --shaders \
+  --enclosed --run-name indoor-reflection
+```
+
+The CI shader workflow also runs an isolated test with a checksum-pinned
+client-side shader modifier found in a large modpack. Its exact third-party
+version and digest are recorded in the workflow. This targeted case cannot
+substitute for a full installed-modpack reproduction, which may depend on
+additional rendering mixins and client configuration.
+
+Shader transform program names are isolated per thread and per nested call,
+rather than stored in a shared global variable. Shared Java regressions exercise
+the compiler-name pairing under concurrent calls. This protects shader program
+classification; it does not itself establish compatibility with an untested
+client modpack.
