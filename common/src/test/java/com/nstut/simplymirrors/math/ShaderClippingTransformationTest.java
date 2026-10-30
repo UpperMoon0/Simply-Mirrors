@@ -5,6 +5,46 @@ import static org.junit.Assert.*;
 public class ShaderClippingTransformationTest {
     private enum Stage {VERTEX,GEOMETRY,TESS_EVAL,FRAGMENT}
     private static final String SOURCE="#version 330 core\nvoid main(){gl_Position=vec4(1);if(true)return;}\n";
+
+    @Test public void programNameContextIsNestedAndCleanedUp() {
+        assertNull(ShaderClippingTransformation.endProgram());
+        assertEquals("gbuffers_terrain",ShaderClippingTransformation.beginProgram("gbuffers_terrain"));
+        assertEquals("gbuffers_water",ShaderClippingTransformation.beginProgram("gbuffers_water"));
+        assertEquals("gbuffers_water",ShaderClippingTransformation.endProgram());
+        assertEquals("gbuffers_terrain",ShaderClippingTransformation.endProgram());
+        assertNull(ShaderClippingTransformation.endProgram());
+    }
+
+    @Test public void concurrentShaderTransformsKeepTheirOwnProgramNames() throws Exception {
+        final java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(2);
+        final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.ExecutorService pool=java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<String> terrain = () -> {
+                ShaderClippingTransformation.beginProgram("gbuffers_terrain");
+                ready.countDown();
+                if(!release.await(5,java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("timed out");
+                return ShaderClippingTransformation.endProgram();
+            };
+            java.util.concurrent.Callable<String> shadow = () -> {
+                ShaderClippingTransformation.beginProgram("shadow");
+                ready.countDown();
+                if(!release.await(5,java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("timed out");
+                return ShaderClippingTransformation.endProgram();
+            };
+            java.util.concurrent.Future<String> terrainResult=pool.submit(terrain);
+            java.util.concurrent.Future<String> shadowResult=pool.submit(shadow);
+            assertTrue(ready.await(5,java.util.concurrent.TimeUnit.SECONDS));
+            release.countDown();
+            assertEquals("gbuffers_terrain",terrainResult.get(5,java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals("shadow",shadowResult.get(5,java.util.concurrent.TimeUnit.SECONDS));
+            assertNull(ShaderClippingTransformation.endProgram());
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
+    }
+
     @Test public void clipsAfterEarlyReturnAndIsIdempotent(){
         String patched=ShaderClippingTransformation.transform(SOURCE,ShaderClippingTransformation.Stage.VERTEX,"simplymirrors_InverseProjection");
         assertTrue(patched.contains("simplymirrors_unclippedMain();"));
