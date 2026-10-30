@@ -106,7 +106,7 @@ jobs:
         run: >-
           xvfb-run -a -s '-screen 0 1280x720x24'
           python tools/visual_smoke.py
-          --target neoforge-1.21.1 --shaders
+          --target neoforge-1.21.1 --shaders --enclosed
           --extra-client-mod build/atm10-repro/EuphoriaPatcher-1.10.5-r5.9.3-neoforge.jar
           --run-name atm10-euphoria
       - uses: actions/upload-artifact@v4
