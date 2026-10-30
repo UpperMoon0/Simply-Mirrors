@@ -1,6 +1,6 @@
 """Verify actual reflections on all six block faces with one isolated server/client session."""
 from __future__ import annotations
-import argparse, json, math, os, signal, socket, struct, subprocess, sys, time
+import argparse, json, math, os, shutil, signal, socket, struct, subprocess, sys, time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 TARGETS={t["target"]:t for t in json.loads((ROOT/"tools/targets.json").read_text())}
@@ -126,7 +126,6 @@ def finish_capture(client_dir,evidence,results,failures,client):
 def install_extra_client_mods(client_dir, jars):
     """Reproduce shader/modpack interactions without touching the real instance."""
     import hashlib
-    import shutil
     import zipfile
     import tempfile
     target = client_dir / "mods"
