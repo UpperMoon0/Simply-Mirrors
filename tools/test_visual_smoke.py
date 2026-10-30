@@ -120,17 +120,43 @@ class ExternalModpackReproductionTests(unittest.TestCase):
             self.assertFalse((root/'mods').exists())
             self.assertEqual([],visual_smoke.install_extra_client_mods(client,[]))
 
-    def test_duplicate_or_invalid_mod_cannot_replace_a_profile_jar(self):
+    def test_duplicate_or_invalid_mod_leaves_profile_unchanged(self):
         import zipfile
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);source=root/'render-addon.jar';client=root/'test-client'
             with zipfile.ZipFile(source,'w') as jar:jar.writestr('fabric.mod.json','{"id":"render-addon"}')
-            with self.assertRaisesRegex(ValueError,'Duplicate'):
-                visual_smoke.install_extra_client_mods(client,[source,source])
-            self.assertEqual(source.read_bytes(),(client/'mods'/source.name).read_bytes())
             broken=root/'not-a-jar.jar';broken.write_text('plain text')
-            with self.assertRaisesRegex(ValueError,'Not a Minecraft mod JAR'):
-                visual_smoke.install_extra_client_mods(client,[broken])
+            for batch, message in [([source,source],'Duplicate'),([source,broken],'Not a Minecraft mod JAR')]:
+                with self.subTest(message=message):
+                    with self.assertRaisesRegex(ValueError,message):
+                        visual_smoke.install_extra_client_mods(client,batch)
+                    self.assertFalse((client/'mods'/source.name).exists())
+            # Existing files must survive rejection unchanged.
+            mods=client/'mods';mods.mkdir(parents=True)
+            existing=mods/source.name;existing.write_bytes(b'existing')
+            with self.assertRaisesRegex(ValueError,'Duplicate'):
+                visual_smoke.install_extra_client_mods(client,[source])
+            self.assertEqual(b'existing',existing.read_bytes())
+
+    def test_staging_failure_does_not_install_partial_batch(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);client=root/'test-client'
+            jars=[root/'first.jar',root/'second.jar']
+            for path in jars:
+                with zipfile.ZipFile(path,'w') as jar:jar.writestr('fabric.mod.json','{}')
+            original=visual_smoke.shutil.copy2
+            calls=0
+            def fail_second(*args,**kwargs):
+                nonlocal calls
+                calls+=1
+                if calls==2:raise OSError('staging failure')
+                return original(*args,**kwargs)
+            with patch('visual_smoke.shutil.copy2',side_effect=fail_second):
+                with self.assertRaisesRegex(OSError,'staging failure'):
+                    visual_smoke.install_extra_client_mods(client,jars)
+            self.assertFalse((client/'mods').exists())
+
 
 
 if __name__=="__main__":unittest.main()
