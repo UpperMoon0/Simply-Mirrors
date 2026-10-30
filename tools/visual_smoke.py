@@ -128,9 +128,10 @@ def install_extra_client_mods(client_dir, jars):
     import hashlib
     import shutil
     import zipfile
+    import tempfile
     target = client_dir / "mods"
-    found = []
     names = set()
+    validated = []
     for original in jars:
         path = Path(original).resolve(strict=True)
         if path.suffix.lower() != ".jar" or not path.is_file() or not zipfile.is_zipfile(path):
@@ -138,9 +139,31 @@ def install_extra_client_mods(client_dir, jars):
         if path.name in names or (target / path.name).exists():
             raise ValueError(f"Duplicate extra mod filename: {path.name}")
         names.add(path.name)
+        validated.append(path)
+    if not validated:
+        return []
+    client_dir.mkdir(parents=True, exist_ok=True)
+    found = []
+    # Stage all files before publishing any to mods.
+    with tempfile.TemporaryDirectory(prefix=".extra-mods-", dir=client_dir) as staging:
+        staged = Path(staging)
+        for path in validated:
+            copy = staged / path.name
+            shutil.copy2(path, copy)
+            found.append({"file": path.name, "sha256": hashlib.sha256(copy.read_bytes()).hexdigest()})
         target.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, target / path.name)
-        found.append({"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+        installed = []
+        try:
+            for path in validated:
+                destination = target / path.name
+                # Exclusive creation avoids replacing a concurrent profile JAR.
+                with destination.open("xb") as output, (staged / path.name).open("rb") as source:
+                    installed.append(destination)
+                    shutil.copyfileobj(source, output)
+        except BaseException:
+            for destination in installed:
+                destination.unlink(missing_ok=True)
+            raise
     return found
 
 
