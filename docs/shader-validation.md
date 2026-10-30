@@ -96,8 +96,9 @@ version and digest are recorded in the workflow. This targeted case cannot
 substitute for a full installed-modpack reproduction, which may depend on
 additional rendering mixins and client configuration.
 
-Shader transform program names are isolated per thread and per nested call,
-rather than stored in a shared global variable. Shared Java regressions exercise
-the compiler-name pairing under concurrent calls. This protects shader program
-classification; it does not itself establish compatibility with an untested
-client modpack.
+The Iris shader transform hook captures its program-name argument directly
+at RETURN, without global state or a HEAD/RETURN push/pop lifecycle. A failed
+shaderpack reload therefore cannot leave a stale transform context on a worker.
+Focused Java regressions cover invalid source followed by valid world and
+non-world transforms. This protects shader classification, but does not itself
+establish compatibility with a full client modpack.
