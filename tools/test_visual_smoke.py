@@ -7,6 +7,20 @@ import unittest
 from unittest.mock import Mock, patch
 import visual_smoke
 
+class EnclosedRoomFixtureTests(unittest.TestCase):
+    def test_enclosed_scene_preserves_markers_and_seals_every_face(self):
+        for scene in range(6):
+            with self.subTest(scene=scene):
+                plain = visual_smoke.fixture(scene)
+                indoor = visual_smoke.fixture(scene, enclosed=True)
+                self.assertEqual(6, len(indoor) - len(plain))
+                self.assertEqual(plain[0], indoor[0])
+                self.assertEqual(plain[-9:], indoor[-9:])
+                self.assertTrue(all(cmd.startswith("fill ") for cmd in indoor[5:11]))
+                self.assertTrue(indoor[10].endswith(" white_concrete"))
+                self.assertTrue(all(cmd.startswith("setblock ") for cmd in indoor[-9:]))
+
+
 class SceneActivationTests(unittest.TestCase):
     @patch("visual_smoke.time.sleep")
     def test_scene_stays_parked_until_server_teleport_succeeds(self,sleep):
