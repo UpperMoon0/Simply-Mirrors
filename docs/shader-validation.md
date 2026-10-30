@@ -48,3 +48,29 @@ Each reflected pass overrides camera-dependent uniforms without advancing Iris's
 Reflections start with cleared temporal history rather than borrowing the main view's previous frame. The pinned Complementary TAA shader rejects that empty history and uses the current reflected color. This preserves the main view's accumulated TAA; reflections do not yet accumulate separate per-mirror temporal history.
 
 The `Shader history isolation (OpenGL)` CI check exercises the production texture transaction in a real software-rendered OpenGL context, including repeated exception paths and exact image/state restoration. Its Iris API-shaped fixtures test the bridge without launching Minecraft. See [the native regression instructions](../tools/gl-tests/README.md). Shared Java tests separately cover camera-uniform restoration, multiple mirror planes, shadow matrices, mutable captured matrices, and interrupted updates. These focused checks supplement the eight-target in-game shader captures; they are not substitutes for them.
+
+## Reproducing third-party shader conflicts
+
+The normal smoke test uses the repository's checksum-pinned shader dependencies.
+When the plain NeoForge shader lane passes but a larger modpack displays only sky,
+use a **fresh, disposable** client profile with selected rendering mods from that
+pack, and the exact shaderpack ZIP. Never point this runner at a personal save.
+
+```sh
+python tools/visual_smoke.py --target neoforge-1.21.1 --shaders \
+  --shader-pack /path/to/tested-shaderpack.zip \
+  --extra-client-mod /path/to/modpack-render-addon.jar \
+  --run-name modpack-render-repro
+```
+
+Repeat `--extra-client-mod` for each client-only mod needed to reproduce the
+interaction. Client mods that also need a server-side counterpart are not
+supported by this option and require a separately configured test fixture.
+This does **not** attempt to install a full modpack or its server dependencies.
+
+The runner records SHA-256 hashes of added jars and shaderpack in its evidence
+directory; it checks six reflection directions and requires reflected colored
+geometry rather than accepting sky-only output as a pass. If this test fails,
+retain logs, screenshots, the affected renderer versions and the smallest
+reproducible combination before changing production shaders or declaring
+compatibility. A passing plain shader smoke test does not certify ATM modpacks.
