@@ -123,19 +123,52 @@ def finish_capture(client_dir,evidence,results,failures,client):
     if failures:raise AssertionError("Reflection image checks failed: "+json.dumps(failures))
     (evidence/"verified.json").write_text(json.dumps(results,indent=2)+"\n")
 
+def install_extra_client_mods(client_dir, jars):
+    """Reproduce shader/modpack interactions without touching the real instance."""
+    import hashlib
+    import shutil
+    import zipfile
+    target = client_dir / "mods"
+    found = []
+    names = set()
+    for original in jars:
+        path = Path(original).resolve(strict=True)
+        if path.suffix.lower() != ".jar" or not path.is_file() or not zipfile.is_zipfile(path):
+            raise ValueError(f"Not a Minecraft mod JAR: {path}")
+        if path.name in names or (target / path.name).exists():
+            raise ValueError(f"Duplicate extra mod filename: {path.name}")
+        names.add(path.name)
+        target.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target / path.name)
+        found.append({"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+    return found
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
     parser.add_argument("--run-name",help="Isolated test directory prefix")
+    parser.add_argument("--shader-pack", type=Path, help="Use an exact local shaderpack ZIP instead of the pinned default")
+    parser.add_argument("--extra-client-mod", type=Path, action="append", default=[],
+                        help="Copy one optional rendering/modpack JAR into the isolated client only (repeatable)")
+
     args=parser.parse_args()
     t=TARGETS[args.target];module=ROOT/args.target;cwd=ROOT/t["build_root"]
     run_name=args.run_name or ("shader" if args.shaders else "visual")
     if not __import__('re').fullmatch('[a-z0-9-]+',run_name):raise ValueError('Invalid run name')
     client_dir=module/f"run/{run_name}-client"
+    if args.shader_pack and not args.shaders:
+        parser.error("--shader-pack requires --shaders")
     if args.shaders:
         from shader_stack import prepare, install_pack
-        _,pack=prepare(args.target,ROOT/"build/shader-dependencies")
+        _,pinned_pack=prepare(args.target,ROOT/"build/shader-dependencies")
+        pack=args.shader_pack.resolve(strict=True) if args.shader_pack else pinned_pack
+        if pack.suffix.lower() != ".zip":
+            parser.error("--shader-pack must be a shaderpack ZIP")
         install_pack(client_dir,pack,loader=t['loader'])
+    # Native mods are copied only into the disposable client profile, never
+    # the production game directory or server. Keep a reproducible hash ledger.
+    extra_mods=install_extra_client_mods(client_dir,args.extra_client_mod)
     port=free_port();rcon_port=free_port();server_dir=module/f"run/{run_name}-server";server_dir.mkdir(parents=True,exist_ok=True)
     if (server_dir/"visual-world").exists():raise SystemExit("Existing test world found; use a fresh checkout or preserve/rename the old test world before retrying")
     (server_dir/"eula.txt").write_text("eula=true\n")
@@ -147,6 +180,10 @@ def main():
     command += [f"-PvisualRunName={run_name}",f"-PmirrorsShaderStack={ROOT/'build/shader-dependencies' if args.shaders else 'off'}"]
     task_prefix=f":{args.target}:" if t["build_root"]=="." else ""
     evidence=module/f"run/{run_name}-evidence";evidence.mkdir(parents=True,exist_ok=True)
+    (evidence/"extra-client-mods.json").write_text(json.dumps(extra_mods,indent=2))
+    if args.shaders:
+        import hashlib
+        (evidence/"shaderpack.json").write_text(json.dumps({"name":pack.name,"sha256":hashlib.sha256(pack.read_bytes()).hexdigest()},indent=2))
     creation={"creationflags":subprocess.CREATE_NO_WINDOW} if os.name=="nt" else {"start_new_session":True}
     server=client=rcon=None
     with (evidence/"server.log").open("w") as server_log,(evidence/"client.log").open("w") as client_log:
