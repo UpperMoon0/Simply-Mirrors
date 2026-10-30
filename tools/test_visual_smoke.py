@@ -102,4 +102,35 @@ class ShaderImageTests(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError,"handedness"):
                 visual_smoke.image_check(path,shaders=True)
 
+
+class ExternalModpackReproductionTests(unittest.TestCase):
+    def test_extra_render_mod_is_copied_only_into_disposable_profile(self):
+        import hashlib
+        import zipfile
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);source=root/'shader-compat.jar'
+            with zipfile.ZipFile(source,'w') as jar:
+                jar.writestr('META-INF/mods.toml','[[mods]]\\nmodId="shader_compat"\\n')
+            client=root/'isolated-client'
+            manifest=visual_smoke.install_extra_client_mods(client,[source])
+            copy=client/'mods'/source.name
+            self.assertTrue(copy.exists())
+            self.assertEqual(source.read_bytes(),copy.read_bytes())
+            self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),manifest[0]['sha256'])
+            self.assertFalse((root/'mods').exists())
+            self.assertEqual([],visual_smoke.install_extra_client_mods(client,[]))
+
+    def test_duplicate_or_invalid_mod_cannot_replace_a_profile_jar(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);source=root/'render-addon.jar';client=root/'test-client'
+            with zipfile.ZipFile(source,'w') as jar:jar.writestr('fabric.mod.json','{"id":"render-addon"}')
+            with self.assertRaisesRegex(ValueError,'Duplicate'):
+                visual_smoke.install_extra_client_mods(client,[source,source])
+            self.assertEqual(source.read_bytes(),(client/'mods'/source.name).read_bytes())
+            broken=root/'not-a-jar.jar';broken.write_text('plain text')
+            with self.assertRaisesRegex(ValueError,'Not a Minecraft mod JAR'):
+                visual_smoke.install_extra_client_mods(client,[broken])
+
+
 if __name__=="__main__":unittest.main()
