@@ -103,6 +103,63 @@ class ShaderImageTests(unittest.TestCase):
                 visual_smoke.image_check(path,shaders=True)
 
 
+class ClientAssetPreflightTests(unittest.TestCase):
+    @patch("visual_smoke.time.sleep")
+    def test_retry_only_loom_asset_download_failure(self, sleep):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            calls = []
+            def run(command, **kwargs):
+                calls.append(command)
+                self.assertEqual(directory, kwargs["cwd"])
+                self.assertEqual(subprocess.STDOUT, kwargs["stderr"])
+                self.assertIs(False, kwargs["check"])
+                if len(calls) == 1:
+                    kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\\n")
+                    return Mock(returncode=1)
+                kwargs["stdout"].write("BUILD SUCCESSFUL\\n")
+                return Mock(returncode=0)
+            with patch("visual_smoke.subprocess.run", side_effect=run):
+                visual_smoke.prepare_visual_client_assets(
+                    ["./gradlew"], ":fabric-1.16.5:downloadAssets", directory, directory)
+            self.assertEqual(2, len(calls))
+            self.assertEqual([ "./gradlew", ":fabric-1.16.5:downloadAssets"], calls[0])
+            self.assertEqual(calls[0], calls[1])
+            self.assertIn("DownloadException", (directory/"asset-download-1.log").read_text())
+            self.assertIn("BUILD SUCCESSFUL", (directory/"asset-download-2.log").read_text())
+            sleep.assert_called_once_with(3)
+
+    @patch("visual_smoke.time.sleep")
+    def test_non_download_failure_is_not_retried(self, sleep):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            def run(command, **kwargs):
+                kwargs["stdout"].write("Could not find task downloadAssets\\n")
+                return Mock(returncode=1)
+            with patch("visual_smoke.subprocess.run", side_effect=run) as runner:
+                with self.assertRaisesRegex(RuntimeError, "preflight failed"):
+                    visual_smoke.prepare_visual_client_assets(
+                        ["./gradlew"], "downloadAssets", directory, directory)
+            runner.assert_called_once()
+            sleep.assert_not_called()
+
+    @patch("visual_smoke.time.sleep")
+    def test_repeated_download_failures_are_bounded(self, sleep):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            def run(command, **kwargs):
+                kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\\n")
+                return Mock(returncode=1)
+            with patch("visual_smoke.subprocess.run", side_effect=run) as runner:
+                with self.assertRaisesRegex(RuntimeError, "attempt 3/3"):
+                    visual_smoke.prepare_visual_client_assets(
+                        ["./gradlew"], "downloadAssets", directory, directory)
+            self.assertEqual(3, runner.call_count)
+            self.assertEqual(2, sleep.call_count)
+            for attempt in (1, 2, 3):
+                self.assertTrue((directory/f"asset-download-{attempt}.log").exists())
+
+
 class ExternalModpackReproductionTests(unittest.TestCase):
     def test_extra_render_mod_is_copied_only_into_disposable_profile(self):
         import hashlib
