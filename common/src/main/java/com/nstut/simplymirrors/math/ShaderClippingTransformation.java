@@ -20,6 +20,31 @@ import java.util.regex.Pattern;
 public final class ShaderClippingTransformation {
     public enum Stage { VERTEX, GEOMETRY, TESS_EVAL }
 
+    // Shader source transformation may happen on parallel reload workers.
+    // The current program name belongs to a transform invocation, never the
+    // entire client. A global static field can attach the wrong clip shader
+    // to another program when packs are compiled concurrently.
+    private static final ThreadLocal<java.util.ArrayDeque<String>> PROGRAM_NAMES =
+        new ThreadLocal<java.util.ArrayDeque<String>>();
+
+    public static String beginProgram(String name) {
+        java.util.ArrayDeque<String> stack = PROGRAM_NAMES.get();
+        if (stack == null) {
+            stack = new java.util.ArrayDeque<String>();
+            PROGRAM_NAMES.set(stack);
+        }
+        stack.push(name == null ? "" : name);
+        return name;
+    }
+
+    public static String endProgram() {
+        java.util.ArrayDeque<String> stack = PROGRAM_NAMES.get();
+        if (stack == null || stack.isEmpty()) return null;
+        String name = stack.pop();
+        if (stack.isEmpty()) PROGRAM_NAMES.remove();
+        return name.isEmpty() ? null : name;
+    }
+
     private static final String PREFIX = "simplymirrors_";
     private static final String MAIN = PREFIX + "unclippedMain";
     private static final String DISTANCE = PREFIX + "clipDistance";
