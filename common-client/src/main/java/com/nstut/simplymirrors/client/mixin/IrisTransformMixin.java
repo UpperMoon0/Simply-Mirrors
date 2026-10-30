@@ -8,12 +8,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Pseudo
 @Mixin(targets={"net.irisshaders.iris.pipeline.transform.TransformPatcher","net.coderbot.iris.pipeline.transform.TransformPatcher"},remap=false)
 public abstract class IrisTransformMixin {
-    @Unique private static String simplymirrors$name;
     @ModifyVariable(method="transform",at=@At("HEAD"),argsOnly=true,ordinal=0,require=0)
-    private static String simplymirrors$name(String name){simplymirrors$name=name;return name;}
+    private static String simplymirrors$name(String name){
+        return ShaderClippingTransformation.beginProgram(name);
+    }
     @Inject(method="transform",at=@At("RETURN"),cancellable=true,require=0)
     private static void simplymirrors$clip(CallbackInfoReturnable<Map> ci){
-        String name=simplymirrors$name;
+        String name=ShaderClippingTransformation.endProgram();
         if(name!=null)ci.setReturnValue(ShaderClippingTransformation.transformProgram(name.startsWith("gbuffers_")?"SODIUM":"VANILLA",name,ci.getReturnValue()));
     }
 }
