@@ -166,6 +166,27 @@ def install_extra_client_mods(client_dir, jars):
     return found
 
 
+
+def prepare_visual_client_assets(command, task, cwd, evidence, attempts=3):
+    """Resolve Loom assets before starting the server; retry only download failures."""
+    for attempt in range(1, attempts + 1):
+        log = evidence / f"asset-download-{attempt}.log"
+        with log.open("w") as output:
+            result = subprocess.run(command + [task], cwd=cwd, stdout=output,
+                                    stderr=subprocess.STDOUT, check=False)
+        if result.returncode == 0:
+            return
+        # A broken build, missing task, or compile failure must not be
+        # obscured by retries. Each attempt has its own preserved log.
+        detail = log.read_text(errors="replace")
+        transient = "net.fabricmc.loom.util.download.DownloadException" in detail
+        if not transient or attempt == attempts:
+            raise RuntimeError(
+                f"Visual client asset preflight failed (attempt {attempt}/{attempts}, "
+                f"exit {result.returncode}): {log}")
+        time.sleep(3 * attempt)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
@@ -203,6 +224,10 @@ def main():
     task_prefix=f":{args.target}:" if t["build_root"]=="." else ""
     evidence=module/f"run/{run_name}-evidence";evidence.mkdir(parents=True,exist_ok=True)
     (evidence/"extra-client-mods.json").write_text(json.dumps(extra_mods,indent=2))
+    # A Loom asset fetch can fail before the game starts. Retry that download
+    # before bringing up the disposable server, not a crashed game client.
+    if args.target == "fabric-1.16.5":
+        prepare_visual_client_assets(command, task_prefix+"downloadAssets", cwd, evidence)
     if args.shaders:
         import hashlib
         (evidence/"shaderpack.json").write_text(json.dumps({"name":pack.name,"sha256":hashlib.sha256(pack.read_bytes()).hexdigest()},indent=2))
