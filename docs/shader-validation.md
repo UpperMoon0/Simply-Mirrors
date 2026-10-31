@@ -82,13 +82,23 @@ A sky-only reflection can be missed by an open-air smoke fixture. Add
 `--enclosed` when checking reports involving indoor mirrors. The disposable
 server builds opaque side walls, floor, ceiling, and a wall around the mirror,
 then keeps the distinct colored objects *inside* the room for all six face
-orientations. The existing image checks still require the reflected objects,
-not just a successful shader render pass.
+orientations. Internal sea lantern strips provide block light without removing
+the opaque enclosure: a fully sealed, unlit room may expose almost-black
+geometry in physically shaded shader packs, which can look like a missing
+reflection. The existing image checks still require colored reflected objects
+in the correct order, not merely a successful shader render pass.
 
 ```sh
 python tools/visual_smoke.py --target neoforge-1.21.1 --shaders \
   --enclosed --run-name indoor-reflection
 ```
+
+The CI shader workflow compares the same illuminated enclosed fixture both
+with and without an additional shader modifier. Inspect the preserved screenshots
+before classifying failures: absent geometry, underexposure, and a genuinely
+sky-only capture require different repairs. A failure in the modifier lane
+without a matching failure in the enclosed baseline narrows the integration
+surface; it does not by itself prove an Euphoria rendering defect.
 
 The CI shader workflow also runs an isolated test with a checksum-pinned
 client-side shader modifier found in a large modpack. Its exact third-party
