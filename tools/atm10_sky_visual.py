@@ -59,11 +59,20 @@ def read_log_tail(path: Path, limit: int = 10000) -> str:
 def stop_process(process: subprocess.Popen | None) -> None:
     if process is None or process.poll() is not None:
         return
-    process.terminate()
+    # Gradle may survive after the Minecraft server JVM has shut down. Kill
+    # the process group to avoid leaking Gradle children into later variants.
+    import signal
+    if os.name != "nt":
+        os.killpg(process.pid, signal.SIGTERM)
+    else:
+        process.terminate()
     try:
         process.wait(timeout=12)
     except subprocess.TimeoutExpired:
-        process.kill()
+        if os.name != "nt":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
         process.wait(timeout=10)
 
 
@@ -93,7 +102,8 @@ def prepare_world(name: str, evidence: Path) -> Path:
     with log.open("w", encoding="utf-8") as output:
         try:
             proc = subprocess.Popen(command, cwd=ROOT, stdout=output,
-                                    stderr=subprocess.STDOUT)
+                                    stderr=subprocess.STDOUT,
+                                    start_new_session=(os.name != "nt"))
             deadline = time.monotonic() + 1200
             while time.monotonic() < deadline:
                 if proc.poll() is not None:
@@ -125,13 +135,22 @@ def prepare_world(name: str, evidence: Path) -> Path:
             rcon.command("save-all flush")
             time.sleep(3)
             rcon.command("stop")
-            try:
-                proc.wait(timeout=50)
-            except subprocess.TimeoutExpired:
-                raise RuntimeError("Native fixture server did not stop")
             world = server_dir / "visual-world"
             if not (world / "level.dat").is_file():
                 raise RuntimeError(f"Fixture world not generated: {world}")
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                # The native server itself may finish shutdown while Gradle's
+                # wrapper remains alive. Require explicit persisted-world and
+                # completed-shutdown evidence before terminating the wrapper.
+                tail = read_log_tail(log)
+                if ("Stopping server" not in tail or
+                        "All dimensions are saved" not in tail or
+                        "Thread RCON Listener stopped" not in tail):
+                    raise RuntimeError("Native server shutdown unverified: " + tail)
+                print("ATM10_SKY_SERVER_STOP_CONFIRMED_GRADLE_WRAPPER_STILL_RUNNING", flush=True)
+                stop_process(proc)
             print("ATM10_SKY_NATIVE_FIXTURE_READY", flush=True)
             return world
         finally:
@@ -175,7 +194,8 @@ def run_client(client: Path, mode: str, name: str, evidence: Path) -> dict:
     try:
         with output.open("w", encoding="utf-8") as log:
             process = subprocess.Popen(command, cwd=ROOT, stdout=log,
-                                       stderr=subprocess.STDOUT)
+                                       stderr=subprocess.STDOUT,
+                                       start_new_session=(os.name != "nt"))
             for scene, face in enumerate(FACES):
                 (client / "visual-scene.txt").write_text(str(scene) + "\n")
                 result = client / "visual-evidence" / f"result-{scene}.json"
