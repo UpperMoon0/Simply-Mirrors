@@ -49,7 +49,7 @@ def build_qa_jar(evidence: Path) -> Path:
         names = set(archive.namelist())
         required = {
             "com/nstut/simplymirrors/visualtest/VisualProbeMixin.class",
-            "com/nstut/simplymirrors/visualtest/Atm10SkyProbe.class",
+            "com/nstut/simplymirrors/visualsupport/Atm10SkyProbe.class",
             "simplymirrors.visual.mixins.json",
             "META-INF/neoforge.mods.toml",
         }

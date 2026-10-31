@@ -1,4 +1,4 @@
-package com.nstut.simplymirrors.visualtest;
+package com.nstut.simplymirrors.visualsupport;
 
 import com.nstut.simplymirrors.client.MirrorRenderer;
 import com.nstut.simplymirrors.visualsupport.ShaderProbe;

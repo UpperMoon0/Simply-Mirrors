@@ -1,5 +1,6 @@
 package com.nstut.simplymirrors.visualtest;
 import com.nstut.simplymirrors.client.MirrorRenderer;
+import com.nstut.simplymirrors.visualsupport.Atm10SkyProbe;
 import com.nstut.simplymirrors.visualsupport.VisualCapture;
 import com.nstut.simplymirrors.visualsupport.VisualScene;
 import net.minecraft.client.gui.screens.TitleScreen;

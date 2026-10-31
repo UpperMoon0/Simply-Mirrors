@@ -132,6 +132,21 @@ class Atm10SkyTest(unittest.TestCase):
             self.assertTrue((off / "mods" / "qa.jar").exists())
             self.assertTrue((complementary / "saves" / "atm10-sky-mirror-fixture" / "level.dat").exists())
 
+    def test_atm10_probe_helper_is_outside_sponge_mixin_package(self):
+        # Sponge Mixin disallows loading *any* ordinary class from a mixin
+        # package, including helper classes that are not listed as mixins.
+        helper = ROOT / "visual-tests/1.21.1/java/com/nstut/simplymirrors/visualsupport/Atm10SkyProbe.java"
+        mixins = ROOT / "visual-tests/1.21.1/java/com/nstut/simplymirrors/visualtest"
+        self.assertTrue(helper.is_file())
+        self.assertTrue(helper.read_text().startswith(
+            "package com.nstut.simplymirrors.visualsupport;"))
+        self.assertFalse((mixins / "Atm10SkyProbe.java").exists())
+        probe = (mixins / "VisualProbeMixin.java").read_text()
+        self.assertIn("import com.nstut.simplymirrors.visualsupport.Atm10SkyProbe;", probe)
+        jar_source = (ROOT / "tools/atm10_sky_production.py").read_text()
+        self.assertIn("com/nstut/simplymirrors/visualsupport/Atm10SkyProbe.class", jar_source)
+        self.assertNotIn("com/nstut/simplymirrors/visualtest/Atm10SkyProbe.class", jar_source)
+
     def test_drippy_boot_guard_only_in_temporary_visual_fixture(self):
         import os
         import re
