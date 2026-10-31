@@ -23,6 +23,19 @@ processResources {
         }
         def neo = new File(destinationDir, 'META-INF/neoforge.mods.toml')
         if (neo.exists()) neo.append('\n[[mixins]]\nconfig = "simplymirrors.visual.mixins.json"\n')
+        // ATM10 ONLY: Never add this to the shared mixin config. Other
+        // Minecraft versions do not compile the 1.21.1 QA guard class.
+        if (mc == '1.21.1' && loader == 'neoforge' &&
+                providers.gradleProperty('atm10Sky').isPresent()) {
+            def visual = new File(destinationDir, 'simplymirrors.visual.mixins.json')
+            if (!visual.isFile()) throw new GradleException('ATM10 QA mixin config missing')
+            def parsed = new groovy.json.JsonSlurper().parse(visual)
+            if (parsed.client.contains('DrippyEarlyBootMixin'))
+                throw new GradleException('ATM10 QA guard leaked into shared source mixins')
+            parsed.client.add('DrippyEarlyBootMixin')
+            visual.text = groovy.json.JsonOutput.prettyPrint(
+                    groovy.json.JsonOutput.toJson(parsed)) + '\n'
+        }
     }
 }
 if (mc == '1.16.5' && loader == 'forge') {

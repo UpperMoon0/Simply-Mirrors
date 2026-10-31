@@ -142,7 +142,12 @@ class Atm10SkyTest(unittest.TestCase):
         self.assertIn('registry.get(null) == null', source)
         self.assertIn('ci.cancel()', source)
         config = json.loads((root / "visual-tests/resources/simplymirrors.visual.mixins.json").read_text())
-        self.assertIn("DrippyEarlyBootMixin", config["client"])
+        self.assertNotIn("DrippyEarlyBootMixin", config["client"])
+        gradle = (root / "tools/visual.gradle").read_text()
+        self.assertIn("parsed.client.add('DrippyEarlyBootMixin')", gradle)
+        self.assertIn("providers.gradleProperty('atm10Sky').isPresent()", gradle)
+        qa = (root / "tools/atm10_sky_production.py").read_text()
+        self.assertIn('gradle("-PvisualPort=0", "-Patm10Sky",', qa)
         # The production source sets must not contain the test bootstrap patch.
         self.assertFalse(any(root.glob("common*/src/main/**/DrippyEarlyBootMixin.java")))
 
