@@ -102,8 +102,8 @@ jobs:
           if-no-files-found: warn
 
 
-  atm10-sky-euphoria:
-    name: ATM10 Sky shader modifier (NeoForge 1.21.1)
+  euphoria-compat:
+    name: Euphoria Patcher shader compatibility (NeoForge 1.21.1)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -122,13 +122,13 @@ jobs:
           sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libopenal1 libxrandr2 libxcursor1 libxi6 libxinerama1
           python -m pip install pillow
           chmod +x gradlew
-      - name: Download checksum-pinned ATM10 Sky Euphoria Patcher
+      - name: Download checksum-pinned Euphoria Patcher
         run: |
           python - <<'PY'
           import hashlib
           import pathlib
           import urllib.request
-          target = pathlib.Path("build/atm10-repro/EuphoriaPatcher-1.10.5-r5.9.3-neoforge.jar")
+          target = pathlib.Path("build/shader-modifier-repro/EuphoriaPatcher-1.10.5-r5.9.3-neoforge.jar")
           target.parent.mkdir(parents=True, exist_ok=True)
           url = "https://cdn.modrinth.com/data/4H6sumDB/versions/QMsRXtSJ/EuphoriaPatcher-1.10.5-r5.9.3-neoforge.jar"
           expected = "19e5528f6284f68d28e9e8b17a9531bb0f8e0ab862e3ab93a1b53fe3f18765cfa38cc512e66c2d4b308e6783307d132e8b5c337db4a39b016d75e6830376070a"
@@ -141,7 +141,7 @@ jobs:
           target.write_bytes(content)
           print(f"Verified {target}: sha512={digest}")
           PY
-      - name: Render with ATM10 Sky Euphoria Patcher in disposable profile
+      - name: Render with Euphoria Patcher in disposable shader fixture
         env:
           LIBGL_ALWAYS_SOFTWARE: 'true'
           ALSOFT_DRIVERS: 'null'
@@ -149,15 +149,15 @@ jobs:
           xvfb-run -a -s '-screen 0 1280x720x24'
           python tools/visual_smoke.py
           --target neoforge-1.21.1 --shaders --enclosed
-          --extra-client-mod build/atm10-repro/EuphoriaPatcher-1.10.5-r5.9.3-neoforge.jar
-          --run-name atm10-euphoria
+          --extra-client-mod build/shader-modifier-repro/EuphoriaPatcher-1.10.5-r5.9.3-neoforge.jar
+          --run-name euphoria-compat
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mirror-atm10-sky-euphoria
+          name: mirror-euphoria-compat
           path: |
-            neoforge-1.21.1/run/atm10-euphoria-evidence/**
-            neoforge-1.21.1/run/atm10-euphoria-client/visual-evidence/**
-            neoforge-1.21.1/run/atm10-euphoria-client/logs/**
-            neoforge-1.21.1/run/atm10-euphoria-client/crash-reports/**
+            neoforge-1.21.1/run/euphoria-compat-evidence/**
+            neoforge-1.21.1/run/euphoria-compat-client/visual-evidence/**
+            neoforge-1.21.1/run/euphoria-compat-client/logs/**
+            neoforge-1.21.1/run/euphoria-compat-client/crash-reports/**
           if-no-files-found: warn
