@@ -1,8 +1,19 @@
 name: ATM10 Sky full modpack visual acceptance
 
+# TEMPORARY ISSUE #5 REPRODUCTION ONLY. Never add this to the official
+# release/test requirements or allow it to run on main. Delete this entire
+# workflow and pack-specific fixtures before merging PR #6.
 on:
-  pull_request:
   workflow_dispatch:
+  push:
+    branches:
+      - test/neoforge-shader-modpack-repro-issue-5
+    paths:
+      - .github/workflows/atm10-sky.yml
+      - tools/atm10_sky_visual.py
+      - tools/atm10_sky.py
+      - tools/atm10-sky/**
+      - tools/test_atm10_sky.py
 
 permissions:
   contents: read
