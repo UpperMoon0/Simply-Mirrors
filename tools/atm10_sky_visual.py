@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "neoforge-1.21.1"
 OFFSET = 48
 WORLD = "atm10-sky-mirror-fixture"
+OWO_DEV_REMAP_NAME = "owo-lib-neoforge-0.12.15.6-beta.1+1.21.jar"
+OWO_DEV_REMAP_SHA = "5fc306ad3d42e1dc26812f2df856e7c232376405caab6af4f5aaffe89cd2b256"
 
 
 def gradle(*flags: str) -> list[str]:
@@ -74,6 +76,25 @@ def stop_process(process: subprocess.Popen | None) -> None:
         else:
             process.kill()
         process.wait(timeout=10)
+
+
+def stage_development_remapped_owo(client: Path, evidence: Path) -> None:
+    """Load original owo through Loom's dev mappings, not an edited modpack."""
+    staged = client / "mods" / OWO_DEV_REMAP_NAME
+    if not staged.is_file():
+        raise RuntimeError(f"Expected full-pack owo jar missing: {staged}")
+    digest = hashlib.sha256(staged.read_bytes()).hexdigest()
+    if digest != OWO_DEV_REMAP_SHA:
+        raise ValueError(f"ATM10 owo checksum mismatch in staged client: {staged}")
+    staged.unlink()
+    (evidence / "dev-mapped-mods.json").write_text(json.dumps([{
+        "filename": OWO_DEV_REMAP_NAME,
+        "sha256": digest,
+        "loader": "loom.modLocalRuntime",
+        "source": "unchanged verified ATM10 installation",
+        "reason": "production mixin targets require Loom development remapping",
+    }], indent=2) + "\n", encoding="utf-8")
+    print("ATM10_SKY_DEV_REMAPPED_OWO " + digest, flush=True)
 
 
 def prepare_world(name: str, evidence: Path) -> Path:
@@ -164,6 +185,7 @@ def stage_client(game: Path, world: Path, name: str, mode: str, evidence: Path) 
     if client.exists():
         raise ValueError(f"Refusing to reuse a client profile: {client}")
     shutil.copytree(game, client)
+    stage_development_remapped_owo(client, evidence)
     saves = client / "saves"
     saves.mkdir(exist_ok=True)
     shutil.copytree(world, saves / WORLD)

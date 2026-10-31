@@ -82,3 +82,17 @@ if (mc == '1.16.5' && loader == 'forge') {
     }
     if (loader == 'forge') loom.forge.mixinConfig('simplymirrors.visual.mixins.json')
 }
+
+// TEMPORARY ATM10-SKY DIAGNOSTIC ONLY. Production owo's obfuscated mixin
+// cannot resolve the Screen lambda in a Loom development runtime. Keep the
+// original verified mod JAR and let Loom remap it for its dev namespace.
+// The isolated client removes the duplicate from mods/, but not the source pack.
+// Delete alongside all other ATM10-specific diagnostics before merging.
+if (mc == '1.21.1' && loader == 'neoforge' && providers.gradleProperty('atm10Sky').isPresent()) {
+    def owo = rootProject.file('build/atm10-sky/game/mods/owo-lib-neoforge-0.12.15.6-beta.1+1.21.jar')
+    if (!owo.isFile()) throw new GradleException("Missing verified ATM10 owo jar: ${owo}")
+    def digest = java.security.MessageDigest.getInstance('SHA-256').digest(owo.bytes).encodeHex().toString()
+    if (digest != '5fc306ad3d42e1dc26812f2df856e7c232376405caab6af4f5aaffe89cd2b256') throw new GradleException("ATM10 owo checksum mismatch: ${owo}")
+    dependencies { modLocalRuntime files(owo) }
+    logger.lifecycle('ATM10_SKY_OWO_DEV_REMAP_VERIFIED sha256=' + digest)
+}

@@ -1,11 +1,13 @@
 """Offline regressions for full ATM10 Sky fixture and artifact provenance."""
 import json
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from atm10_sky import read_lock, safe_override, validate_url
-from atm10_sky_visual import shift_command
+from atm10_sky_visual import shift_command, stage_development_remapped_owo, OWO_DEV_REMAP_NAME
 from visual_smoke import fixture
 
 
@@ -59,6 +61,30 @@ class Atm10SkyTest(unittest.TestCase):
                         self.assertEqual(a[5:], b[5:])
                     else:
                         self.assertEqual(a[4:], b[4:])
+
+    def test_owo_dev_remap_preserves_verified_identity_and_rejects_drift(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            mods = base / "client" / "mods"
+            mods.mkdir(parents=True)
+            evidence = base / "evidence"
+            evidence.mkdir()
+            jar = mods / OWO_DEV_REMAP_NAME
+            payload = b"temporary regression-test mod bytes"
+            jar.write_bytes(payload)
+            digest = hashlib.sha256(payload).hexdigest()
+            with patch("atm10_sky_visual.OWO_DEV_REMAP_SHA", digest):
+                stage_development_remapped_owo(base / "client", evidence)
+            self.assertFalse(jar.exists())
+            remapped = json.loads((evidence / "dev-mapped-mods.json").read_text())
+            self.assertEqual(remapped[0]["filename"], OWO_DEV_REMAP_NAME)
+            self.assertEqual(remapped[0]["sha256"], digest)
+            self.assertEqual(remapped[0]["loader"], "loom.modLocalRuntime")
+            jar.write_bytes(b"corrupt")
+            with patch("atm10_sky_visual.OWO_DEV_REMAP_SHA", digest):
+                with self.assertRaises(ValueError):
+                    stage_development_remapped_owo(base / "client", evidence)
+            self.assertTrue(jar.exists())
 
     def test_reject_malformed_fixture(self):
         for command in ("stop", "op @a", "tp @a 0 0 0"):
