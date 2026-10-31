@@ -58,6 +58,24 @@ def read_log_tail(path: Path, limit: int = 10000) -> str:
         return stream.read().decode("utf-8", errors="replace")
 
 
+def fatal_client_launch(log: Path, latest: Path) -> str | None:
+    """Detect a real JVM fatality even when Gradle leaves its wrapper running.
+
+    Non-fatal mod warning messages must not abort a visual test.
+    """
+    output = read_log_tail(log, 96_000)
+    for marker in ('Exception in thread "main"', 'FAILURE: Build failed with an exception.',
+                   'BUILD FAILED'):
+        if marker in output:
+            return "Fatal client launcher error (" + marker + "): " + output[-12_000:]
+    game_output = read_log_tail(latest, 48_000)
+    for marker in ('Uncaught exception in thread "Render thread"',
+                   'Reported exception thrown!'):
+        if marker in game_output:
+            return "Fatal Minecraft client error (" + marker + "): " + game_output[-12_000:]
+    return None
+
+
 def stop_process(process: subprocess.Popen | None) -> None:
     if process is None or process.poll() is not None:
         return
@@ -228,6 +246,9 @@ def run_client(client: Path, mode: str, name: str, evidence: Path) -> dict:
                         break
                     if process.poll() is not None:
                         raise RuntimeError(f"Game exited during {face}: {read_log_tail(output)}")
+                    fatal = fatal_client_launch(output, client / "logs" / "latest.log")
+                    if fatal is not None:
+                        raise RuntimeError(f"Client crashed before {face} reflection capture: {fatal}")
                     time.sleep(2)
                 if not result.is_file():
                     raise TimeoutError(f"Game didn't capture {face}: {read_log_tail(output)}")

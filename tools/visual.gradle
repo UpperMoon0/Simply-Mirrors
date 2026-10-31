@@ -93,6 +93,47 @@ if (mc == '1.21.1' && loader == 'neoforge' && providers.gradleProperty('atm10Sky
     if (!owo.isFile()) throw new GradleException("Missing verified ATM10 owo jar: ${owo}")
     def digest = java.security.MessageDigest.getInstance('SHA-256').digest(owo.bytes).encodeHex().toString()
     if (digest != '5fc306ad3d42e1dc26812f2df856e7c232376405caab6af4f5aaffe89cd2b256') throw new GradleException("ATM10 owo checksum mismatch: ${owo}")
-    dependencies { modLocalRuntime files(owo) }
+    // Under Architectury Loom, NeoForge's production JarJar resolver does not
+    // automatically expose libraries embedded inside this mod when the parent
+    // is a development modLocalRuntime dependency. Extract only libraries from
+    // the original checksum-verified parent, preserving their exact bytes.
+    // This is strictly a temporary ATM10 harness compatibility workaround.
+    def requiredLibraryKeys = [
+        'io.wispforest:endec',
+        'io.wispforest.endec:gson',
+        'io.wispforest.endec:netty',
+        'io.wispforest.endec:jankson',
+        'blue.endless:jankson'
+    ] as Set
+    def nestedLibraries = []
+    new java.util.zip.ZipFile(owo).withCloseable { archive ->
+        def metadata = archive.getEntry('META-INF/jarjar/metadata.json')
+        if (metadata == null) throw new GradleException('Verified ATM10 owo has no JarJar metadata')
+        def entries = new groovy.json.JsonSlurper().parse(archive.getInputStream(metadata)).jars ?: []
+        entries.each { entry ->
+            def key = "${entry.identifier?.group}:${entry.identifier?.artifact}"
+            if (!requiredLibraryKeys.contains(key)) return
+            def nestedPath = entry.path ?: entry.file
+            if (!(nestedPath instanceof String) || !nestedPath.endsWith('.jar'))
+                throw new GradleException("Invalid owo JarJar library path for ${key}: ${nestedPath}")
+            def nested = archive.getEntry(nestedPath)
+            if (nested == null) throw new GradleException("Missing owo JarJar library ${nestedPath}")
+            def bytes = archive.getInputStream(nested).bytes
+            def childDigest = java.security.MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString()
+            def child = layout.buildDirectory.file("atm10-owo-libraries/${childDigest}.jar").get().asFile
+            child.parentFile.mkdirs()
+            if (child.exists() && !java.util.Arrays.equals(child.bytes, bytes))
+                throw new GradleException("Existing diagnostic library differs: ${child}")
+            if (!child.exists()) child.bytes = bytes
+            nestedLibraries.add([id: key, jar: child, sha256: childDigest])
+        }
+    }
+    if (!nestedLibraries.any { it.id == 'io.wispforest:endec' })
+        throw new GradleException('Verified ATM10 owo has no bundled Endec library; inspect its JarJar metadata before selecting a different version')
+    dependencies {
+        modLocalRuntime files(owo)
+        forgeRuntimeLibrary files(nestedLibraries.collect { it.jar })
+    }
     logger.lifecycle('ATM10_SKY_OWO_DEV_REMAP_VERIFIED sha256=' + digest)
+    nestedLibraries.each { logger.lifecycle("ATM10_SKY_OWO_NESTED_LIBRARY ${it.id} sha256=${it.sha256}") }
 }

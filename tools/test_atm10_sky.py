@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from atm10_sky import read_lock, safe_override, validate_url
-from atm10_sky_visual import shift_command, stage_development_remapped_owo, OWO_DEV_REMAP_NAME
+from atm10_sky_visual import shift_command, stage_development_remapped_owo, fatal_client_launch, OWO_DEV_REMAP_NAME
 from visual_smoke import fixture
 
 
@@ -85,6 +85,22 @@ class Atm10SkyTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     stage_development_remapped_owo(base / "client", evidence)
             self.assertTrue(jar.exists())
+
+    def test_detects_client_crash_without_false_positive_on_mod_warnings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            launcher = root / "launcher.log"
+            latest = root / "latest.log"
+            launcher.write_text("[main/WARN] Mod loading: optional class absent\\n")
+            latest.write_text("[main/WARN] Error loading class: optional/Dependency\\n")
+            self.assertIsNone(fatal_client_launch(launcher, latest))
+            launcher.write_text('Exception in thread "main" java.lang.RuntimeException: startup\\n')
+            fatal = fatal_client_launch(launcher, latest)
+            self.assertIn("Fatal client launcher error", fatal)
+            self.assertIn("RuntimeException", fatal)
+            launcher.write_text("Starting game\\n")
+            latest.write_text('Uncaught exception in thread "Render thread"\\n')
+            self.assertIn("Fatal Minecraft client error", fatal_client_launch(launcher, latest))
 
     def test_reject_malformed_fixture(self):
         for command in ("stop", "op @a", "tp @a 0 0 0"):
