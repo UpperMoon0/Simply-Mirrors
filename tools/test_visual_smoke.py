@@ -13,11 +13,16 @@ class EnclosedRoomFixtureTests(unittest.TestCase):
             with self.subTest(scene=scene):
                 plain = visual_smoke.fixture(scene)
                 indoor = visual_smoke.fixture(scene, enclosed=True)
-                self.assertEqual(6, len(indoor) - len(plain))
-                self.assertEqual(plain[0], indoor[0])
+                self.assertEqual(9, len(indoor) - len(plain))
+                self.assertEqual(plain[:5], indoor[:5])
                 self.assertEqual(plain[-9:], indoor[-9:])
-                self.assertTrue(all(cmd.startswith("fill ") for cmd in indoor[5:11]))
+                self.assertTrue(all(cmd.startswith("fill ") for cmd in indoor[5:14]))
                 self.assertTrue(indoor[10].endswith(" white_concrete"))
+                # Enclosed, opaque rooms need an internal light source. Otherwise
+                # shader exposure produces near-black but still-correct geometry.
+                self.assertEqual(3, len(indoor[11:14]))
+                self.assertTrue(all(cmd.endswith(" sea_lantern") for cmd in indoor[11:14]))
+                self.assertEqual(3, len(set(indoor[11:14])))
                 self.assertTrue(all(cmd.startswith("setblock ") for cmd in indoor[-9:]))
 
 
