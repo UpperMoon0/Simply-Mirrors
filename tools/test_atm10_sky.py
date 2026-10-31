@@ -130,9 +130,9 @@ class Atm10SkyTest(unittest.TestCase):
             self.assertFalse((complementary / "mods" / "EuphoriaPatcher-exact.jar").exists())
             self.assertTrue((mods / "EuphoriaPatcher-exact.jar").exists())
             self.assertEqual((off / "config" / "iris.properties").read_text(),
-                             "enableShaders=false\\nshaderPack=ComplementaryReimagined_r5.9.3.zip\\n")
+                             "enableShaders=false\nshaderPack=ComplementaryReimagined_r5.9.3.zip\n")
             self.assertEqual((complementary / "config" / "iris.properties").read_text(),
-                             "enableShaders=true\\nshaderPack=ComplementaryReimagined_r5.9.3.zip\\n")
+                             "enableShaders=true\nshaderPack=ComplementaryReimagined_r5.9.3.zip\n")
             self.assertFalse((off / "iris.properties").exists())
             self.assertFalse((complementary / "iris.properties").exists())
             self.assertTrue((off / "mods" / "qa.jar").exists())
