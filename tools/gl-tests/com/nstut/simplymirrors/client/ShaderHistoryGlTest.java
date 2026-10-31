@@ -22,8 +22,69 @@ public final class ShaderHistoryGlTest {
             glfwMakeContextCurrent(window); GL.createCapabilities();
             System.out.println("OpenGL: "+glGetString(GL_VERSION)+" / "+glGetString(GL_RENDERER));
             for (int format : new int[]{GL_RGBA8, GL_SRGB8_ALPHA8, GL_RGBA16F, GL_RGBA32F, GL_R32I, GL_R32UI, GL_RGB8_SNORM, GL_RGBA8_SNORM, GL_RGB16F, GL_R11F_G11F_B10F, GL_R8}) exercise(format);
+            depthStorageParity();
             System.out.println("PASS: world/shadow main/alt contents, zero history, all mip levels, 11 integer/float/sRGB/SNORM formats, shadow flips, sampler flags, GL state, repeated/exception cleanup");
         } finally { glfwDestroyWindow(window); glfwTerminate(); }
+    }
+
+    /** Regression: the camera-depth reallocation restores caller binding and
+     * preserves the source while aligning the mirror texture's internal format. */
+    private static void depthStorageParity() {
+        int original = glGetInteger(GL_TEXTURE_BINDING_2D);
+        int main = glGenTextures();
+        int mirror = glGenTextures();
+        try {
+            glBindTexture(GL_TEXTURE_2D, main);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, 16, 16, 0,
+                    GL_DEPTH_COMPONENT, GL_FLOAT, (ByteBuffer) null);
+            glBindTexture(GL_TEXTURE_2D, mirror);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, 16, 16, 0,
+                    GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, (ByteBuffer) null);
+            int binding = glGetInteger(GL_TEXTURE_BINDING_2D);
+            if (!DepthTextureParity.match(main, mirror, 16, 16))
+                throw new AssertionError("Mismatched mirror depth was not upgraded");
+            if (glGetInteger(GL_TEXTURE_BINDING_2D) != binding)
+                throw new AssertionError("Mirror depth format adapter leaked texture binding");
+            if (glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT)
+                    != GL_DEPTH_COMPONENT32F) throw new AssertionError("Incorrect mirror depth format");
+            if (DepthTextureParity.match(main, mirror, 16, 16))
+                throw new AssertionError("Matching depth storage was allocated twice");
+            glBindTexture(GL_TEXTURE_2D, main);
+            if (glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT)
+                    != GL_DEPTH_COMPONENT32F) throw new AssertionError("Main depth format changed");
+            int fbo = glGenFramebuffers();
+            int color = glGenTextures();
+            try {
+                glBindTexture(GL_TEXTURE_2D, color);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 16, 16, 0,
+                        GL_RGBA, GL_FLOAT, (ByteBuffer) null);
+                int previous = glGetInteger(GL_FRAMEBUFFER_BINDING);
+                glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                        GL_TEXTURE_2D, color, 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                        GL_TEXTURE_2D, mirror, 0);
+                int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                glBindFramebuffer(GL_FRAMEBUFFER, previous);
+                if (status != GL_FRAMEBUFFER_COMPLETE)
+                    throw new AssertionError("Reallocated mirror depth cannot support an Iris color FBO: " + status);
+            } finally {
+                glDeleteTextures(color);
+                glDeleteFramebuffers(fbo);
+            }
+            if (glGetError() != GL_NO_ERROR)
+                throw new AssertionError("Depth storage adapter caused a GL error");
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, original);
+            glDeleteTextures(main);
+            glDeleteTextures(mirror);
+        }
     }
 
     private static void exercise(int format) throws Exception {

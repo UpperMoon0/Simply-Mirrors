@@ -51,7 +51,18 @@ public final class Atm10FramebufferTrace {
         if (type != GL_TEXTURE) return type + ":" + name;
         int level = glGetFramebufferAttachmentParameteri(target, point,
                 GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL);
-        return type + ":" + name + ":level=" + level;
+        // QA-only: record storage differences without modifying the bound FBO.
+        int previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
+        try {
+            glBindTexture(GL_TEXTURE_2D, name);
+            int format = glGetTexLevelParameteri(GL_TEXTURE_2D, level, GL_TEXTURE_INTERNAL_FORMAT);
+            int width = glGetTexLevelParameteri(GL_TEXTURE_2D, level, GL_TEXTURE_WIDTH);
+            int height = glGetTexLevelParameteri(GL_TEXTURE_2D, level, GL_TEXTURE_HEIGHT);
+            return type + ":" + name + ":level=" + level + ":format=" + format
+                    + ":size=" + width + "x" + height;
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, previousTexture);
+        }
     }
 
     private static final class Counter {
