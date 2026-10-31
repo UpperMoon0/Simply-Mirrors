@@ -69,7 +69,8 @@ if (mc == '1.16.5' && loader == 'forge') {
             runDir("run/${runName}-client")
             property 'simplymirrors.visualTest', 'true'
             property 'simplymirrors.visualPort', port
-            vmArg '-Xmx2048m'
+            if (providers.gradleProperty('atm10Sky').isPresent()) property 'simplymirrors.atm10Sky', 'true'
+            vmArg providers.gradleProperty('atm10Sky').isPresent() ? '-Xmx8192m' : '-Xmx2048m'
             programArgs '--width', '960', '--height', '540'
         }
         visualServer {
