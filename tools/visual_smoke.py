@@ -33,7 +33,15 @@ def fixture(scene, enclosed=False):
             fill((-9,63,-10),(-9,73,0),"stone"),
             fill((9,63,-10),(9,73,0),"stone"),
             fill((-9,63,-10),(9,73,-10),"stone"),
-            fill((-9,63,0),(9,73,0),"white_concrete")
+            fill((-9,63,0),(9,73,0),"white_concrete"),
+            # Opaque walls and roof remove skylight entirely. Real shader packs
+            # correctly expose a sealed, unlit room nearly black: that cannot
+            # be used to distinguish a sky-only mirror from dark geometry.
+            # Illuminate the colored reflection targets with block light while
+            # keeping the enclosing roof and side walls opaque.
+            fill((-7,72,-8),(7,72,-8),"sea_lantern"),
+            fill((-7,72,-5),(7,72,-5),"sea_lantern"),
+            fill((-7,72,-2),(7,72,-2),"sea_lantern")
         ])
     # Every block retains the same legacy facing; the other five reflections must work independently of it.
     for x in range(-1,2):
