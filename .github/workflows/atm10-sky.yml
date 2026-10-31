@@ -11,6 +11,7 @@ on:
     paths:
       - .github/workflows/atm10-sky.yml
       - tools/atm10_sky_visual.py
+      - tools/atm10_sky_production.py
       - tools/atm10_sky.py
       - tools/atm10-sky/**
       - tools/test_atm10_sky.py
@@ -50,7 +51,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb xauth mesa-utils libgl1-mesa-dri libglx-mesa0 libopenal1 libxrandr2 libxcursor1 libxi6 libxinerama1
-          python -m pip install pillow
+          python -m pip install pillow minecraft-launcher-lib==8.0
           chmod +x gradlew
           echo "Runner: $(uname -a)"
       - name: Verify installer and fixture isolation regressions
@@ -61,10 +62,10 @@ jobs:
             --output build/atm10-sky/game \
             --cache build/atm10-sky/downloads \
             --workers 8
-      - name: Real full-pack shader reflection capture (six orientations)
+      - name: Production NeoForge full-pack shader reflection capture (six orientations)
         run: |
           xvfb-run -a -s '-screen 0 1280x720x24' \
-            python tools/atm10_sky_visual.py \
+            python tools/atm10_sky_production.py \
               --game build/atm10-sky/game \
               --mode '${{ matrix.mode }}'
       - name: Upload real visual evidence, startup logs and failures

@@ -59,7 +59,11 @@ public final class Atm10SkyProbe {
                     (mc.screen == null ? "none" : mc.screen.getClass().getName()));
             if (mc.getOverlay() == null && mc.screen instanceof AccessibilityOnboardingScreen)
                 mc.setScreen(new TitleScreen());
-            if (!loading && mc.getOverlay() == null && mc.screen instanceof TitleScreen) {
+            // Full ATM packs can replace the vanilla title screen with their
+            // own menu. After a bounded startup grace period, launch our
+            // disposable world from any stable menu, not only TitleScreen.
+            if (!loading && mc.getOverlay() == null &&
+                    (mc.screen instanceof TitleScreen || (frames > 300 && mc.screen != null))) {
                 loading = true;
                 System.out.println("ATM10_SKY_VISUAL_OPEN " + WORLD);
                 mc.createWorldOpenFlows().openWorld(WORLD, () -> {

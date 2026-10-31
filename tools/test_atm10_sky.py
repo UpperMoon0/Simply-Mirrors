@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from atm10_sky import read_lock, safe_override, validate_url
 from atm10_sky_visual import shift_command, stage_development_remapped_owo, fatal_client_launch, OWO_DEV_REMAP_NAME
+from atm10_sky_production import stage_full_pack
 from visual_smoke import fixture
 
 
@@ -101,6 +102,35 @@ class Atm10SkyTest(unittest.TestCase):
             launcher.write_text("Starting game\\n")
             latest.write_text('Uncaught exception in thread "Render thread"\\n')
             self.assertIn("Fatal Minecraft client error", fatal_client_launch(launcher, latest))
+
+    def test_production_client_preserves_pack_and_isolates_shader_variants(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            game = base / "original"
+            mods = game / "mods"
+            mods.mkdir(parents=True)
+            (mods / OWO_DEV_REMAP_NAME).write_bytes(b"unaltered packaged owo")
+            (mods / "EuphoriaPatcher-exact.jar").write_bytes(b"unaltered euphoria")
+            (game / "shaderpacks").mkdir()
+            (game / "shaderpacks" / "ComplementaryReimagined_r5.9.3.zip").write_bytes(b"shader")
+            world = base / "fixture"
+            world.mkdir()
+            (world / "level.dat").write_bytes(b"disposable world")
+            qa = base / "qa.jar"
+            qa.write_bytes(b"production QA instrumentation")
+            evidence = base / "evidence"
+            evidence.mkdir()
+            with patch("atm10_sky_production.MODULE", base / "module"):
+                off = stage_full_pack(game, world, "off", "off", qa, evidence)
+                complementary = stage_full_pack(
+                    game, world, "complementary", "complementary", qa, evidence)
+            self.assertEqual((off / "mods" / OWO_DEV_REMAP_NAME).read_bytes(),
+                             (mods / OWO_DEV_REMAP_NAME).read_bytes())
+            self.assertTrue((off / "mods" / "EuphoriaPatcher-exact.jar").exists())
+            self.assertFalse((complementary / "mods" / "EuphoriaPatcher-exact.jar").exists())
+            self.assertTrue((mods / "EuphoriaPatcher-exact.jar").exists())
+            self.assertTrue((off / "mods" / "qa.jar").exists())
+            self.assertTrue((complementary / "saves" / "atm10-sky-mirror-fixture" / "level.dat").exists())
 
     def test_reject_malformed_fixture(self):
         for command in ("stop", "op @a", "tp @a 0 0 0"):
