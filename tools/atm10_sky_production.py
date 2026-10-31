@@ -33,7 +33,7 @@ SHADER = "ComplementaryReimagined_r5.9.3.zip"
 def build_qa_jar(evidence: Path) -> Path:
     """Remap visual-test instrumentation to the *production* namespace."""
     log = evidence / "qa-jar-build.log"
-    command = gradle("-PvisualPort=0", "-Patm10Sky", "-PmirrorsShaderStack=off", ":neoforge-1.21.1:remapJar")
+    command = gradle("-PvisualPort=0", "-Patm10QaJar", "-PmirrorsShaderStack=off", ":neoforge-1.21.1:remapJar")
     with log.open("w", encoding="utf-8") as stream:
         result = subprocess.run(command, cwd=ROOT, stdout=stream,
                                 stderr=subprocess.STDOUT, check=False)

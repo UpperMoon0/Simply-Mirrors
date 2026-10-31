@@ -147,7 +147,8 @@ class Atm10SkyTest(unittest.TestCase):
         self.assertIn("parsed.client.add('DrippyEarlyBootMixin')", gradle)
         self.assertIn("providers.gradleProperty('atm10Sky').isPresent()", gradle)
         qa = (root / "tools/atm10_sky_production.py").read_text()
-        self.assertIn('gradle("-PvisualPort=0", "-Patm10Sky",', qa)
+        self.assertIn('gradle("-PvisualPort=0", "-Patm10QaJar",', qa)
+        self.assertIn("providers.gradleProperty('atm10QaJar').isPresent()", gradle)
         # The production source sets must not contain the test bootstrap patch.
         self.assertFalse(any(root.glob("common*/src/main/**/DrippyEarlyBootMixin.java")))
 

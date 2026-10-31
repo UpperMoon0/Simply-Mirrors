@@ -26,7 +26,7 @@ processResources {
         // ATM10 ONLY: Never add this to the shared mixin config. Other
         // Minecraft versions do not compile the 1.21.1 QA guard class.
         if (mc == '1.21.1' && loader == 'neoforge' &&
-                providers.gradleProperty('atm10Sky').isPresent()) {
+                providers.gradleProperty('atm10QaJar').isPresent()) {
             def visual = new File(destinationDir, 'simplymirrors.visual.mixins.json')
             if (!visual.isFile()) throw new GradleException('ATM10 QA mixin config missing')
             def parsed = new groovy.json.JsonSlurper().parse(visual)
