@@ -137,7 +137,7 @@ jobs:
               content = response.read()
           digest = hashlib.sha512(content).hexdigest()
           if digest != expected:
-              raise ValueError("ATM10 Sky Euphoria Patcher checksum mismatch")
+              raise ValueError("Euphoria Patcher checksum mismatch")
           target.write_bytes(content)
           print(f"Verified {target}: sha512={digest}")
           PY
