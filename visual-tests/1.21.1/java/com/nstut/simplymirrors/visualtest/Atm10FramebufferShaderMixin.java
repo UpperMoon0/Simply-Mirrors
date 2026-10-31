@@ -17,7 +17,7 @@ public abstract class Atm10FramebufferShaderMixin {
     private static void simplymirrors$beginReturn(CallbackInfo ci) {
         Atm10FramebufferTrace.check("shader-begin-return");
     }
-    @Inject(method = "end", at = @At("HEAD"), require = 0)
+    // Sample the actual bound draw/read targets when Iris binds a world shader.\n    // Earlier probes at renderLevel HEAD/TAIL missed the failing intermediate FBO.\n    @Inject(method = "upload", at = @At("HEAD"), require = 1)\n    private static void simplymirrors$shaderProgramHead(CallbackInfo ci) {\n        Atm10FramebufferTrace.check("shader-program-upload");\n    }\n    @Inject(method = "end", at = @At("HEAD"), require = 0)
     private static void simplymirrors$endHead(CallbackInfo ci) {
         Atm10FramebufferTrace.check("shader-end-head");
     }
