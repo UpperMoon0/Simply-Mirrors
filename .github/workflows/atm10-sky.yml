@@ -81,4 +81,4 @@ jobs:
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/visual-evidence/**
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/logs/**
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/crash-reports/**
-            neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/iris.properties
+            neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/config/iris.properties

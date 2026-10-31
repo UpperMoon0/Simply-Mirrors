@@ -216,7 +216,11 @@ def stage_client(game: Path, world: Path, name: str, mode: str, evidence: Path) 
             "Control variant: exact ATM10 Sky 2.3.1 with only Euphoria Patcher "
             "removed to isolate plain Complementary. Full-pack variants: off/euphoria.\n")
     pack = "ComplementaryReimagined_r5.9.3.zip"
-    (client / "iris.properties").write_text(
+    # Iris reads its persisted options from the game directory's config folder.
+    # A root-level iris.properties is silently ignored by the real launcher.
+    iris_config = client / "config" / "iris.properties"
+    iris_config.parent.mkdir(parents=True, exist_ok=True)
+    iris_config.write_text(
         f"enableShaders={'false' if mode == 'off' else 'true'}\n"
         f"shaderPack={pack}\n")
     (client / "visual-scene.txt").write_text("-1\n")

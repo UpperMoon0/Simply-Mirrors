@@ -85,7 +85,11 @@ def stage_full_pack(game: Path, world: Path, name: str, mode: str,
         if len(euphoria) != 1:
             raise RuntimeError(f"Expected exactly one pinned Euphoria Patcher: {euphoria}")
         euphoria[0].unlink()
-    (client / "iris.properties").write_text(
+    # Iris reads its persisted options from the game directory's config folder.
+    # A root-level iris.properties is silently ignored by the real launcher.
+    iris_config = client / "config" / "iris.properties"
+    iris_config.parent.mkdir(parents=True, exist_ok=True)
+    iris_config.write_text(
         f"enableShaders={'false' if mode == 'off' else 'true'}\n"
         f"shaderPack={SHADER}\n", encoding="utf-8")
     (client / "visual-scene.txt").write_text("-1\n", encoding="utf-8")
