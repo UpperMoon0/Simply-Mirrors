@@ -3,7 +3,8 @@
   "package": "com.nstut.simplymirrors.visualtest",
   "refmap": "simplymirrors.refmap.json",
   "client": [
-    "VisualProbeMixin"
+    "VisualProbeMixin",
+    "DrippyEarlyBootMixin"
   ],
   "injectors": {
     "defaultRequire": 1

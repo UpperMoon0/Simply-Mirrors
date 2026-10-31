@@ -132,6 +132,20 @@ class Atm10SkyTest(unittest.TestCase):
             self.assertTrue((off / "mods" / "qa.jar").exists())
             self.assertTrue((complementary / "saves" / "atm10-sky-mirror-fixture" / "level.dat").exists())
 
+    def test_drippy_boot_guard_only_in_temporary_visual_fixture(self):
+        import os
+        import re
+        root = Path(__file__).resolve().parents[1]
+        path = root / "visual-tests/1.21.1/java/com/nstut/simplymirrors/visualtest/DrippyEarlyBootMixin.java"
+        source = path.read_text()
+        self.assertIn('Boolean.getBoolean("simplymirrors.atm10Sky")', source)
+        self.assertIn('registry.get(null) == null', source)
+        self.assertIn('ci.cancel()', source)
+        config = json.loads((root / "visual-tests/resources/simplymirrors.visual.mixins.json").read_text())
+        self.assertIn("DrippyEarlyBootMixin", config["client"])
+        # The production source sets must not contain the test bootstrap patch.
+        self.assertFalse(any(root.glob("common*/src/main/**/DrippyEarlyBootMixin.java")))
+
     def test_reject_malformed_fixture(self):
         for command in ("stop", "op @a", "tp @a 0 0 0"):
             with self.assertRaises(ValueError):
