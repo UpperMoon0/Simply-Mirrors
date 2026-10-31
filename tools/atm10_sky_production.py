@@ -96,7 +96,10 @@ def stage_full_pack(game: Path, world: Path, name: str, mode: str,
     (evidence / "launcher-mode.json").write_text(json.dumps({
         "runtime": "production-neoforge",
         "minecraft": MC_VERSION, "neoforge": NEOFORGE_VERSION,
-        "offline-local-test-account": True, "full_pack": mode != "complementary",
+        "offline-local-test-account": True,
+        "full_pack_installed": True,
+        "euphoria_patcher_present": mode != "complementary",
+        "full_pack": mode != "complementary",  # Legacy diagnostic field.
         "mode": mode, "shader": None if mode == "off" else SHADER,
         "qa_jar": jar.name, "qa_jar_sha256": sha256(jar.read_bytes()).hexdigest(),
     }, indent=2) + "\n", encoding="utf-8")
