@@ -138,6 +138,23 @@ class Atm10SkyTest(unittest.TestCase):
             self.assertTrue((off / "mods" / "qa.jar").exists())
             self.assertTrue((complementary / "saves" / "atm10-sky-mirror-fixture" / "level.dat").exists())
 
+    def test_atm10_framebuffer_trace_is_qa_only(self):
+        gradle = (ROOT / "tools/visual.gradle").read_text()
+        qa_config = json.loads((ROOT / "visual-tests/resources/simplymirrors.visual.mixins.json").read_text())
+        prod_config = json.loads((ROOT / "common-1.21.1/src/main/resources/simplymirrors.mixins.json").read_text())
+        for name in ['Atm10FramebufferLevelMixin','Atm10FramebufferShaderMixin','Atm10FramebufferTargetMixin','Atm10FramebufferIrisMixin']:
+            with self.subTest(name=name):
+                path = ROOT / "visual-tests/1.21.1/java/com/nstut/simplymirrors/visualtest" / (name + ".java")
+                self.assertTrue(path.is_file())
+                self.assertIn("parsed.client.add('" + name + "')", gradle)
+                self.assertNotIn(name, qa_config["client"])
+                self.assertNotIn(name, prod_config["client"])
+        helper = (ROOT / "visual-tests/1.21.1/java/com/nstut/simplymirrors/visualsupport/Atm10FramebufferTrace.java").read_text()
+        self.assertIn("ATM10_SKY_FBO_CHECK", helper)
+        self.assertIn("glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)", helper)
+        self.assertIn("glCheckFramebufferStatus(GL_READ_FRAMEBUFFER)", helper)
+        self.assertIn("simplymirrors.atm10Sky", helper)
+
     def test_atm10_probe_helper_is_outside_sponge_mixin_package(self):
         # Sponge Mixin disallows loading *any* ordinary class from a mixin
         # package, including helper classes that are not listed as mixins.

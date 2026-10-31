@@ -33,6 +33,10 @@ processResources {
             if (parsed.client.contains('DrippyEarlyBootMixin'))
                 throw new GradleException('ATM10 QA guard leaked into shared source mixins')
             parsed.client.add('DrippyEarlyBootMixin')
+            parsed.client.add('Atm10FramebufferLevelMixin')
+            parsed.client.add('Atm10FramebufferShaderMixin')
+            parsed.client.add('Atm10FramebufferTargetMixin')
+            parsed.client.add('Atm10FramebufferIrisMixin')
             visual.text = groovy.json.JsonOutput.prettyPrint(
                     groovy.json.JsonOutput.toJson(parsed)) + '\n'
         }
