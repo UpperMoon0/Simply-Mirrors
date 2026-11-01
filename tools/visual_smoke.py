@@ -100,7 +100,7 @@ def stop(process):
         try:process.wait(timeout=10)
         except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL)
 
-def image_check(path,shaders=False):
+def image_check(path,shaders=False,require_entity=False):
     from PIL import Image
     import colorsys
     image=Image.open(path).convert("RGB");w,h=image.size
@@ -131,7 +131,27 @@ def image_check(path,shaders=False):
     if shaders:
         green=sum(hits["green"])/len(hits["green"])
         assert blue+20<green<red-20,"Reflected marker bands are not ordered blue, green, red"
-    return {"pixels":{key:len(value) for key,value in hits.items()},"redMeanX":red,"blueMeanX":blue}
+    result={"pixels":{key:len(value) for key,value in hits.items()},"redMeanX":red,"blueMeanX":blue}
+    if require_entity:
+        if not shaders:
+            raise ValueError("Reflected entity assertion requires shaders")
+        # A colored wall alone passed in issue #5 when the reflected entity
+        # was missing. This is only for the pinned NeoForge enclosed fixture.
+        # Normalized bounds below match its independently captured PNGs.
+        def non_lime(x0,x1,y0,y1):
+            count=samples=0
+            for yy in range(int(h*y0/270),int(h*y1/270)):
+                for xx in range(int(w*x0/480),int(w*x1/480)):
+                    rr,gg,bb=image.getpixel((xx,yy))
+                    samples+=1
+                    if not (gg>rr*1.12 and gg>bb*1.07):count+=1
+            return count,samples
+        side,side_count=non_lime(253,263,100,140)
+        assert side*10<side_count*2,"Reflected center panel cannot be confirmed green"
+        occupied,occupied_count=non_lime(232,249,93,144)
+        assert occupied*10>=occupied_count,"No reflected player silhouette against center green marker"
+        result["entityPixels"]=occupied
+    return result
 
 def finish_capture(client_dir,evidence,results,failures,client):
     # Preserve diagnostic captures even when shutdown or image acceptance fails.
@@ -213,10 +233,14 @@ def main():
     parser.add_argument("--run-name",help="Isolated test directory prefix")
     parser.add_argument("--shader-pack", type=Path, help="Use an exact local shaderpack ZIP instead of the pinned default")
     parser.add_argument("--enclosed", action="store_true", help="Build an indoor mirror room (issue #5 regression)")
+    parser.add_argument("--require-entity", action="store_true",
+                        help="Require a player silhouette in the NeoForge 1.21.1 shader reflection")
     parser.add_argument("--extra-client-mod", type=Path, action="append", default=[],
                         help="Copy one optional rendering/modpack JAR into the isolated client only (repeatable)")
 
     args=parser.parse_args()
+    if args.require_entity and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
+        parser.error("--require-entity is for NeoForge 1.21.1 enclosed shader validation")
     t=TARGETS[args.target];module=ROOT/args.target;cwd=ROOT/t["build_root"]
     run_name=args.run_name or ("shader" if args.shaders else "visual")
     if not __import__('re').fullmatch('[a-z0-9-]+',run_name):raise ValueError('Invalid run name')
@@ -290,7 +314,7 @@ def main():
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
                 try:
-                    data.update(image_check(result.with_name(f"mirror-{scene}.png"),shaders=args.shaders))
+                    data.update(image_check(result.with_name(f"mirror-{scene}.png"),shaders=args.shaders,require_entity=args.require_entity))
                 except AssertionError as error:
                     failures[face]=str(error);data['imageError']=str(error)
                 results[face]=data

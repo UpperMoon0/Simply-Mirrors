@@ -96,6 +96,20 @@ class ShaderImageTests(unittest.TestCase):
                 result=visual_smoke.image_check(path,shaders=True)
                 self.assertGreater(result["redMeanX"],result["blueMeanX"]+100)
 
+    def test_entity_required_rejects_colored_room_without_player(self):
+        from PIL import Image,ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"reflection.png"
+            self.image(path,[(77,72,161),(38,71,35),(191,53,47)])
+            visual_smoke.image_check(path,shaders=True)
+            with self.assertRaisesRegex(AssertionError,"No reflected player silhouette"):
+                visual_smoke.image_check(path,shaders=True,require_entity=True)
+            image=Image.open(path);draw=ImageDraw.Draw(image)
+            draw.rectangle((465,190,493,280),fill=(79,53,49))
+            image.save(path)
+            evidence=visual_smoke.image_check(path,shaders=True,require_entity=True)
+            self.assertGreater(evidence["entityPixels"],100)
+
     def test_flat_texture_and_missing_marker_fail(self):
         with tempfile.TemporaryDirectory() as temp:
             path=Path(temp)/"reflection.png"

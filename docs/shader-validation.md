@@ -112,3 +112,14 @@ shaderpack reload therefore cannot leave a stale transform context on a worker.
 Focused Java regressions cover invalid source followed by valid world and
 non-world transforms. This protects shader classification, but does not itself
 establish compatibility with a full client modpack.
+
+### Reflected entity acceptance (NeoForge 1.21.1)
+
+The enclosed Complementary and Euphoria acceptance jobs also require a player
+silhouette in the center of the green reflected marker, not merely a correctly
+colored room. This detects the issue #5 failure where Iris rendered wall markers
+without the reflected player. The fixed, normalized center region is compared
+to the adjacent green surface; the assertion is scoped to the pinned NeoForge
+1.21.1 enclosed scene and is not imposed on other loaders or personal skins.
+Synthetic negative tests prove a correctly colored room with no player fails.
+This complements, but cannot replace, real shader transitions or GPU tests.
