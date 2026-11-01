@@ -11,6 +11,11 @@ on:
         required: false
         type: boolean
         default: false
+      include_ie:
+        description: 'Diagnostic only: add exact Immersive Engineering stencil-enabling mod'
+        required: false
+        type: boolean
+        default: false
       shader_transition:
         description: 'Diagnostic only: toggle actual Iris pipeline off/on mid-capture'
         required: false
@@ -68,6 +73,7 @@ jobs:
         run: |
           extra=()
           if [[ '${{ inputs.renderer_only }}' == 'true' ]]; then extra+=(--renderer-only); fi
+          if [[ '${{ inputs.include_ie }}' == 'true' ]]; then extra+=(--include-ie); fi
           if [[ '${{ inputs.shader_transition }}' == 'true' && '${{ matrix.mode }}' != 'off' ]]; then
             extra+=(--check-transition)
           fi
@@ -79,18 +85,23 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: atm10-sky-${{ inputs.renderer_only && 'renderer-only' || 'real' }}-${{ matrix.mode }}-${{ github.run_attempt }}
+          name: atm10-sky-${{ inputs.include_ie && 'renderer-ie' || inputs.renderer_only && 'renderer-only' || 'real' }}-${{ matrix.mode }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: warn
           path: |
             build/atm10-sky/game/qa-evidence/modpack-inventory.json
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-evidence/**
             neoforge-1.21.1/run/atm10-renderer-only-${{ matrix.mode }}-evidence/**
+            neoforge-1.21.1/run/atm10-renderer-ie-${{ matrix.mode }}-evidence/**
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/visual-evidence/**
             neoforge-1.21.1/run/atm10-renderer-only-${{ matrix.mode }}-client/visual-evidence/**
+            neoforge-1.21.1/run/atm10-renderer-ie-${{ matrix.mode }}-client/visual-evidence/**
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/logs/**
             neoforge-1.21.1/run/atm10-renderer-only-${{ matrix.mode }}-client/logs/**
+            neoforge-1.21.1/run/atm10-renderer-ie-${{ matrix.mode }}-client/logs/**
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/crash-reports/**
             neoforge-1.21.1/run/atm10-renderer-only-${{ matrix.mode }}-client/crash-reports/**
+            neoforge-1.21.1/run/atm10-renderer-ie-${{ matrix.mode }}-client/crash-reports/**
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/config/iris.properties
             neoforge-1.21.1/run/atm10-renderer-only-${{ matrix.mode }}-client/config/iris.properties
+            neoforge-1.21.1/run/atm10-renderer-ie-${{ matrix.mode }}-client/config/iris.properties

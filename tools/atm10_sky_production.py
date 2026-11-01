@@ -68,7 +68,8 @@ def build_qa_jar(evidence: Path) -> Path:
 
 
 def stage_full_pack(game: Path, world: Path, name: str, mode: str,
-                    jar: Path, evidence: Path, renderer_only: bool = False) -> Path:
+                    jar: Path, evidence: Path, renderer_only: bool = False,
+                    include_ie: bool = False) -> Path:
     client = MODULE / "run" / f"{name}-client"
     if client.exists():
         raise ValueError(f"Refusing to overwrite a previous profile: {client}")
@@ -78,11 +79,16 @@ def stage_full_pack(game: Path, world: Path, name: str, mode: str,
         client.mkdir(parents=True)
         mods = client / "mods"
         mods.mkdir()
-        for mod_name in (
+        mod_names = [
             "iris-neoforge-1.8.12+mc1.21.1.jar",
             "sodium-neoforge-0.6.13+mc1.21.1.jar",
             "EuphoriaPatcher-1.10.5-r5.9.3-neoforge.jar",
-        ):
+        ]
+        if include_ie:
+            # Specific startup culprit from the official pack: IE calls
+            # Minecraft.getMainRenderTarget().enableStencil() by default.
+            mod_names.append("ImmersiveEngineering-1.21.1-12.4.2-194.jar")
+        for mod_name in mod_names:
             source = game / "mods" / mod_name
             if not source.is_file():
                 raise FileNotFoundError(f"Expected pinned renderer mod: {source}")
@@ -120,6 +126,7 @@ def stage_full_pack(game: Path, world: Path, name: str, mode: str,
         "offline-local-test-account": True,
         "full_pack_installed": not renderer_only,
         "renderer_only": renderer_only,
+        "included_immersive_engineering": include_ie,
         "euphoria_patcher_present": mode != "complementary",
         "full_pack": not renderer_only,  # Legacy diagnostic field.
         "mode": mode, "shader": None if mode == "off" else SHADER,
@@ -231,14 +238,18 @@ def main() -> None:
     parser.add_argument("--mode", choices=("off", "complementary", "euphoria"), required=True)
     parser.add_argument("--renderer-only", action="store_true",
                         help="Isolate Iris/Sodium/Euphoria/Complementary from full pack")
+    parser.add_argument("--include-ie", action="store_true",
+                        help="Add exact ATM10 Immersive Engineering to the isolated render stack")
     parser.add_argument("--check-transition", action="store_true",
                         help="Toggle real Iris shader pipeline off/on between north and south")
     args = parser.parse_args()
+    if args.include_ie and not args.renderer_only:
+        parser.error("--include-ie requires --renderer-only")
     if args.check_transition and args.mode == "off":
         parser.error("--check-transition requires a shader-enabled variant")
     lock = read_lock(ROOT / "tools/atm10-sky/lock-2.3.1.json")
     report = verify_install(args.game, lock)
-    name = f"atm10-{'renderer-only-' if args.renderer_only else ''}{args.mode}"
+    name = f"atm10-{'renderer-ie-' if args.include_ie else 'renderer-only-' if args.renderer_only else ''}{args.mode}"
     evidence = MODULE / "run" / f"{name}-evidence"
     evidence.mkdir(parents=True, exist_ok=False)
     (evidence / "modpack.json").write_text(
@@ -246,7 +257,8 @@ def main() -> None:
     try:
         jar = build_qa_jar(evidence)
         world = prepare_world(name, evidence)
-        client = stage_full_pack(args.game, world, name, args.mode, jar, evidence, args.renderer_only)
+        client = stage_full_pack(args.game, world, name, args.mode, jar, evidence,
+                                 args.renderer_only, args.include_ie)
         command = install_and_command(client, evidence, args.check_transition)
         run_production_capture(client, command, args.mode, evidence, args.check_transition)
     except BaseException as exc:
