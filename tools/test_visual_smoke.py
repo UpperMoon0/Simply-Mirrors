@@ -110,6 +110,23 @@ class ShaderImageTests(unittest.TestCase):
             evidence=visual_smoke.image_check(path,shaders=True,require_entity=True)
             self.assertGreater(evidence["entityPixels"],100)
 
+    def test_vertical_reflections_have_face_aware_entity_thresholds(self):
+        from PIL import Image,ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"reflection.png"
+            self.image(path,[(77,72,161),(38,71,35),(191,53,47)])
+            im=Image.open(path);draw=ImageDraw.Draw(im)
+            # Looking into a floor makes the reflected player tiny.
+            draw.rectangle((471,216,484,235),fill=(79,53,49))
+            im.save(path)
+            evidence=visual_smoke.image_check(path,shaders=True,require_entity=True,face_index=5)
+            self.assertGreater(evidence["entityPixels"],60)
+            # Ceiling reflection can span the adjacent green comparison strip.
+            draw.rectangle((460,187,538,280),fill=(79,53,49))
+            im.save(path)
+            evidence=visual_smoke.image_check(path,shaders=True,require_entity=True,face_index=4)
+            self.assertGreater(evidence["entityPixels"],100)
+
     def test_flat_texture_and_missing_marker_fail(self):
         with tempfile.TemporaryDirectory() as temp:
             path=Path(temp)/"reflection.png"

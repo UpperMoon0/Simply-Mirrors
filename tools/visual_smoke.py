@@ -100,7 +100,7 @@ def stop(process):
         try:process.wait(timeout=10)
         except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL)
 
-def image_check(path,shaders=False,require_entity=False):
+def image_check(path,shaders=False,require_entity=False,face_index=0):
     from PIL import Image
     import colorsys
     image=Image.open(path).convert("RGB");w,h=image.size
@@ -147,9 +147,15 @@ def image_check(path,shaders=False,require_entity=False):
                     if not (gg>rr*1.12 and gg>bb*1.07):count+=1
             return count,samples
         side,side_count=non_lime(253,263,100,140)
-        assert side*10<side_count*2,"Reflected center panel cannot be confirmed green"
+        # A ceiling reflection shows the model sideways and can obscure the
+        # adjacent marker; a floor reflection makes it smaller. The fixed
+        # cardinal threshold must not falsely reject these vertical poses.
+        if face_index != 4:
+            assert side*10<side_count*2,"Reflected center panel cannot be confirmed green"
         occupied,occupied_count=non_lime(232,249,93,144)
-        assert occupied*10>=occupied_count,"No reflected player silhouette against center green marker"
+        needed=(occupied_count*0.16 if face_index==4 else
+                occupied_count*0.045 if face_index==5 else occupied_count*0.10)
+        assert occupied>=needed,"No reflected player silhouette against center green marker"
         result["entityPixels"]=occupied
     return result
 
@@ -326,7 +332,8 @@ def main():
                 if args.shaders:assert data.get('shaderPackActive') is True,data
                 if args.force_stencil:assert data.get('stencilEnabled') is True,data
                 try:
-                    data.update(image_check(result.with_name(f"mirror-{scene}.png"),shaders=args.shaders,require_entity=args.require_entity))
+                    data.update(image_check(result.with_name(f"mirror-{scene}.png"),shaders=args.shaders,
+                                            require_entity=args.require_entity,face_index=scene))
                 except AssertionError as error:
                     failures[face]=str(error);data['imageError']=str(error)
                 results[face]=data
