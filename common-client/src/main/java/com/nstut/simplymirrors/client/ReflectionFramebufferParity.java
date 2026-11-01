@@ -19,13 +19,15 @@ import static org.lwjgl.opengl.GL33.*;
 final class ReflectionFramebufferParity implements AutoCloseable {
     private final Map<Integer, Stencil> detached = new LinkedHashMap<>();
     private boolean closed;
+    private static int diagnosticCount;
+    private static final int MAX_DIAGNOSTICS = 24;
 
     boolean repairBoundDrawFramebuffer() {
         if (closed) throw new IllegalStateException("Reflection framebuffer scope is closed");
         int framebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
-        if (framebuffer == 0
-                || glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
-            return false;
+        if (framebuffer == 0) return false;
+        int initialStatus = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+        if (initialStatus == GL_FRAMEBUFFER_COMPLETE) return false;
         // Iris can reattach a packed stencil when switching depth targets
         // during one reflection. Do not let a previously repaired FBO become
         // unsupported again before the next draw.
@@ -58,7 +60,15 @@ final class ReflectionFramebufferParity implements AutoCloseable {
                 : 0;
         Stencil saved = new Stencil(stencilType, stencilName, level, layered == GL_TRUE, layer);
         detach();
-        if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+        int detachedStatus = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+        if (diagnosticCount < MAX_DIAGNOSTICS) {
+            diagnosticCount++;
+            System.err.println("SIMPLY_MIRRORS_REFLECTION_FBO_DIAGNOSTIC id=" + framebuffer
+                    + " initial=" + initialStatus + " withoutStencil=" + detachedStatus
+                    + " depthType=" + depthType + " depthName=" + depthName
+                    + " stencilType=" + stencilType + " stencilName=" + stencilName);
+        }
+        if (detachedStatus == GL_FRAMEBUFFER_COMPLETE) {
             if (previousRepair == null) detached.put(framebuffer, saved);
             return true;
         }
