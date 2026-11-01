@@ -52,6 +52,19 @@ public final class Atm10FramebufferTrace {
         if (type == GL_NONE) return "none";
         int name = glGetFramebufferAttachmentParameteri(target, point,
                 GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+        if (type == GL_RENDERBUFFER) {
+            int previous = glGetInteger(GL_RENDERBUFFER_BINDING);
+            try {
+                glBindRenderbuffer(GL_RENDERBUFFER, name);
+                return type + ":" + name
+                        + ":format=" + glGetRenderbufferParameteri(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT)
+                        + ":size=" + glGetRenderbufferParameteri(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH)
+                        + "x" + glGetRenderbufferParameteri(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT)
+                        + ":samples=" + glGetRenderbufferParameteri(GL_RENDERBUFFER, GL_RENDERBUFFER_SAMPLES);
+            } finally {
+                glBindRenderbuffer(GL_RENDERBUFFER, previous);
+            }
+        }
         if (type != GL_TEXTURE) return type + ":" + name;
         int level = glGetFramebufferAttachmentParameteri(target, point,
                 GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL);
