@@ -79,11 +79,13 @@ public final class Atm10SkyProbe {
             return false;
         }
         if (transitionPhase == 3) {
-            if (ShaderProbe.active() && ++transitionTicks >= 30) {
+            // Keep the timeout advancing even if Iris never becomes active.
+            if (++transitionTicks > 450)
+                throw new IllegalStateException("Timed out restoring Iris shaders");
+            if (ShaderProbe.active() && transitionTicks >= 30) {
                 transitionPhase = 4;
                 System.out.println("ATM10_SKY_SHADER_TRANSITION_ON_CONFIRMED");
-            } else if (transitionTicks > 450)
-                throw new IllegalStateException("Timed out restoring Iris shaders");
+            }
             return false;
         }
         return true;
