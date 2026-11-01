@@ -23,6 +23,7 @@ public final class ShaderHistoryGlTest {
             System.out.println("OpenGL: "+glGetString(GL_VERSION)+" / "+glGetString(GL_RENDERER));
             for (int format : new int[]{GL_RGBA8, GL_SRGB8_ALPHA8, GL_RGBA16F, GL_RGBA32F, GL_R32I, GL_R32UI, GL_RGB8_SNORM, GL_RGBA8_SNORM, GL_RGB16F, GL_R11F_G11F_B10F, GL_R8}) exercise(format);
             depthStorageParity();
+            depthStencilAttachmentCollision();
             System.out.println("PASS: world/shadow main/alt contents, zero history, all mip levels, 11 integer/float/sRGB/SNORM formats, shadow flips, sampler flags, GL state, repeated/exception cleanup");
         } finally { glfwDestroyWindow(window); glfwTerminate(); }
     }
@@ -84,6 +85,82 @@ public final class ShaderHistoryGlTest {
             glBindTexture(GL_TEXTURE_2D, original);
             glDeleteTextures(main);
             glDeleteTextures(mirror);
+        }
+    }
+
+
+    /**
+     * Iris can retain a packed stencil attachment from its main gbuffer when
+     * the depth attachment is replaced with the mirror's depth-only texture.
+     * Some GL drivers report FRAMEBUFFER_UNSUPPORTED for that split pair.
+     * Verify scoped correction/restoration without altering the color/depth
+     * textures, READ binding, or any complete framebuffers.
+     */
+    private static void depthStencilAttachmentCollision() {
+        int originalDraw=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
+        int originalRead=glGetInteger(GL_READ_FRAMEBUFFER_BINDING);
+        int originalTexture=glGetInteger(GL_TEXTURE_BINDING_2D);
+        int framebuffer=glGenFramebuffers();
+        int color=glGenTextures(),depth=glGenTextures(),stencil=glGenTextures();
+        try {
+            glBindTexture(GL_TEXTURE_2D,color);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,32,32,0,GL_RGBA,
+                    GL_UNSIGNED_BYTE,(ByteBuffer)null);
+            glBindTexture(GL_TEXTURE_2D,depth);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT24,32,32,0,
+                    GL_DEPTH_COMPONENT,GL_UNSIGNED_INT,(ByteBuffer)null);
+            glBindTexture(GL_TEXTURE_2D,stencil);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH24_STENCIL8,32,32,0,
+                    GL_DEPTH_STENCIL,GL_UNSIGNED_INT_24_8,(ByteBuffer)null);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER,framebuffer);
+            glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,color,0);
+            glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,depth,0);
+            glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_STENCIL_ATTACHMENT,stencil,0);
+            int originalStatus=glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+            ReflectionFramebufferParity transaction=new ReflectionFramebufferParity();
+            try {
+                boolean changed=transaction.repairBoundDrawFramebuffer();
+                if(originalStatus==GL_FRAMEBUFFER_COMPLETE) {
+                    if(changed) throw new AssertionError("Complete framebuffer altered");
+                } else {
+                    if(!changed) throw new AssertionError(
+                            "Split depth/stencil framebuffer was not repaired: "+originalStatus);
+                    if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)
+                        throw new AssertionError("Reflection framebuffer remains unsupported");
+                    if(transaction.repairBoundDrawFramebuffer())
+                        throw new AssertionError("Repeated repair altered existing scope");
+                    int detached=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                            GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+                    if(detached!=GL_NONE)
+                        throw new AssertionError("Incompatible stencil still bound");
+                }
+            } finally {
+                transaction.close();
+                transaction.close();
+            }
+            if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=originalStatus)
+                throw new AssertionError("Original framebuffer status was not restored");
+            int restored=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                    GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+            if(restored!=stencil)
+                throw new AssertionError("Main stencil attachment was not restored");
+            if(glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)!=framebuffer ||
+                    glGetInteger(GL_READ_FRAMEBUFFER_BINDING)!=originalRead)
+                throw new AssertionError("Scoped repair leaked framebuffer binding");
+            if(glGetError()!=GL_NO_ERROR)
+                throw new AssertionError("Scoped reflection repair caused GL error");
+        } finally {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER,originalDraw);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER,originalRead);
+            glBindTexture(GL_TEXTURE_2D,originalTexture);
+            glDeleteFramebuffers(framebuffer);
+            glDeleteTextures(color);glDeleteTextures(depth);glDeleteTextures(stencil);
         }
     }
 
