@@ -42,7 +42,7 @@ subprojects { p ->
         compileOnly 'io.github.llamalad7:mixinextras-common:0.4.1'
         if (target.loader == 'fabric') modImplementation "net.fabricmc:fabric-loader:${target.loaderVersion}"
         else if (target.loader == 'forge') forge "net.minecraftforge:forge:${target.loaderVersion}"
-        else neoForge "net.neoforged:neoforge:${p.name == 'neoforge-1.21.1' ? providers.gradleProperty('atm10SkyLoaderVersion').orElse(target.loaderVersion).get() : target.loaderVersion}"
+        else neoForge "net.neoforged:neoforge:${target.loaderVersion}"
     }
     java {
         toolchain.languageVersion = JavaLanguageVersion.of(target.java)

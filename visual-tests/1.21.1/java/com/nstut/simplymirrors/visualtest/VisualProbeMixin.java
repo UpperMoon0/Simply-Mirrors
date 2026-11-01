@@ -1,7 +1,6 @@
 package com.nstut.simplymirrors.visualtest;
 import com.nstut.simplymirrors.client.MirrorRenderer;
 import net.minecraft.world.InteractionHand;
-import com.nstut.simplymirrors.visualsupport.Atm10SkyProbe;
 import com.nstut.simplymirrors.visualsupport.VisualCapture;
 import com.nstut.simplymirrors.visualsupport.VisualScene;
 import net.minecraft.client.gui.screens.TitleScreen;
@@ -60,7 +59,6 @@ public abstract class VisualProbeMixin {
             simplymirrors$stencilReady = true;
             System.out.println("SIMPLY_MIRRORS_VISUAL_MAIN_STENCIL_ENABLED");
         }
-        if(Boolean.getBoolean("simplymirrors.atm10Sky")){Atm10SkyProbe.tick(mc);return;}
         if(simplymirrors$frames++==0) {mc.options.onboardAccessibility=false;mc.options.pauseOnLostFocus=false;mc.options.renderDistance().set(4);mc.options.bobView().set(false);mc.options.framerateLimit().set(30);mc.options.hideGui=true;}
         if(mc.player==null||mc.level==null) {
             if(simplymirrors$frames%300==0)System.out.println("SIMPLY_MIRRORS_VISUAL_STAGE "+(mc.screen==null?"none":mc.screen.getClass().getName()));

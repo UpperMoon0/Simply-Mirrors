@@ -134,14 +134,17 @@ unsupported. The permanent NeoForge 1.21.1 enclosed shader jobs deliberately
 call the identical NeoForge `RenderTarget.enableStencil()` operation from a
 QA-only render-thread hook before scene capture. The hook is opt-in, and the
 fixture asserts that stencil was actually enabled and that a reflected player
-remains visible across all six orientations. Neither the full ATM10 modpack
-nor Immersive Engineering is installed in the permanent shader jobs: the test
-simulates the exact public rendering condition that Immersive Engineering sets.
+remains visible across all six orientations. The permanent shader jobs do
+not require a particular modpack or Immersive Engineering itself: the fixture
+reproduces the public stencil state those rendering clients enable.
 
 ### Animated reflected-entity check
 
 The targeted NeoForge 1.21.1 shader acceptance captures a player's
 reflection before and during a deliberate main-hand swing, with an unchanged
 camera angle. Pixel differences in the reflected entity region must be visible;
-a static or frozen player reflection fails. Other five faces still require
+a static or frozen player reflection fails. Slow software-OpenGL test
+clients hold only the test actor's mid-swing animation state long enough for
+several completed reflection frames; this tests pose rendering, not real-time
+animation cadence. Other five faces still require
 stencil-enabled, six-orientation geometry and player-silhouette checks.
