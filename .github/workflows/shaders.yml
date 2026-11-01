@@ -89,7 +89,7 @@ jobs:
           xvfb-run -a -s '-screen 0 1280x720x24'
           python tools/visual_smoke.py
           --target neoforge-1.21.1 --shaders --enclosed
-          --run-name enclosed-baseline --require-entity --force-stencil
+          --run-name enclosed-baseline --require-entity --force-stencil --check-motion
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -150,7 +150,7 @@ jobs:
           python tools/visual_smoke.py
           --target neoforge-1.21.1 --shaders --enclosed
           --extra-client-mod build/shader-modifier-repro/EuphoriaPatcher-1.10.5-r5.9.3-neoforge.jar
-          --run-name euphoria-compat --require-entity --force-stencil
+          --run-name euphoria-compat --require-entity --force-stencil --check-motion
       - name: Verify exact Iris framebuffer callback contract (no modpack)
         run: python tools/verify_iris_framebuffer_api.py --cache build/shader-dependencies
       - uses: actions/upload-artifact@v4

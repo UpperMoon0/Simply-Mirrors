@@ -110,6 +110,20 @@ class ShaderImageTests(unittest.TestCase):
             evidence=visual_smoke.image_check(path,shaders=True,require_entity=True)
             self.assertGreater(evidence["entityPixels"],100)
 
+    def test_entity_motion_requires_nontrivial_pixel_change(self):
+        from PIL import Image,ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            before=Path(temp)/"idle.png"
+            after=Path(temp)/"moving.png"
+            self.image(before,[(77,72,161),(38,71,35),(191,53,47)])
+            with self.assertRaisesRegex(AssertionError,"swing did not change"):
+                visual_smoke.motion_check(before,before)
+            image=Image.open(before)
+            draw=ImageDraw.Draw(image)
+            draw.rectangle((465,200,493,270),fill=(83,61,59))
+            image.save(after)
+            self.assertGreater(visual_smoke.motion_check(before,after)["movingEntityPixels"],100)
+
     def test_vertical_reflections_have_face_aware_entity_thresholds(self):
         from PIL import Image,ImageDraw
         with tempfile.TemporaryDirectory() as temp:

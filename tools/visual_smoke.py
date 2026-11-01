@@ -159,6 +159,22 @@ def image_check(path,shaders=False,require_entity=False,face_index=0):
         result["entityPixels"]=occupied
     return result
 
+def motion_check(idle_path, moving_path):
+    """Confirm the reflected player visibly changes during a deliberate swing."""
+    from PIL import Image,ImageChops
+    with Image.open(idle_path) as first,Image.open(moving_path) as second:
+        idle=first.convert("RGB")
+        moving=second.convert("RGB")
+        assert idle.size==moving.size,"Motion screenshots have different resolutions"
+        w,h=idle.size
+        roi=(int(w*0.45),int(h*0.28),int(w*0.55),int(h*0.66))
+        difference=ImageChops.difference(idle.crop(roi),moving.crop(roi))
+        changing=sum(max(pixel)>35 for pixel in difference.getdata())
+        assert changing>max(80,int((roi[2]-roi[0])*(roi[3]-roi[1])*0.006)),(
+            f"Reflected player swing did not change sufficient framebuffer pixels: {changing}")
+        return {"movingEntityPixels":changing}
+
+
 def finish_capture(client_dir,evidence,results,failures,client):
     # Preserve diagnostic captures even when shutdown or image acceptance fails.
     (evidence/"results.json").write_text(json.dumps(results,indent=2)+"\n")
@@ -239,6 +255,8 @@ def main():
     parser.add_argument("--run-name",help="Isolated test directory prefix")
     parser.add_argument("--shader-pack", type=Path, help="Use an exact local shaderpack ZIP instead of the pinned default")
     parser.add_argument("--enclosed", action="store_true", help="Build an indoor mirror room (issue #5 regression)")
+    parser.add_argument("--check-motion", action="store_true",
+                        help="Animate a reflected player swing and verify two real framebuffer captures")
     parser.add_argument("--force-stencil", action="store_true",
                         help="Exercise NeoForge main framebuffer stencil as enabled by Immersive Engineering")
     parser.add_argument("--require-entity", action="store_true",
@@ -247,6 +265,8 @@ def main():
                         help="Copy one optional rendering/modpack JAR into the isolated client only (repeatable)")
 
     args=parser.parse_args()
+    if args.check_motion and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
+        parser.error("--check-motion requires NeoForge 1.21.1 enclosed shader validation")
     if args.force_stencil and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
         parser.error("--force-stencil is for NeoForge 1.21.1 enclosed shader validation")
     if args.require_entity and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
@@ -309,6 +329,9 @@ def main():
             print("Fixture ready; starting client",args.target,flush=True)
             client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
             client_env=os.environ.copy()
+            if args.check_motion:
+                client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
+                                                   " -Dsimplymirrors.visualCheckMotion=true").strip()
             if args.force_stencil:
                 # Only the disposable client gets the opt-in stencil trigger.
                 # The fixture server and all production/runtime jars are untouched.
@@ -331,9 +354,13 @@ def main():
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
                 if args.force_stencil:assert data.get('stencilEnabled') is True,data
+                if args.check_motion and scene==0:assert data.get('motionCaptured') is True,data
                 try:
                     data.update(image_check(result.with_name(f"mirror-{scene}.png"),shaders=args.shaders,
                                             require_entity=args.require_entity,face_index=scene))
+                    if args.check_motion and scene==0:
+                        data.update(motion_check(result.with_name("mirror-motion-idle.png"),
+                                                 result.with_name("mirror-motion-swing.png")))
                 except AssertionError as error:
                     failures[face]=str(error);data['imageError']=str(error)
                 results[face]=data

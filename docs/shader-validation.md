@@ -137,3 +137,11 @@ fixture asserts that stencil was actually enabled and that a reflected player
 remains visible across all six orientations. Neither the full ATM10 modpack
 nor Immersive Engineering is installed in the permanent shader jobs: the test
 simulates the exact public rendering condition that Immersive Engineering sets.
+
+### Animated reflected-entity check
+
+The targeted NeoForge 1.21.1 shader acceptance captures a player's
+reflection before and during a deliberate main-hand swing, with an unchanged
+camera angle. Pixel differences in the reflected entity region must be visible;
+a static or frozen player reflection fails. Other five faces still require
+stencil-enabled, six-orientation geometry and player-silhouette checks.
