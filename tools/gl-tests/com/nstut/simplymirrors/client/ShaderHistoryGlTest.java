@@ -157,6 +157,57 @@ public final class ShaderHistoryGlTest {
                 throw new AssertionError("Scoped repair leaked framebuffer binding");
             if(glGetError()!=GL_NO_ERROR)
                 throw new AssertionError("Scoped reflection repair caused GL error");
+
+            // Iris can replace stencil A with B during one reflection scope.
+            // Verify both a complete replacement and another incompatible swap.
+            int stencilB=glGenTextures();
+            try {
+                glBindTexture(GL_TEXTURE_2D,stencilB);
+                glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+                glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH24_STENCIL8,32,32,0,
+                        GL_DEPTH_STENCIL,GL_UNSIGNED_INT_24_8,(ByteBuffer)null);
+                for (boolean completeTransition : new boolean[]{true,false}) {
+                    glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_STENCIL_ATTACHMENT,stencil,0);
+                    ReflectionFramebufferParity scope=new ReflectionFramebufferParity();
+                    try {
+                        if(originalStatus!=GL_FRAMEBUFFER_COMPLETE &&
+                                !scope.repairBoundDrawFramebuffer())
+                            throw new AssertionError("Initial A repair failed");
+                        // In the complete branch, Iris removes the split depth
+                        // attachment before installing its replacement B.
+                        if(completeTransition)
+                            glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,0,0);
+                        glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_STENCIL_ATTACHMENT,stencilB,0);
+                        int updatedStatus=glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+                        if(completeTransition && updatedStatus!=GL_FRAMEBUFFER_COMPLETE)
+                            throw new AssertionError("Expected complete Iris replacement");
+                        boolean secondRepair=scope.repairBoundDrawFramebuffer();
+                        if(completeTransition && secondRepair)
+                            throw new AssertionError("Complete replacement was modified");
+                        if(!completeTransition && originalStatus!=GL_FRAMEBUFFER_COMPLETE &&
+                                !secondRepair)
+                            throw new AssertionError("Second B repair failed");
+                    } finally {
+                        scope.close();
+                    }
+                    int current=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                            GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+                    if(current!=stencilB)
+                        throw new AssertionError("Stale A overwrote newer Iris stencil B");
+                    if(completeTransition && glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)
+                        throw new AssertionError("Complete Iris replacement became incomplete");
+                    if(glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)!=framebuffer ||
+                            glGetInteger(GL_READ_FRAMEBUFFER_BINDING)!=originalRead)
+                        throw new AssertionError("Iris stencil transition leaked framebuffer binding");
+                    glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,depth,0);
+                }
+            } finally {
+                glDeleteTextures(stencilB);
+            }
+            if(glGetError()!=GL_NO_ERROR)
+                throw new AssertionError("Iris stencil transition caused GL error");
+
         } finally {
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER,originalDraw);
             glBindFramebuffer(GL_READ_FRAMEBUFFER,originalRead);
