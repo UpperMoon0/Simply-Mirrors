@@ -36,8 +36,58 @@ public final class Atm10SkyProbe {
     private static int frames, scene = -1, sceneFrames, mirrorFrames;
     private static long firstPass;
     private static boolean loading, captured, done;
+    // Optional real-world shader off/on transition in disposable QA only.
+    private static final boolean CHECK_TRANSITION = Boolean.getBoolean("simplymirrors.qaShaderTransition");
+    private static int transitionPhase, transitionTicks;
 
     private Atm10SkyProbe() {}
+
+    private static void toggleIrisShaders(Minecraft mc, boolean enabled) throws Exception {
+        // Iris 1.8.12 toggle saves its config and reloads the real pipeline.
+        // Reflection is intentionally used so no Iris class becomes a required dependency.
+        Class.forName("net.irisshaders.iris.Iris")
+                .getMethod("toggleShaders", Minecraft.class, boolean.class)
+                .invoke(null, mc, enabled);
+    }
+
+    private static boolean checkShaderTransition(Minecraft mc) throws Exception {
+        if (transitionPhase == 0) {
+            if (!ShaderProbe.active())
+                throw new IllegalStateException("Shader transition started with Iris inactive");
+            toggleIrisShaders(mc, false);
+            transitionPhase = 1;
+            transitionTicks = 0;
+            System.out.println("ATM10_SKY_SHADER_TRANSITION_OFF_REQUESTED");
+            return false;
+        }
+        if (transitionPhase == 1) {
+            if (!ShaderProbe.active()) {
+                transitionPhase = 2;
+                transitionTicks = 0;
+                System.out.println("ATM10_SKY_SHADER_TRANSITION_OFF_CONFIRMED");
+            } else if (++transitionTicks > 300)
+                throw new IllegalStateException("Timed out disabling Iris shaders");
+            return false;
+        }
+        if (transitionPhase == 2) {
+            if (++transitionTicks >= 30) {
+                toggleIrisShaders(mc, true);
+                transitionPhase = 3;
+                transitionTicks = 0;
+                System.out.println("ATM10_SKY_SHADER_TRANSITION_ON_REQUESTED");
+            }
+            return false;
+        }
+        if (transitionPhase == 3) {
+            if (ShaderProbe.active() && ++transitionTicks >= 30) {
+                transitionPhase = 4;
+                System.out.println("ATM10_SKY_SHADER_TRANSITION_ON_CONFIRMED");
+            } else if (transitionTicks > 450)
+                throw new IllegalStateException("Timed out restoring Iris shaders");
+            return false;
+        }
+        return true;
+    }
 
     public static void tick(Minecraft mc) throws Exception {
         if (done) return;
@@ -99,6 +149,9 @@ public final class Atm10SkyProbe {
             return;
         }
         if (requested > 5) throw new IllegalStateException("Invalid face index " + requested);
+        // After north's screenshot, deliberately disable/re-enable shader rendering.
+        // South and later orientations must pass after the real Iris reload.
+        if (CHECK_TRANSITION && requested == 1 && !checkShaderTransition(mc)) return;
         if (scene != requested) {
             scene = requested;
             sceneFrames = 0;
@@ -155,7 +208,8 @@ public final class Atm10SkyProbe {
                 ",\"angleFrames\":" + mirrorFrames +
                 ",\"glError\":" + error + ",\"creativeTab\":" + tab +
                 ",\"shaderPackActive\":" + ShaderProbe.active() +
-                ",\"integratedWorld\":true}";
+                ",\"integratedWorld\":true,\"shaderTransitionVerified\":" +
+                (CHECK_TRANSITION && transitionPhase == 4) + "}";
         Files.writeString(dir.resolve("result-" + requested + ".json"), json + "\n",
                 StandardCharsets.UTF_8);
         System.out.println("ATM10_SKY_VISUAL_RESULT " + requested + " " + json);
