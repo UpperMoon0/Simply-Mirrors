@@ -56,15 +56,10 @@ def collect(source, output):
 def plan(env):
     v = version()
     publish = False
-    if env.get("GITHUB_REF") == "refs/heads/main":
-        if env.get("EVENT_NAME") == "workflow_dispatch":
-            publish = env.get("REQUEST_PUBLISH") == "true"
-        elif env.get("EVENT_NAME") == "push" and "-dev" not in v:
-            before = env.get("BEFORE_SHA", "")
-            if not re.fullmatch(r"[0-9a-f]{40}", before) or set(before) == {"0"}:
-                raise ValueError("Cannot establish the previous main revision; use a manual release")
-            previous = subprocess.check_output(["git", "show", f"{before}:gradle.properties"], cwd=ROOT, text=True)
-            publish = v != version(previous)
+    # A version bump on main is not authorization to release binaries.
+    # Publishing requires an explicit workflow_dispatch request on main.
+    if env.get("GITHUB_REF") == "refs/heads/main" and env.get("EVENT_NAME") == "workflow_dispatch":
+        publish = env.get("REQUEST_PUBLISH") == "true"
     return {"version": v, "release_type": release_type(v), "publish": str(publish).lower()}
 
 def settings():
