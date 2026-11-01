@@ -152,6 +152,8 @@ jobs:
           --extra-client-mod build/shader-modifier-repro/EuphoriaPatcher-1.10.5-r5.9.3-neoforge.jar
           --run-name euphoria-compat --require-entity --force-stencil --check-motion
       - name: Verify exact Iris framebuffer callback contract (no modpack)
+        # Independent API regression must still execute when the visual gate fails.
+        if: success() || failure()
         run: python tools/verify_iris_framebuffer_api.py --cache build/shader-dependencies
       - uses: actions/upload-artifact@v4
         if: always()
