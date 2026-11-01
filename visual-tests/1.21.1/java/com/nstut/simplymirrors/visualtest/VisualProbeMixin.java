@@ -28,6 +28,7 @@ public abstract class VisualProbeMixin {
     @Unique private boolean simplymirrors$done;
     @Unique private boolean simplymirrors$stencilReady;
     @Unique private int simplymirrors$motionPhase, simplymirrors$motionStart;
+    @Unique private long simplymirrors$motionStartPass;
     @Unique private boolean simplymirrors$joining;
     @Inject(method="runTick",at=@At("TAIL"))
     private void simplymirrors$probe(CallbackInfo ci) throws Exception {
@@ -76,18 +77,32 @@ public abstract class VisualProbeMixin {
                 VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),
                         mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,
                         dir.resolve("mirror-motion-idle.png"));
+                // A swing takes several *game ticks*, not two render frames.
+                // Capturing immediately after swing() previously recorded the
+                // idle pose twice, even though reflected player rendering worked.
                 mc.player.swing(InteractionHand.MAIN_HAND);
                 simplymirrors$motionStart=simplymirrors$sceneFrames;
+                simplymirrors$motionStartPass=MirrorRenderer.completedPasses;
                 simplymirrors$motionPhase=1;
                 System.out.println("SIMPLY_MIRRORS_ENTITY_SWING_STARTED");
                 return;
             }
-            if(simplymirrors$sceneFrames-simplymirrors$motionStart<2)return;
+            float attack=mc.player.getAttackAnim(0.0f);
+            int elapsed=simplymirrors$sceneFrames-simplymirrors$motionStart;
+            long reflected=MirrorRenderer.completedPasses-simplymirrors$motionStartPass;
+            // Wait for the arm to actually travel through the middle of its
+            // attack animation and for the mirror to draw the advanced pose.
+            // Never accept a frame counter alone as proof of player motion.
+            if(attack<0.35f || attack>0.75f || elapsed<3 || reflected<3) {
+                if(elapsed>300)
+                    throw new IllegalStateException("Reflected player attack animation did not reach mid-swing; attack="+attack+" elapsed="+elapsed+" passes="+reflected);
+                return;
+            }
             VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),
                     mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,
                     dir.resolve("mirror-motion-swing.png"));
             simplymirrors$motionPhase=2;
-            System.out.println("SIMPLY_MIRRORS_ENTITY_SWING_CAPTURED");
+            System.out.println("SIMPLY_MIRRORS_ENTITY_SWING_CAPTURED attack="+attack+" elapsedFrames="+elapsed+" reflectionPasses="+reflected);
         }
         boolean tab=false;for(CreativeModeTab t:BuiltInRegistries.CREATIVE_MODE_TAB)if(t!=null&&t.getDisplayName().getString().equals("Simply Mirrors"))tab=true;
         int error=glGetError();Path dir=mc.gameDirectory.toPath().resolve("visual-evidence");Files.createDirectories(dir);
