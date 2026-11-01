@@ -23,9 +23,13 @@ final class ReflectionFramebufferParity implements AutoCloseable {
     boolean repairBoundDrawFramebuffer() {
         if (closed) throw new IllegalStateException("Reflection framebuffer scope is closed");
         int framebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
-        if (framebuffer == 0 || detached.containsKey(framebuffer)
+        if (framebuffer == 0
                 || glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
             return false;
+        // Iris can reattach a packed stencil when switching depth targets
+        // during one reflection. Do not let a previously repaired FBO become
+        // unsupported again before the next draw.
+        Stencil previousRepair = detached.get(framebuffer);
 
         int depthType = glGetFramebufferAttachmentParameteri(
                 GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
@@ -55,7 +59,7 @@ final class ReflectionFramebufferParity implements AutoCloseable {
         Stencil saved = new Stencil(stencilType, stencilName, level, layered == GL_TRUE, layer);
         detach();
         if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
-            detached.put(framebuffer, saved);
+            if (previousRepair == null) detached.put(framebuffer, saved);
             return true;
         }
         // The stencil is not the cause of the incomplete FBO. Never conceal
