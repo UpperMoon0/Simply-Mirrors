@@ -8,6 +8,7 @@
     "MinecraftMixin",
     "LevelRendererMixin",
     "IrisDepthTargetMixin",
+    "IrisFramebufferParityMixin",
     "ReflectionCullingMixin",
     "IrisFullscreenMixin",
     "IrisTransformMixin",
