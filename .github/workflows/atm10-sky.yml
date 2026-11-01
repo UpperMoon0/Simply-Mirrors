@@ -5,6 +5,12 @@ name: ATM10 Sky full modpack visual acceptance
 # workflow and pack-specific fixtures before merging PR #6.
 on:
   workflow_dispatch:
+    inputs:
+      renderer_only:
+        description: 'Diagnostic only: exact Iris/Sodium/Euphoria/Complementary subset'
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - test/neoforge-shader-modpack-repro-issue-5
@@ -70,18 +76,24 @@ jobs:
           xvfb-run -a -s '-screen 0 1280x720x24' \
             python tools/atm10_sky_production.py \
               --game build/atm10-sky/game \
-              --mode '${{ matrix.mode }}'
+              --mode '${{ matrix.mode }}' \
+              ${{ inputs.renderer_only && '--renderer-only' || '' }}
       - name: Upload real visual evidence, startup logs and failures
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: atm10-sky-real-${{ matrix.mode }}-${{ github.run_attempt }}
+          name: atm10-sky-${{ inputs.renderer_only && 'renderer-only' || 'real' }}-${{ matrix.mode }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: warn
           path: |
             build/atm10-sky/game/qa-evidence/modpack-inventory.json
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-evidence/**
+            neoforge-1.21.1/run/atm10-renderer-only-${{ matrix.mode }}-evidence/**
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/visual-evidence/**
+            neoforge-1.21.1/run/atm10-renderer-only-${{ matrix.mode }}-client/visual-evidence/**
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/logs/**
+            neoforge-1.21.1/run/atm10-renderer-only-${{ matrix.mode }}-client/logs/**
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/crash-reports/**
+            neoforge-1.21.1/run/atm10-renderer-only-${{ matrix.mode }}-client/crash-reports/**
             neoforge-1.21.1/run/atm10-${{ matrix.mode }}-client/config/iris.properties
+            neoforge-1.21.1/run/atm10-renderer-only-${{ matrix.mode }}-client/config/iris.properties

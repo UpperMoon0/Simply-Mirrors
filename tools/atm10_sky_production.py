@@ -68,11 +68,32 @@ def build_qa_jar(evidence: Path) -> Path:
 
 
 def stage_full_pack(game: Path, world: Path, name: str, mode: str,
-                    jar: Path, evidence: Path) -> Path:
+                    jar: Path, evidence: Path, renderer_only: bool = False) -> Path:
     client = MODULE / "run" / f"{name}-client"
     if client.exists():
         raise ValueError(f"Refusing to overwrite a previous profile: {client}")
-    shutil.copytree(game, client)
+    if renderer_only:
+        # Exact rendering JARs from the pack. Deliberately exclude all
+        # unrelated content/mods/configuration during causal isolation.
+        client.mkdir(parents=True)
+        mods = client / "mods"
+        mods.mkdir()
+        for mod_name in (
+            "iris-neoforge-1.8.12+mc1.21.1.jar",
+            "sodium-neoforge-0.6.13+mc1.21.1.jar",
+            "EuphoriaPatcher-1.10.5-r5.9.3-neoforge.jar",
+        ):
+            source = game / "mods" / mod_name
+            if not source.is_file():
+                raise FileNotFoundError(f"Expected pinned renderer mod: {source}")
+            shutil.copy2(source, mods / mod_name)
+        shader = game / "shaderpacks" / SHADER
+        if not shader.is_file():
+            raise FileNotFoundError(f"Expected pinned shader: {shader}")
+        (client / "shaderpacks").mkdir()
+        shutil.copy2(shader, client / "shaderpacks" / shader.name)
+    else:
+        shutil.copytree(game, client)
     mods = client / "mods"
     preexisting = sorted(mods.glob("*simply*mirror*.jar"))
     if preexisting:
@@ -97,9 +118,10 @@ def stage_full_pack(game: Path, world: Path, name: str, mode: str,
         "runtime": "production-neoforge",
         "minecraft": MC_VERSION, "neoforge": NEOFORGE_VERSION,
         "offline-local-test-account": True,
-        "full_pack_installed": True,
+        "full_pack_installed": not renderer_only,
+        "renderer_only": renderer_only,
         "euphoria_patcher_present": mode != "complementary",
-        "full_pack": mode != "complementary",  # Legacy diagnostic field.
+        "full_pack": not renderer_only,  # Legacy diagnostic field.
         "mode": mode, "shader": None if mode == "off" else SHADER,
         "qa_jar": jar.name, "qa_jar_sha256": sha256(jar.read_bytes()).hexdigest(),
     }, indent=2) + "\n", encoding="utf-8")
@@ -203,10 +225,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--game", type=Path, required=True)
     parser.add_argument("--mode", choices=("off", "complementary", "euphoria"), required=True)
+    parser.add_argument("--renderer-only", action="store_true",
+                        help="Isolate Iris/Sodium/Euphoria/Complementary from full pack")
     args = parser.parse_args()
     lock = read_lock(ROOT / "tools/atm10-sky/lock-2.3.1.json")
     report = verify_install(args.game, lock)
-    name = f"atm10-{args.mode}"
+    name = f"atm10-{'renderer-only-' if args.renderer_only else ''}{args.mode}"
     evidence = MODULE / "run" / f"{name}-evidence"
     evidence.mkdir(parents=True, exist_ok=False)
     (evidence / "modpack.json").write_text(
@@ -214,7 +238,7 @@ def main() -> None:
     try:
         jar = build_qa_jar(evidence)
         world = prepare_world(name, evidence)
-        client = stage_full_pack(args.game, world, name, args.mode, jar, evidence)
+        client = stage_full_pack(args.game, world, name, args.mode, jar, evidence, args.renderer_only)
         command = install_and_command(client, evidence)
         run_production_capture(client, command, args.mode, evidence)
     except BaseException as exc:
