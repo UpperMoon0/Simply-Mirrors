@@ -30,6 +30,23 @@ public abstract class VisualProbeMixin {
     @Unique private int simplymirrors$motionPhase, simplymirrors$motionStart;
     @Unique private long simplymirrors$motionStartPass;
     @Unique private boolean simplymirrors$joining;
+    /**
+     * CI's Mesa software renderer can draw fewer than two frames per second,
+     * while a Minecraft attack swing lasts only a few 20-Hz game ticks.
+     * Preserve the genuine swing's middle pose in this test-only client
+     * until several mirror render passes have captured it. This does not
+     * bypass the image-difference assertion or affect production code.
+     */
+    @Inject(method="tick",at=@At("TAIL"))
+    private void simplymirrors$holdVisualSwing(CallbackInfo ci) {
+        if (!Boolean.getBoolean("simplymirrors.visualCheckMotion")
+                || simplymirrors$scene!=0 || simplymirrors$motionPhase!=1) return;
+        Minecraft mc=Minecraft.getInstance();
+        if(mc.player!=null) {
+            mc.player.attackAnim=0.55f;
+            mc.player.oAttackAnim=0.55f;
+        }
+    }
     @Inject(method="runTick",at=@At("TAIL"))
     private void simplymirrors$probe(CallbackInfo ci) throws Exception {
         if(simplymirrors$done)return;Minecraft mc=Minecraft.getInstance();
