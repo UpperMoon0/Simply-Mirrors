@@ -123,3 +123,17 @@ to the adjacent green surface; the assertion is scoped to the pinned NeoForge
 1.21.1 enclosed scene and is not imposed on other loaders or personal skins.
 Synthetic negative tests prove a correctly colored room with no player fails.
 This complements, but cannot replace, real shader transitions or GPU tests.
+
+### Precise main-target stencil reproducer
+
+Immersive Engineering 12.4.2's client setup enables the NeoForge main
+framebuffer's stencil bits by default. With Iris 1.8.12, Sodium 0.6.13 and
+Complementary r5.9.3, reflection depth replacement can then leave Iris's
+original packed stencil attached separately, making the reflection FBO
+unsupported. The permanent NeoForge 1.21.1 enclosed shader jobs deliberately
+call the identical NeoForge `RenderTarget.enableStencil()` operation from a
+QA-only render-thread hook before scene capture. The hook is opt-in, and the
+fixture asserts that stencil was actually enabled and that a reflected player
+remains visible across all six orientations. Neither the full ATM10 modpack
+nor Immersive Engineering is installed in the permanent shader jobs: the test
+simulates the exact public rendering condition that Immersive Engineering sets.

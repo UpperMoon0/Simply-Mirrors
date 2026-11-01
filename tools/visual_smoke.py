@@ -233,12 +233,16 @@ def main():
     parser.add_argument("--run-name",help="Isolated test directory prefix")
     parser.add_argument("--shader-pack", type=Path, help="Use an exact local shaderpack ZIP instead of the pinned default")
     parser.add_argument("--enclosed", action="store_true", help="Build an indoor mirror room (issue #5 regression)")
+    parser.add_argument("--force-stencil", action="store_true",
+                        help="Exercise NeoForge main framebuffer stencil as enabled by Immersive Engineering")
     parser.add_argument("--require-entity", action="store_true",
                         help="Require a player silhouette in the NeoForge 1.21.1 shader reflection")
     parser.add_argument("--extra-client-mod", type=Path, action="append", default=[],
                         help="Copy one optional rendering/modpack JAR into the isolated client only (repeatable)")
 
     args=parser.parse_args()
+    if args.force_stencil and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
+        parser.error("--force-stencil is for NeoForge 1.21.1 enclosed shader validation")
     if args.require_entity and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
         parser.error("--require-entity is for NeoForge 1.21.1 enclosed shader validation")
     t=TARGETS[args.target];module=ROOT/args.target;cwd=ROOT/t["build_root"]
@@ -298,7 +302,14 @@ def main():
                 if "Unknown" in reply or "Incorrect" in reply:raise RuntimeError(f"Fixture command failed: {text}: {reply}")
             print("Fixture ready; starting client",args.target,flush=True)
             client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
-            client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,stderr=subprocess.STDOUT,**creation)
+            client_env=os.environ.copy()
+            if args.force_stencil:
+                # Only the disposable client gets the opt-in stencil trigger.
+                # The fixture server and all production/runtime jars are untouched.
+                client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
+                                                   " -Dsimplymirrors.visualForceStencil=true").strip()
+            client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,
+                                    stderr=subprocess.STDOUT,env=client_env,**creation)
             results={};failures={}
             for scene,face in enumerate(FACES):
                 if scene:
@@ -313,6 +324,7 @@ def main():
                 if not result.exists():raise TimeoutError(f"Client visual probe timed out on {face}: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
+                if args.force_stencil:assert data.get('stencilEnabled') is True,data
                 try:
                     data.update(image_check(result.with_name(f"mirror-{scene}.png"),shaders=args.shaders,require_entity=args.require_entity))
                 except AssertionError as error:

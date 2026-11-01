@@ -25,10 +25,21 @@ public abstract class VisualProbeMixin {
     @Unique private long simplymirrors$startPasses;
     @Unique private boolean simplymirrors$captured;
     @Unique private boolean simplymirrors$done;
+    @Unique private boolean simplymirrors$stencilReady;
     @Unique private boolean simplymirrors$joining;
     @Inject(method="runTick",at=@At("TAIL"))
     private void simplymirrors$probe(CallbackInfo ci) throws Exception {
         if(simplymirrors$done)return;Minecraft mc=Minecraft.getInstance();
+        if (Boolean.getBoolean("simplymirrors.visualForceStencil") && !simplymirrors$stencilReady) {
+            // The real issue #5 mod calls this NeoForge extension at startup.
+            // Use reflection so the shared 1.21.1 QA sources still compile for Fabric.
+            Object main = mc.getMainRenderTarget();
+            main.getClass().getMethod("enableStencil").invoke(main);
+            if (!Boolean.TRUE.equals(main.getClass().getMethod("isStencilEnabled").invoke(main)))
+                throw new IllegalStateException("NeoForge main target did not enable stencil");
+            simplymirrors$stencilReady = true;
+            System.out.println("SIMPLY_MIRRORS_VISUAL_MAIN_STENCIL_ENABLED");
+        }
         if(Boolean.getBoolean("simplymirrors.atm10Sky")){Atm10SkyProbe.tick(mc);return;}
         if(simplymirrors$frames++==0) {mc.options.onboardAccessibility=false;mc.options.pauseOnLostFocus=false;mc.options.renderDistance().set(4);mc.options.bobView().set(false);mc.options.framerateLimit().set(30);mc.options.hideGui=true;}
         if(mc.player==null||mc.level==null) {
@@ -59,7 +70,7 @@ public abstract class VisualProbeMixin {
         boolean tab=false;for(CreativeModeTab t:BuiltInRegistries.CREATIVE_MODE_TAB)if(t!=null&&t.getDisplayName().getString().equals("Simply Mirrors"))tab=true;
         int error=glGetError();Path dir=mc.gameDirectory.toPath().resolve("visual-evidence");Files.createDirectories(dir);
         VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,dir.resolve("mirror-"+requested+".png"));
-        String json="{\"passes\":"+(MirrorRenderer.completedPasses-simplymirrors$startPasses)+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+",\"shaderPackActive\":"+com.nstut.simplymirrors.visualsupport.ShaderProbe.active()+"}";
+        String json="{\"passes\":"+(MirrorRenderer.completedPasses-simplymirrors$startPasses)+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+",\"shaderPackActive\":"+com.nstut.simplymirrors.visualsupport.ShaderProbe.active()+",\"stencilEnabled\":"+simplymirrors$stencilReady+"}";
         Files.write(dir.resolve("result-"+requested+".json"),json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         System.out.println("SIMPLY_MIRRORS_VISUAL_RESULT "+requested+" "+json);simplymirrors$captured=true;
     }
