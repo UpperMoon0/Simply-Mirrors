@@ -170,8 +170,17 @@ def motion_check(idle_path, moving_path):
         roi=(int(w*0.45),int(h*0.28),int(w*0.55),int(h*0.66))
         difference=ImageChops.difference(idle.crop(roi),moving.crop(roi))
         changing=sum(max(pixel)>35 for pixel in difference.getdata())
-        assert changing>max(80,int((roi[2]-roi[0])*(roi[3]-roi[1])*0.006)),(
-            f"Reflected player swing did not change sufficient framebuffer pixels: {changing}")
+        threshold=max(80,int((roi[2]-roi[0])*(roi[3]-roi[1])*0.006))
+        if changing<=threshold:
+            # Distinguish a misframed ROI from a completed animation. Full-frame
+            # differences are diagnostic only, never accepted as motion proof.
+            full=ImageChops.difference(idle,moving)
+            bounds=full.getbbox()
+            full_changed=sum(max(pixel)>35 for pixel in full.getdata())
+            raise AssertionError(
+                f"Reflected player swing did not change sufficient framebuffer pixels: "
+                f"roi={changing}, threshold={threshold}, fullFrame={full_changed}, "
+                f"diffBounds={bounds}, roiBounds={roi}")
         return {"movingEntityPixels":changing}
 
 
