@@ -90,6 +90,22 @@ public final class ShaderReflection {
         if(suspensions>0)suspensions--;
         if(enabled)glEnable(GL_CLIP_DISTANCE0);else glDisable(GL_CLIP_DISTANCE0);
     }
+    /**
+     * Iris can bind or rebuild a gbuffer FBO before its next shader-uniform
+     * callback. Repair that FBO at the attachment/binding boundary so the
+     * very first draw and readback never see an invalid split depth/stencil.
+     * Only active during a scoped mirrored render; Iris remains optional.
+     */
+    public static void onIrisFramebufferBound(int framebuffer) {
+        if(framebufferParity==null || framebuffer<=0) return;
+        int oldDraw=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
+        try {
+            if(oldDraw!=framebuffer) glBindFramebuffer(GL_DRAW_FRAMEBUFFER,framebuffer);
+            framebufferParity.repairBoundDrawFramebuffer();
+        } finally {
+            if(oldDraw!=framebuffer) glBindFramebuffer(GL_DRAW_FRAMEBUFFER,oldDraw);
+        }
+    }
     public static void upload() {
         // Iris reuses Minecraft depth but can retain a distinct packed stencil
         // attachment. Normalize unsupported reflection-only FBOs before drawing.
