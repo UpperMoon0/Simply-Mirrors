@@ -31,7 +31,6 @@ final class ReflectionFramebufferParity implements AutoCloseable {
         // Iris can reattach a packed stencil when switching depth targets
         // during one reflection. Do not let a previously repaired FBO become
         // unsupported again before the next draw.
-        Stencil previousRepair = detached.get(framebuffer);
 
         int depthType = glGetFramebufferAttachmentParameteri(
                 GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
@@ -69,7 +68,9 @@ final class ReflectionFramebufferParity implements AutoCloseable {
                     + " stencilType=" + stencilType + " stencilName=" + stencilName);
         }
         if (detachedStatus == GL_FRAMEBUFFER_COMPLETE) {
-            if (previousRepair == null) detached.put(framebuffer, saved);
+            // The latest detached attachment is the only one we own. Iris may
+            // have replaced an earlier attachment while this scope was active.
+            detached.put(framebuffer, saved);
             return true;
         }
         // The stencil is not the cause of the incomplete FBO. Never conceal
@@ -105,7 +106,12 @@ final class ReflectionFramebufferParity implements AutoCloseable {
             for (Map.Entry<Integer, Stencil> entry : detached.entrySet()) {
                 if (!glIsFramebuffer(entry.getKey())) continue;
                 glBindFramebuffer(GL_DRAW_FRAMEBUFFER, entry.getKey());
-                restore(entry.getValue());
+                // A non-empty stencil was installed by Iris after our detach.
+                // It is newer state, and must never be overwritten by our snapshot.
+                int currentType = glGetFramebufferAttachmentParameteri(
+                        GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
+                        GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+                if (currentType == GL_NONE) restore(entry.getValue());
             }
         } finally {
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDraw);
