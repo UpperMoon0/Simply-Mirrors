@@ -106,12 +106,12 @@ public final class ShaderHistoryGlTest {
             glBindTexture(GL_TEXTURE_2D,color);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
-            glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,32,32,0,GL_RGBA,
-                    GL_UNSIGNED_BYTE,(ByteBuffer)null);
+            glTexImage2D(GL_TEXTURE_2D,0,GL_R11F_G11F_B10F,32,32,0,GL_RGB,
+                    GL_FLOAT,(ByteBuffer)null);
             glBindTexture(GL_TEXTURE_2D,depth);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
-            glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT24,32,32,0,
+            glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT,32,32,0,
                     GL_DEPTH_COMPONENT,GL_UNSIGNED_INT,(ByteBuffer)null);
             glBindTexture(GL_TEXTURE_2D,stencil);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
@@ -126,6 +126,8 @@ public final class ShaderHistoryGlTest {
             ReflectionFramebufferParity transaction=new ReflectionFramebufferParity();
             try {
                 boolean changed=transaction.repairBoundDrawFramebuffer();
+                System.out.println("Iris-like split FBO status="+originalStatus
+                        +" repair="+changed+" color=R11F_G11F_B10F depth=GL_DEPTH_COMPONENT");
                 if(originalStatus==GL_FRAMEBUFFER_COMPLETE) {
                     if(changed) throw new AssertionError("Complete framebuffer altered");
                 } else {
