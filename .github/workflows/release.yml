@@ -1,4 +1,6 @@
 name: Build and release
+# Main-branch version changes validate artifacts but never publish automatically.
+# Publishing requires workflow_dispatch with publish=true after authorization.
 on:
   push:
     branches: [main]
@@ -59,13 +61,13 @@ jobs:
           REQUEST_PUBLISH: ${{ inputs.publish }}
         run: python tools/release.py plan
       - name: Validate publishing setup and CurseForge tags
-        if: steps.plan.outputs.publish == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish && steps.plan.outputs.publish == 'true'
         env:
           CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
           CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
         run: python tools/release.py preflight --input release-output
       - name: Create GitHub release for this commit
-        if: steps.plan.outputs.publish == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish && steps.plan.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           MOD_VERSION: ${{ steps.plan.outputs.version }}
@@ -87,7 +89,7 @@ jobs:
             --target "$GITHUB_SHA" --title "Simply Mirrors v$MOD_VERSION" \
             --notes-file "changelog/$MOD_VERSION.md" "${flags[@]}"
       - name: Upload all eight files to CurseForge
-        if: steps.plan.outputs.publish == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish && steps.plan.outputs.publish == 'true'
         env:
           CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
           CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
