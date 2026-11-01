@@ -23,7 +23,8 @@ permissions:
 
 concurrency:
   group: atm10-sky-full-${{ github.ref }}
-  cancel-in-progress: true
+  # Preserve long-running screenshot evidence when another diagnostic commit lands.
+  cancel-in-progress: false
 
 jobs:
   real-modpack:
