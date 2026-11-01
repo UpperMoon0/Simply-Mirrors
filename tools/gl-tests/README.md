@@ -16,7 +16,7 @@ zero reflected history, untouched nonpersistent targets, sampler flags and
 filters, GL bindings/scissor/write masks, repeated throwing render passes,
 capture failures, idempotent close, and released GL allocations.
 
-This is a focused regression, not a replacement for the eight Minecraft shader
+The same native GL suite also runs `depthStorageParity()` to verify mirror-depth format alignment without changing the main depth texture or leaking texture bindings, and `depthStencilAttachmentCollision()` to check incompatible split depth/stencil FBO repair, restoration, Iris stencil A-to-B replacement transitions, completeness and draw/read binding preservation.\n\nFor the pinned Iris framebuffer integration API, use:\n\n```sh\npython tools/verify_iris_framebuffer_api.py --cache build/shader-dependencies\n```\n\nThese checks use Mesa software OpenGL, not physical GPU drivers; passing does not establish vendor-specific behavior.\n\nThis is a focused regression, not a replacement for the eight Minecraft shader
 acceptance runs or a claim of hardware-vendor coverage.
 
 The fixture also checks persistent shadow color history and the shadow flip array.
