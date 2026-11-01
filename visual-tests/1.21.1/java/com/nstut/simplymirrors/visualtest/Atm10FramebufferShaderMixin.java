@@ -23,6 +23,12 @@ public abstract class Atm10FramebufferShaderMixin {
     private static void simplymirrors$shaderProgramHead(CallbackInfo ci) {
         Atm10FramebufferTrace.check("shader-program-upload");
     }
+    // Confirm whether the production repair clears FRAMEBUFFER_UNSUPPORTED
+    // before the shader's draw call. This hook exists in disposable QA only.
+    @Inject(method = "upload", at = @At("RETURN"), require = 1)
+    private static void simplymirrors$shaderProgramReturn(CallbackInfo ci) {
+        Atm10FramebufferTrace.check("shader-program-after-repair");
+    }
     @Inject(method = "end", at = @At("HEAD"), require = 0)
     private static void simplymirrors$endHead(CallbackInfo ci) {
         Atm10FramebufferTrace.check("shader-end-head");
