@@ -22,13 +22,17 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual("false", release.plan(env)["publish"])
 
     @patch("release.version", return_value="1.2.3")
-    @patch("release.subprocess.check_output", return_value="mod_version=1.2.3\r\n")
-    def test_unchanged_version_does_not_republish(self, git, version):
-        version.side_effect = lambda text=None: "1.2.3" if text is None else text.split("=", 1)[1].strip()
-        env = {"GITHUB_REF": "refs/heads/main", "EVENT_NAME": "push", "BEFORE_SHA": "a" * 40}
+    def test_push_version_bump_never_implicitly_publishes(self, version):
+        for before in ["a" * 40, "0" * 40, "", "invalid"]:
+            env = {"GITHUB_REF": "refs/heads/main", "EVENT_NAME": "push",
+                   "BEFORE_SHA": before, "REQUEST_PUBLISH": "true"}
+            self.assertEqual("false", release.plan(env)["publish"])
+        # Stable and prerelease versions use the same explicit authorization gate.
+        version.return_value = "1.2.4-beta.1"
         self.assertEqual("false", release.plan(env)["publish"])
-        git.return_value = "mod_version=1.2.2\n"
-        self.assertEqual("true", release.plan(env)["publish"])
+        self.assertEqual("false", release.plan({
+            "GITHUB_REF": "refs/heads/main", "EVENT_NAME": "pull_request",
+            "REQUEST_PUBLISH": "true"})["publish"])
 
     def test_release_types_and_correct_loader_dependencies(self):
         for v, kind in [("1.0.0", "release"), ("1.0.0-dev.4", "alpha"), ("1.0.0-beta.1", "beta")]:
