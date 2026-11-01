@@ -11,18 +11,11 @@ on:
         required: false
         type: boolean
         default: false
-  push:
-    branches:
-      - test/neoforge-shader-modpack-repro-issue-5
-    paths:
-      - .github/workflows/atm10-sky.yml
-      - tools/atm10_sky_visual.py
-      - tools/atm10_sky_production.py
-      - tools/atm10_sky.py
-      - tools/atm10-sky/**
-      - tools/test_atm10_sky.py
-      - visual-tests/1.21.1/java/com/nstut/simplymirrors/visualtest/Atm10Framebuffer*.java
-      - visual-tests/1.21.1/java/com/nstut/simplymirrors/visualsupport/Atm10FramebufferTrace.java
+      shader_transition:
+        description: 'Diagnostic only: toggle actual Iris pipeline off/on mid-capture'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -73,11 +66,15 @@ jobs:
             --workers 8
       - name: Production NeoForge full-pack shader reflection capture (six orientations)
         run: |
+          extra=()
+          if [[ '${{ inputs.renderer_only }}' == 'true' ]]; then extra+=(--renderer-only); fi
+          if [[ '${{ inputs.shader_transition }}' == 'true' && '${{ matrix.mode }}' != 'off' ]]; then
+            extra+=(--check-transition)
+          fi
           xvfb-run -a -s '-screen 0 1280x720x24' \
             python tools/atm10_sky_production.py \
               --game build/atm10-sky/game \
-              --mode '${{ matrix.mode }}' \
-              ${{ inputs.renderer_only && '--renderer-only' || '' }}
+              --mode '${{ matrix.mode }}' "${extra[@]}"
       - name: Upload real visual evidence, startup logs and failures
         if: always()
         uses: actions/upload-artifact@v4

@@ -128,7 +128,7 @@ def stage_full_pack(game: Path, world: Path, name: str, mode: str,
     return client
 
 
-def install_and_command(client: Path, evidence: Path) -> list[str]:
+def install_and_command(client: Path, evidence: Path, check_transition: bool = False) -> list[str]:
     from importlib.metadata import version
     import minecraft_launcher_lib as launcher
 
@@ -153,6 +153,8 @@ def install_and_command(client: Path, evidence: Path) -> list[str]:
         "-Xmx8192m", "-Xms512m", "-Dsimplymirrors.atm10Sky=true",
         "-Dsimplymirrors.visualPort=0",
     ]
+    if check_transition:
+        options["jvmArguments"].append("-Dsimplymirrors.qaShaderTransition=true")
     options["customResolution"] = True
     options["resolutionWidth"] = "960"
     options["resolutionHeight"] = "540"
@@ -169,7 +171,7 @@ def install_and_command(client: Path, evidence: Path) -> list[str]:
 
 
 def run_production_capture(client: Path, command: list[str], mode: str,
-                           evidence: Path) -> dict:
+                           evidence: Path, check_transition: bool = False) -> dict:
     log = evidence / "client.log"
     process = None
     results, failures = {}, {}
@@ -199,6 +201,8 @@ def run_production_capture(client: Path, command: list[str], mode: str,
                     failures[face] = f"Native counters failed: {info}"
                 if info.get("shaderPackActive") is not (mode != "off"):
                     failures[face] = f"Shader activation inconsistent: {info}"
+                if check_transition and scene > 0 and info.get("shaderTransitionVerified") is not True:
+                    failures[face] = f"Real Iris off/on transition not confirmed: {info}"
                 screenshot = client / "visual-evidence" / f"mirror-{scene}.png"
                 try:
                     info.update(image_check(screenshot, shaders=(mode != "off")))
@@ -227,7 +231,11 @@ def main() -> None:
     parser.add_argument("--mode", choices=("off", "complementary", "euphoria"), required=True)
     parser.add_argument("--renderer-only", action="store_true",
                         help="Isolate Iris/Sodium/Euphoria/Complementary from full pack")
+    parser.add_argument("--check-transition", action="store_true",
+                        help="Toggle real Iris shader pipeline off/on between north and south")
     args = parser.parse_args()
+    if args.check_transition and args.mode == "off":
+        parser.error("--check-transition requires a shader-enabled variant")
     lock = read_lock(ROOT / "tools/atm10-sky/lock-2.3.1.json")
     report = verify_install(args.game, lock)
     name = f"atm10-{'renderer-only-' if args.renderer_only else ''}{args.mode}"
@@ -239,8 +247,8 @@ def main() -> None:
         jar = build_qa_jar(evidence)
         world = prepare_world(name, evidence)
         client = stage_full_pack(args.game, world, name, args.mode, jar, evidence, args.renderer_only)
-        command = install_and_command(client, evidence)
-        run_production_capture(client, command, args.mode, evidence)
+        command = install_and_command(client, evidence, args.check_transition)
+        run_production_capture(client, command, args.mode, evidence, args.check_transition)
     except BaseException as exc:
         (evidence / "failure.txt").write_text(
             repr(exc) + "\n" + read_log_tail(evidence / "client.log") + "\n", encoding="utf-8")
