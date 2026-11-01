@@ -37,11 +37,9 @@ public final class Atm10FramebufferTrace {
                     + " drawColor=" + attachment(GL_DRAW_FRAMEBUFFER, draw, GL_COLOR_ATTACHMENT0)
                     + " drawDepth=" + attachment(GL_DRAW_FRAMEBUFFER, draw, GL_DEPTH_ATTACHMENT)
                     + " drawStencil=" + attachment(GL_DRAW_FRAMEBUFFER, draw, GL_STENCIL_ATTACHMENT)
-                    + " drawDepthStencil=" + attachment(GL_DRAW_FRAMEBUFFER, draw, GL_DEPTH_STENCIL_ATTACHMENT)
                     + " readColor=" + attachment(GL_READ_FRAMEBUFFER, read, GL_COLOR_ATTACHMENT0)
                     + " readDepth=" + attachment(GL_READ_FRAMEBUFFER, read, GL_DEPTH_ATTACHMENT)
-                    + " readStencil=" + attachment(GL_READ_FRAMEBUFFER, read, GL_STENCIL_ATTACHMENT)
-                    + " readDepthStencil=" + attachment(GL_READ_FRAMEBUFFER, read, GL_DEPTH_STENCIL_ATTACHMENT));
+                    + " readStencil=" + attachment(GL_READ_FRAMEBUFFER, read, GL_STENCIL_ATTACHMENT));
         } catch (RuntimeException failure) {
             System.out.println("ATM10_SKY_FBO_PROBE_ERROR " + stage + " " + failure);
         }
