@@ -44,7 +44,9 @@ Version **0.1.1** added Iris/Oculus shader reflections, including fixes for mirr
 | 1.21.1 | NeoForge | Iris 1.8.12 | Sodium 0.6.13 |
 | 26.1.2 | Fabric / NeoForge | Iris 1.11.4 | Sodium 0.9.2 |
 
-Version **0.1.2** fixes sky-only reflections on NeoForge 1.21.1 when Iris replaces mirror depth while a separate packed stencil attachment remains bound. The repair is limited to incomplete reflection framebuffers; validation uses the pinned rendering stacks below and does not guarantee every shaderpack or driver.\n\nShader mods and packs are optional: install the matching combination on your client if you want shaders. They are not bundled with Simply Mirrors or required on a dedicated server. Other shader packs and versions have not been validated. See the [shader validation details and capture](https://github.com/UpperMoon0/Simply-Mirrors/blob/main/docs/shader-validation.md).
+Version **0.1.2** fixes sky-only reflections on NeoForge 1.21.1 when Iris replaces mirror depth while a separate packed stencil attachment remains bound. The repair is limited to incomplete reflection framebuffers; validation uses the pinned rendering stacks below and does not guarantee every shaderpack or driver.
+
+Shader mods and packs are optional: install the matching combination on your client if you want shaders. They are not bundled with Simply Mirrors or required on a dedicated server. Other shader packs and versions have not been validated. See the [shader validation details and capture](https://github.com/UpperMoon0/Simply-Mirrors/blob/main/docs/shader-validation.md).
 
 Mirrors reflecting other mirrors recursively are not supported. Reflections preserve the main view's temporal history but do not yet accumulate separate per-mirror history. Minecraft 26.1.2 currently requires the OpenGL renderer.
 
