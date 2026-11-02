@@ -11,7 +11,7 @@ Simply Mirrors adds a craftable, full-block mirror that reflects the world aroun
 - **Seamless larger mirrors:** place mirror blocks together to create a continuous reflective surface.
 - **A dedicated creative tab:** find the block in the Simply Mirrors tab.
 - **A simple survival recipe:** surround one iron ingot with eight glass blocks to craft one mirror block.
-- **Shader reflections (improved in 0.1.2):** use the tested Iris/Oculus and Complementary Reimagined combinations below.
+- **Shader reflections:** use the tested Iris/Oculus and Complementary Reimagined combinations below, including indoor and entity reflections.
 
 Try a bathroom mirror, a grand hall of mirrors, a polished dance floor, or a ceiling that reflects the room below.
 
@@ -32,7 +32,7 @@ Install the file matching your Minecraft version and loader. Fabric versions als
 
 Mirrors render when you are within 32 blocks, showing currently loaded terrain and entities. Up to six visible mirror planes can render per frame; larger flat surfaces share a reflection, while viewing more separate planes can reduce performance.
 
-Version **0.1.1** added Iris/Oculus shader reflections, including fixes for mirror clipping, reflected visibility with modern Sodium, and camera, shadow, and temporal-state isolation. The tested combinations all use **Complementary Reimagined r5.9.3**:
+Shader reflections support Iris/Oculus with correct mirror clipping and reflected terrain visibility, including modern Sodium pipelines. They preserve camera, shadow, and temporal state while rendering a separate view. The tested combinations all use **Complementary Reimagined r5.9.3**:
 
 | Minecraft | Loader | Shader loader | Terrain renderer |
 | --- | --- | --- | --- |
@@ -44,9 +44,9 @@ Version **0.1.1** added Iris/Oculus shader reflections, including fixes for mirr
 | 1.21.1 | NeoForge | Iris 1.8.12 | Sodium 0.6.13 |
 | 26.1.2 | Fabric / NeoForge | Iris 1.11.4 | Sodium 0.9.2 |
 
-Version **0.1.2** fixes sky-only reflections on NeoForge 1.21.1 when Iris replaces mirror depth while a separate packed stencil attachment remains bound. The repair is limited to incomplete reflection framebuffers; validation uses the pinned rendering stacks below and does not guarantee every shaderpack or driver.
+On NeoForge 1.21.1, the renderer also handles the incompatible split depth/stencil attachments that can otherwise produce sky-only mirrors. Repairs are limited to incomplete reflection framebuffers, with the main-camera state preserved. Compatibility is validated against the pinned rendering stacks above; other shaderpacks and GPU drivers are not guaranteed.
 
-Shader mods and packs are optional: install the matching combination on your client if you want shaders. They are not bundled with Simply Mirrors or required on a dedicated server. Other shader packs and versions have not been validated. See the [shader validation details and capture](https://github.com/UpperMoon0/Simply-Mirrors/blob/main/docs/shader-validation.md).
+Shader mods and packs are optional: install the matching combination on your client if you want shaders. They are not bundled with Simply Mirrors or required on a dedicated server. Other shader packs and versions have not been validated. See the [shader validation guide](https://github.com/UpperMoon0/Simply-Mirrors/blob/main/docs/shader-validation.md) for current coverage and the [changelog](https://github.com/UpperMoon0/Simply-Mirrors/tree/main/changelog) for release-specific history.
 
 Mirrors reflecting other mirrors recursively are not supported. Reflections preserve the main view's temporal history but do not yet accumulate separate per-mirror history. Minecraft 26.1.2 currently requires the OpenGL renderer.
 
