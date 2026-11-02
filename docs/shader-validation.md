@@ -1,8 +1,8 @@
 # Shader validation
 
-The 0.1.1 renderer adds standalone Iris/Oculus integration. Shader mods and Complementary remain optional development dependencies and are never bundled in the production mod.
+Simply Mirrors supports optional Iris/Oculus shaders while preserving the reflected world's geometry, entities, camera state, and clipping. Shader loaders, terrain renderers, and shader packs are client-side options; they are not bundled with the production mod.
 
-## What changed
+## Rendering behavior
 
 - Keep perspective projection for shader depth reconstruction. Clip world geometry at the mirror using a view-space plane in the final vertex-producing stage, including geometry and tessellation evaluation output.
 - Disable clip distances for unpatched sky/fallback programs; restore them when a transformed world program is bound. Fallback shaders bind programs directly, bypassing Iris's uniform updater.
@@ -13,13 +13,15 @@ The 0.1.1 renderer adds standalone Iris/Oculus integration. Shader mods and Comp
 
 The implementation follows the relevant rendering contracts in the owner's CE sources, [Oculus 1.20.1](https://github.com/Asek3/Oculus/tree/1.20.1-new), [Sodium 0.9.2 for 26.1.2](https://github.com/CaffeineMC/sodium/tree/mc26.1.2-0.9.2), and [Iris's 26.1 rendering path](https://github.com/IrisShaders/Iris/tree/bff1e69cb6c5519d8745784aa9c8b92984de67e7). The installed Iris 1.11.4 bytecode also confirms the final pass calls `RenderPass.drawIndexed`, not `renderQuad`.
 
-## 0.1.2 NeoForge Iris framebuffer fix
+## Reflection framebuffer compatibility
 
-The complete ATM10 To the Sky 2.3.1 production client reproduced sky-only mirrors with Complementary and with Euphoria: Iris replaced reflection depth with a depth-only mirror texture while a separate packed depth-stencil texture remained attached. The resulting reflection framebuffer was unsupported (`36061`), and drawing to it produced OpenGL error `1286`. Shader-off mirrors worked.
+Shader-enabled mirrors match the main camera's depth texture storage when needed and keep reflected rendering isolated from the main view. Some client rendering stacks attach packed stencil images separately from their depth textures. If an Iris reflection framebuffer becomes incomplete when its depth attachment is replaced, Simply Mirrors can temporarily detach the incompatible stencil attachment, then restore the attachment topology and caller bindings after the reflection. Complete main-camera framebuffers are left untouched.
 
-The production fix aligns mirror depth storage and, only for incomplete reflection framebuffers, temporarily detaches an incompatible stencil attachment when doing so makes the FBO complete. Cleanup preserves newer Iris stencil replacements rather than restoring stale state. The [production full-pack diagnostic](https://github.com/UpperMoon0/Simply-Mirrors/actions/runs/41315896303) passed all three modes; permanent CI instead pins only relevant rendering mods and reproduces the public stencil state. This does not guarantee every GPU driver or shader combination.
+The renderer also handles stencil replacement during a reflection and preserves single-layer, cube-face, and full-texture attachments when restoring state. These safeguards target the supported Iris/Oculus rendering integration and do not guarantee every shaderpack or GPU driver combination.
 
-## Native capture
+CI verifies the repair with native OpenGL attachment-state tests and in-game shader captures. For the original incident, reproduction conditions, and full-modpack diagnostic evidence, see the [release notes](../changelog/0.1.2.md).
+
+## Compatibility verification
 
 NeoForge 26.1.2 with Iris 1.11.4, Sodium 0.9.2, Complementary Reimagined r5.9.3, and an NVIDIA GTX 1050 Ti passed all six orientations, including 120 reflected frames and 120 angled-view frames per orientation. Each result reported an active shader pack and no OpenGL error.
 
@@ -41,11 +43,9 @@ Each run starts a disposable server without shader mods and a shader-enabled cli
 
 Logs and results are written under `<target>/run/<run-name>-evidence`; captures are under `<target>/run/<run-name>-client/visual-evidence`. Only a fully passing run writes `verified.json`. Image mismatches are retained while remaining faces are captured; the run then fails. The harness refuses to reuse a saved world, so retries need a fresh run name.
 
-## Released 0.1.0 baseline
+## Failure detection
 
-The old renderer produced a flat blue mirror despite an active shader pack, 120 completed reflection passes, and `glError=0`. The acceptance tests reject this result.
-
-![0.1.0 failing capture](images/mirror-shader-oculus-unsupported.png)
+Shader acceptance rejects a sky-only or flat-blue reflection even if the shaderpack is active, reflection passes complete, and OpenGL reports no immediate error. The visual fixture checks for correctly ordered colored world geometry, entities, and handedness rather than treating a successful draw counter as proof of correct rendering.
 
 ## Camera and temporal-state isolation
 
@@ -123,7 +123,7 @@ establish compatibility with a full client modpack.
 
 The enclosed Complementary and Euphoria acceptance jobs also require a player
 silhouette in the center of the green reflected marker, not merely a correctly
-colored room. This detects the issue #5 failure where Iris rendered wall markers
+colored room. This detects a failure mode where wall markers render
 without the reflected player. The fixed, normalized center region is compared
 to the adjacent green surface; the assertion is scoped to the pinned NeoForge
 1.21.1 enclosed scene and is not imposed on other loaders or personal skins.
@@ -132,17 +132,17 @@ This complements, but cannot replace, real shader transitions or GPU tests.
 
 ### Precise main-target stencil reproducer
 
-Immersive Engineering 12.4.2's client setup enables the NeoForge main
-framebuffer's stencil bits by default. With Iris 1.8.12, Sodium 0.6.13 and
-Complementary r5.9.3, reflection depth replacement can then leave Iris's
-original packed stencil attached separately, making the reflection FBO
-unsupported. The permanent NeoForge 1.21.1 enclosed shader jobs deliberately
-call the identical NeoForge `RenderTarget.enableStencil()` operation from a
-QA-only render-thread hook before scene capture. The hook is opt-in, and the
-fixture asserts that stencil was actually enabled and that a reflected player
-remains visible across all six orientations. The permanent shader jobs do
-not require a particular modpack or Immersive Engineering itself: the fixture
-reproduces the public stencil state those rendering clients enable.
+Some NeoForge client mods enable stencil bits on the main framebuffer.
+When a shader pipeline substitutes a depth-only mirror texture but retains a
+separate packed stencil attachment, the reflection framebuffer may become
+unsupported. The scoped reflection repair handles this condition without
+modifying complete main-camera framebuffers.
+
+The enclosed NeoForge 1.21.1 shader jobs reproduce this public rendering state
+by calling `RenderTarget.enableStencil()` from an opt-in QA-only render-thread
+hook. They verify that stencil was enabled and that reflected geometry and
+the player are visible across all six orientations. The test requires only
+the relevant rendering stack, not a particular modpack or stencil-enabling mod.
 
 ### Animated reflected-entity check
 
