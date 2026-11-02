@@ -24,6 +24,7 @@ public final class ShaderHistoryGlTest {
             for (int format : new int[]{GL_RGBA8, GL_SRGB8_ALPHA8, GL_RGBA16F, GL_RGBA32F, GL_R32I, GL_R32UI, GL_RGB8_SNORM, GL_RGBA8_SNORM, GL_RGB16F, GL_R11F_G11F_B10F, GL_R8}) exercise(format);
             depthStorageParity();
             depthStencilAttachmentCollision();
+            depthStencilArrayLayerRestoration();
             System.out.println("PASS: world/shadow main/alt contents, zero history, all mip levels, 11 integer/float/sRGB/SNORM formats, shadow flips, sampler flags, GL state, repeated/exception cleanup");
         } finally { glfwDestroyWindow(window); glfwTerminate(); }
     }
@@ -214,6 +215,81 @@ public final class ShaderHistoryGlTest {
             glBindTexture(GL_TEXTURE_2D,originalTexture);
             glDeleteFramebuffers(framebuffer);
             glDeleteTextures(color);glDeleteTextures(depth);glDeleteTextures(stencil);
+        }
+    }
+
+    /**
+     * Regression for an actual single array/3D layer, not the whole texture.
+     * glFramebufferTexture() would silently turn this back into a layered
+     * attachment when the reflection scope exits.
+     */
+    private static void depthStencilArrayLayerRestoration() {
+        int previousDraw=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
+        int previousRead=glGetInteger(GL_READ_FRAMEBUFFER_BINDING);
+        int previous2D=glGetInteger(GL_TEXTURE_BINDING_2D);
+        int previousArray=glGetInteger(GL_TEXTURE_BINDING_2D_ARRAY);
+        int framebuffer=glGenFramebuffers();
+        int color=glGenTextures(),depth=glGenTextures(),stencilArray=glGenTextures();
+        try {
+            glBindTexture(GL_TEXTURE_2D,color);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D,0,GL_R11F_G11F_B10F,32,32,0,
+                    GL_RGB,GL_FLOAT,(ByteBuffer)null);
+            glBindTexture(GL_TEXTURE_2D,depth);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT,32,32,0,
+                    GL_DEPTH_COMPONENT,GL_UNSIGNED_INT,(ByteBuffer)null);
+            glBindTexture(GL_TEXTURE_2D_ARRAY,stencilArray);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+            glTexImage3D(GL_TEXTURE_2D_ARRAY,0,GL_DEPTH24_STENCIL8,32,32,2,0,
+                    GL_DEPTH_STENCIL,GL_UNSIGNED_INT_24_8,(ByteBuffer)null);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER,framebuffer);
+            glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,color,0);
+            glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,depth,0);
+            glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER,GL_STENCIL_ATTACHMENT,
+                    stencilArray,0,1);
+            int before=glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+            if(before==GL_FRAMEBUFFER_COMPLETE)
+                throw new AssertionError("Split depth and single-layer stencil unexpectedly complete; regression did not exercise repair");
+            ReflectionFramebufferParity scope=new ReflectionFramebufferParity();
+            try {
+                if(!scope.repairBoundDrawFramebuffer())
+                    throw new AssertionError("Single-layer stencil collision not repaired: "+before);
+                if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)
+                    throw new AssertionError("Single-layer repair did not make framebuffer complete");
+            } finally {
+                scope.close();
+                scope.close();
+            }
+            if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=before)
+                throw new AssertionError("Single-layer stencil original status not restored");
+            int restored=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                    GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+            int restoredLayer=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                    GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER);
+            int restoredLayered=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                    GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_LAYERED);
+            if(restored!=stencilArray || restoredLayer!=1 || restoredLayered!=GL_FALSE)
+                throw new AssertionError("Stencil array layer topology changed: name="+restored
+                        +" layer="+restoredLayer+" layered="+restoredLayered);
+            if(glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)!=framebuffer ||
+                    glGetInteger(GL_READ_FRAMEBUFFER_BINDING)!=previousRead)
+                throw new AssertionError("Single-layer repair leaked draw/read bindings");
+            if(glGetError()!=GL_NO_ERROR)
+                throw new AssertionError("Single-layer stencil repair caused a GL error");
+            System.out.println("PASS: stencil array single layer 1 restored, FBO status="+before);
+        } finally {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER,previousDraw);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER,previousRead);
+            glBindTexture(GL_TEXTURE_2D,previous2D);
+            glBindTexture(GL_TEXTURE_2D_ARRAY,previousArray);
+            glDeleteFramebuffers(framebuffer);
+            glDeleteTextures(color);
+            glDeleteTextures(depth);
+            glDeleteTextures(stencilArray);
         }
     }
 
