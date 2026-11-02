@@ -249,38 +249,40 @@ public final class ShaderHistoryGlTest {
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER,framebuffer);
             glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,color,0);
             glFramebufferTexture(GL_DRAW_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,depth,0);
-            glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER,GL_STENCIL_ATTACHMENT,
-                    stencilArray,0,1);
-            int before=glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
-            if(before==GL_FRAMEBUFFER_COMPLETE)
-                throw new AssertionError("Split depth and single-layer stencil unexpectedly complete; regression did not exercise repair");
-            ReflectionFramebufferParity scope=new ReflectionFramebufferParity();
-            try {
-                if(!scope.repairBoundDrawFramebuffer())
-                    throw new AssertionError("Single-layer stencil collision not repaired: "+before);
-                if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)
-                    throw new AssertionError("Single-layer repair did not make framebuffer complete");
-            } finally {
-                scope.close();
-                scope.close();
+            for (int testLayer : new int[]{0,1}) {
+                glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER,GL_STENCIL_ATTACHMENT,
+                        stencilArray,0,testLayer);
+                int before=glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+                if(before==GL_FRAMEBUFFER_COMPLETE)
+                    throw new AssertionError("Split depth and single-layer stencil unexpectedly complete; regression did not exercise repair");
+                ReflectionFramebufferParity scope=new ReflectionFramebufferParity();
+                try {
+                    if(!scope.repairBoundDrawFramebuffer())
+                        throw new AssertionError("Single-layer stencil collision not repaired: "+before);
+                    if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)
+                        throw new AssertionError("Single-layer repair did not make framebuffer complete");
+                } finally {
+                    scope.close();
+                    scope.close();
+                }
+                if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=before)
+                    throw new AssertionError("Single-layer stencil original status not restored");
+                int restored=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                        GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+                int restoredLayer=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                        GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER);
+                int restoredLayered=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                        GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_LAYERED);
+                if(restored!=stencilArray || restoredLayer!=testLayer || restoredLayered!=GL_FALSE)
+                    throw new AssertionError("Stencil array layer topology changed: name="+restored
+                            +" layer="+restoredLayer+" layered="+restoredLayered);
+                if(glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)!=framebuffer ||
+                        glGetInteger(GL_READ_FRAMEBUFFER_BINDING)!=previousRead)
+                    throw new AssertionError("Single-layer repair leaked draw/read bindings");
+                if(glGetError()!=GL_NO_ERROR)
+                    throw new AssertionError("Single-layer stencil repair caused a GL error");
+                System.out.println("PASS: stencil array single layer "+testLayer+" restored, FBO status="+before);
             }
-            if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=before)
-                throw new AssertionError("Single-layer stencil original status not restored");
-            int restored=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
-                    GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
-            int restoredLayer=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
-                    GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER);
-            int restoredLayered=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
-                    GL_STENCIL_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_LAYERED);
-            if(restored!=stencilArray || restoredLayer!=1 || restoredLayered!=GL_FALSE)
-                throw new AssertionError("Stencil array layer topology changed: name="+restored
-                        +" layer="+restoredLayer+" layered="+restoredLayered);
-            if(glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)!=framebuffer ||
-                    glGetInteger(GL_READ_FRAMEBUFFER_BINDING)!=previousRead)
-                throw new AssertionError("Single-layer repair leaked draw/read bindings");
-            if(glGetError()!=GL_NO_ERROR)
-                throw new AssertionError("Single-layer stencil repair caused a GL error");
-            System.out.println("PASS: stencil array single layer 1 restored, FBO status="+before);
         } finally {
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER,previousDraw);
             glBindFramebuffer(GL_READ_FRAMEBUFFER,previousRead);
