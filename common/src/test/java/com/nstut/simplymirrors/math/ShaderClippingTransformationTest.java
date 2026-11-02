@@ -5,6 +5,27 @@ import static org.junit.Assert.*;
 public class ShaderClippingTransformationTest {
     private enum Stage {VERTEX,GEOMETRY,TESS_EVAL,FRAGMENT}
     private static final String SOURCE="#version 330 core\nvoid main(){gl_Position=vec4(1);if(true)return;}\n";
+
+    @Test public void failedShaderTransformDoesNotContaminateFollowingProgram() {
+        Map<Stage,String> broken=new EnumMap<>(Stage.class);
+        broken.put(Stage.VERTEX,"#version 330 core\\nvoid wrongFunction() {}\\n");
+        try {
+            ShaderClippingTransformation.transformProgram("SODIUM","gbuffers_terrain",broken);
+            fail("An invalid shader must fail the compilation transform");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("no main"));
+        }
+        Map<Stage,String> valid=new EnumMap<>(Stage.class);
+        valid.put(Stage.VERTEX,SOURCE);
+        // The very next transformation must use the name passed for this call,
+        // not a stale name from the failed previous compilation.
+        assertSame(valid, ShaderClippingTransformation.transformProgram("SODIUM","shadow",valid));
+        Map<Stage,String> terrain=ShaderClippingTransformation.transformProgram("SODIUM","gbuffers_terrain",valid);
+        assertNotSame(valid,terrain);
+        assertTrue(terrain.get(Stage.VERTEX).contains("gl_ClipDistance[0]"));
+        assertEquals(SOURCE,valid.get(Stage.VERTEX));
+    }
+
     @Test public void clipsAfterEarlyReturnAndIsIdempotent(){
         String patched=ShaderClippingTransformation.transform(SOURCE,ShaderClippingTransformation.Stage.VERTEX,"simplymirrors_InverseProjection");
         assertTrue(patched.contains("simplymirrors_unclippedMain();"));

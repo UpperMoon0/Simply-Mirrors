@@ -37,6 +37,9 @@ subprojects { p ->
     dependencies {
         minecraft "net.minecraft:minecraft:${target.mc}"
         mappings loom.officialMojangMappings()
+        // The Iris RETURN injection uses MixinExtras @Local; Forge does not
+        // expose its annotation on the default Java compile classpath.
+        compileOnly 'io.github.llamalad7:mixinextras-common:0.4.1'
         if (target.loader == 'fabric') modImplementation "net.fabricmc:fabric-loader:${target.loaderVersion}"
         else if (target.loader == 'forge') forge "net.minecraftforge:forge:${target.loaderVersion}"
         else neoForge "net.neoforged:neoforge:${target.loaderVersion}"

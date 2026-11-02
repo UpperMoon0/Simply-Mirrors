@@ -26,6 +26,8 @@ dependencies {
 tasks.named('compileShaderGlTestJava') {
     source rootProject.file('common-client/src/main/java/com/nstut/simplymirrors/client/GlTextureSnapshot.java')
     source rootProject.file('common-client/src/main/java/com/nstut/simplymirrors/client/ShaderRenderTargetSnapshot.java')
+    source rootProject.file('common-client/src/main/java/com/nstut/simplymirrors/client/DepthTextureParity.java')
+    source rootProject.file('common-client/src/main/java/com/nstut/simplymirrors/client/ReflectionFramebufferParity.java')
 }
 tasks.register('shaderHistoryGlTest', JavaExec) {
     group = 'verification'

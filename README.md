@@ -6,7 +6,7 @@
 
 A standalone Minecraft mod project for placeable mirrors that reflect the surrounding world.
 
-**Version 0.1.1.** Includes a craftable full-block frameless mirror, a dedicated Simply Mirrors creative tab, and Iris/Oculus shader reflections across all eight version/loader targets. Inspired by the mirrors in Immersive Portals CE; no portal mod is required. See the [0.1.1 release notes](changelog/0.1.1.md) and [shader validation](docs/shader-validation.md) for compatibility details and captures.
+Simply Mirrors provides craftable, frameless, full-block mirrors, a dedicated creative tab, and optional Iris/Oculus shader reflections across all eight supported Minecraft/loader targets. Reflections include scoped framebuffer recovery for incompatible depth/stencil attachments, while preserving the main camera's rendering state. Inspired by the mirrors in Immersive Portals CE; no portal mod is required. See the [shader validation guide](docs/shader-validation.md) for current capabilities and the [changelog](changelog/) for release history.
 
 Every face of the full solid cube reflects: north, south, east, west, top, and bottom. Placement direction does not limit reflections. Adjacent mirrors form continuous surfaces, including floors and ceilings. Build your own frame using any blocks you like. Take a mirror from the Simply Mirrors tab or craft one with eight glass blocks around an iron ingot.
 

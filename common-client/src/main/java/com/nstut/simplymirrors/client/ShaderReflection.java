@@ -11,6 +11,7 @@ public final class ShaderReflection {
     private static CameraUniformOverrides cameraUniforms;
     private static IrisCameraState capturedCamera;
     private static ShaderRenderTargetSnapshot renderTargets;
+    private static ReflectionFramebufferParity framebufferParity;
     private static Object updatingCamera;
     private static final CameraUniformOverrides.Uniforms UNIFORMS = new CameraUniformOverrides.Uniforms() {
         public int currentProgram() { return glGetInteger(GL_CURRENT_PROGRAM); }
@@ -53,6 +54,7 @@ public final class ShaderReflection {
         capturedCamera=IrisCameraState.capture();
         cameraUniforms=new CameraUniformOverrides(UNIFORMS,perspective,mainView,view,mainEye,reflectedEye);
         renderTargets=ShaderRenderTargetSnapshot.capture();
+        framebufferParity=new ReflectionFramebufferParity();
         plane=MirrorMatrices.clipPlane(view,nx,ny,nz,x,y,z);
         projection=MirrorMatrices.inverse(perspective);camera=reflectedCamera;suspensions=0;glEnable(GL_CLIP_DISTANCE0);
     }
@@ -61,8 +63,11 @@ public final class ShaderReflection {
         finally {
             try { if(capturedCamera!=null)capturedCamera.restore(); }
             finally {
-                try {if(renderTargets!=null)renderTargets.close();}
-                finally {renderTargets=null;cameraUniforms=null;capturedCamera=null;updatingCamera=null;camera=null;plane=null;projection=null;suspensions=0;glDisable(GL_CLIP_DISTANCE0);}
+                try {
+                    try {if(framebufferParity!=null)framebufferParity.close();}
+                    finally {if(renderTargets!=null)renderTargets.close();}
+                }
+                finally {framebufferParity=null;renderTargets=null;cameraUniforms=null;capturedCamera=null;updatingCamera=null;camera=null;plane=null;projection=null;suspensions=0;glDisable(GL_CLIP_DISTANCE0);}
             }
         }
     }
@@ -85,7 +90,26 @@ public final class ShaderReflection {
         if(suspensions>0)suspensions--;
         if(enabled)glEnable(GL_CLIP_DISTANCE0);else glDisable(GL_CLIP_DISTANCE0);
     }
+    /**
+     * Iris can bind or rebuild a gbuffer FBO before its next shader-uniform
+     * callback. Repair that FBO at the attachment/binding boundary so the
+     * very first draw and readback never see an invalid split depth/stencil.
+     * Only active during a scoped mirrored render; Iris remains optional.
+     */
+    public static void onIrisFramebufferBound(int framebuffer) {
+        if(framebufferParity==null || framebuffer<=0) return;
+        int oldDraw=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
+        try {
+            if(oldDraw!=framebuffer) glBindFramebuffer(GL_DRAW_FRAMEBUFFER,framebuffer);
+            framebufferParity.repairBoundDrawFramebuffer();
+        } finally {
+            if(oldDraw!=framebuffer) glBindFramebuffer(GL_DRAW_FRAMEBUFFER,oldDraw);
+        }
+    }
     public static void upload() {
+        // Iris reuses Minecraft depth but can retain a distinct packed stencil
+        // attachment. Normalize unsupported reflection-only FBOs before drawing.
+        if(framebufferParity!=null)framebufferParity.repairBoundDrawFramebuffer();
         int program=glGetInteger(GL_CURRENT_PROGRAM);
         if(program==0)return;
         int location=glGetUniformLocation(program,"simplymirrors_ClipPlane");

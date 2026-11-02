@@ -23,6 +23,9 @@ minecraft {
 }
 dependencies {
     minecraft 'net.minecraftforge:forge:1.16.5-36.2.42'
+    // The optional Iris shader transform mixin uses MixinExtras @Local.
+    // Keep its annotation available at compile time without bundling it in the mod.
+    compileOnly 'io.github.llamalad7:mixinextras-common:0.3.5'
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
 mixin { add sourceSets.main, 'simplymirrors.refmap.json'; config 'simplymirrors.mixins.json' }

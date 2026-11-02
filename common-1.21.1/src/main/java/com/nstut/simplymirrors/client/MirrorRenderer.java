@@ -59,6 +59,15 @@ public final class MirrorRenderer {
             if(target==null||target.width!=main.width||target.height!=main.height) {
                 if(target!=null)target.destroyBuffers();target=new TextureTarget(main.width,main.height,true,Minecraft.ON_OSX);
             }
+            // Iris reuses this target's depth in its gbuffer FBOs. Match the
+            // real camera's depth storage format before any reflected shader draw.
+            // Shader-OFF keeps the original vanilla allocation unmodified.
+            if(ShaderReflection.enabled() && DepthTextureParity.match(
+                    main.getDepthTextureId(), target.getDepthTextureId(),
+                    target.width, target.height)) {
+                java.util.logging.Logger.getLogger("simply_mirrors").info(
+                    "Matched mirror depth internal format to Iris main target");
+            }
             for(List<MirrorSurface> surfaces:groups.values()) {
                 if(passes++>=6)break;
                 MirrorSurface surface=surfaces.get(0);

@@ -23,6 +23,7 @@ processResources {
         }
         def neo = new File(destinationDir, 'META-INF/neoforge.mods.toml')
         if (neo.exists()) neo.append('\n[[mixins]]\nconfig = "simplymirrors.visual.mixins.json"\n')
+
     }
 }
 if (mc == '1.16.5' && loader == 'forge') {

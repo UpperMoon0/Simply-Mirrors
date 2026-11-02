@@ -7,6 +7,25 @@ import unittest
 from unittest.mock import Mock, patch
 import visual_smoke
 
+class EnclosedRoomFixtureTests(unittest.TestCase):
+    def test_enclosed_scene_preserves_markers_and_seals_every_face(self):
+        for scene in range(6):
+            with self.subTest(scene=scene):
+                plain = visual_smoke.fixture(scene)
+                indoor = visual_smoke.fixture(scene, enclosed=True)
+                self.assertEqual(9, len(indoor) - len(plain))
+                self.assertEqual(plain[:5], indoor[:5])
+                self.assertEqual(plain[-9:], indoor[-9:])
+                self.assertTrue(all(cmd.startswith("fill ") for cmd in indoor[5:14]))
+                self.assertTrue(indoor[10].endswith(" white_concrete"))
+                # Enclosed, opaque rooms need an internal light source. Otherwise
+                # shader exposure produces near-black but still-correct geometry.
+                self.assertEqual(3, len(indoor[11:14]))
+                self.assertTrue(all(cmd.endswith(" sea_lantern") for cmd in indoor[11:14]))
+                self.assertEqual(3, len(set(indoor[11:14])))
+                self.assertTrue(all(cmd.startswith("setblock ") for cmd in indoor[-9:]))
+
+
 class SceneActivationTests(unittest.TestCase):
     @patch("visual_smoke.time.sleep")
     def test_scene_stays_parked_until_server_teleport_succeeds(self,sleep):
@@ -77,6 +96,51 @@ class ShaderImageTests(unittest.TestCase):
                 result=visual_smoke.image_check(path,shaders=True)
                 self.assertGreater(result["redMeanX"],result["blueMeanX"]+100)
 
+    def test_entity_required_rejects_colored_room_without_player(self):
+        from PIL import Image,ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"reflection.png"
+            self.image(path,[(77,72,161),(38,71,35),(191,53,47)])
+            visual_smoke.image_check(path,shaders=True)
+            with self.assertRaisesRegex(AssertionError,"No reflected player silhouette"):
+                visual_smoke.image_check(path,shaders=True,require_entity=True)
+            image=Image.open(path);draw=ImageDraw.Draw(image)
+            draw.rectangle((465,190,493,280),fill=(79,53,49))
+            image.save(path)
+            evidence=visual_smoke.image_check(path,shaders=True,require_entity=True)
+            self.assertGreater(evidence["entityPixels"],100)
+
+    def test_entity_motion_requires_nontrivial_pixel_change(self):
+        from PIL import Image,ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            before=Path(temp)/"idle.png"
+            after=Path(temp)/"moving.png"
+            self.image(before,[(77,72,161),(38,71,35),(191,53,47)])
+            with self.assertRaisesRegex(AssertionError,"swing did not change"):
+                visual_smoke.motion_check(before,before)
+            image=Image.open(before)
+            draw=ImageDraw.Draw(image)
+            draw.rectangle((465,200,493,270),fill=(83,61,59))
+            image.save(after)
+            self.assertGreater(visual_smoke.motion_check(before,after)["movingEntityPixels"],100)
+
+    def test_vertical_reflections_have_face_aware_entity_thresholds(self):
+        from PIL import Image,ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"reflection.png"
+            self.image(path,[(77,72,161),(38,71,35),(191,53,47)])
+            im=Image.open(path);draw=ImageDraw.Draw(im)
+            # Looking into a floor makes the reflected player tiny.
+            draw.rectangle((471,216,484,235),fill=(79,53,49))
+            im.save(path)
+            evidence=visual_smoke.image_check(path,shaders=True,require_entity=True,face_index=5)
+            self.assertGreater(evidence["entityPixels"],60)
+            # Ceiling reflection can span the adjacent green comparison strip.
+            draw.rectangle((460,187,538,280),fill=(79,53,49))
+            im.save(path)
+            evidence=visual_smoke.image_check(path,shaders=True,require_entity=True,face_index=4)
+            self.assertGreater(evidence["entityPixels"],100)
+
     def test_flat_texture_and_missing_marker_fail(self):
         with tempfile.TemporaryDirectory() as temp:
             path=Path(temp)/"reflection.png"
@@ -101,5 +165,119 @@ class ShaderImageTests(unittest.TestCase):
             self.image(path,[(191,53,47),(145,195,37),(77,72,161)])
             with self.assertRaisesRegex(AssertionError,"handedness"):
                 visual_smoke.image_check(path,shaders=True)
+
+
+class ClientAssetPreflightTests(unittest.TestCase):
+    @patch("visual_smoke.time.sleep")
+    def test_retry_only_loom_asset_download_failure(self, sleep):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            calls = []
+            def run(command, **kwargs):
+                calls.append(command)
+                self.assertEqual(directory, kwargs["cwd"])
+                self.assertEqual(subprocess.STDOUT, kwargs["stderr"])
+                self.assertIs(False, kwargs["check"])
+                if len(calls) == 1:
+                    kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\\n")
+                    return Mock(returncode=1)
+                kwargs["stdout"].write("BUILD SUCCESSFUL\\n")
+                return Mock(returncode=0)
+            with patch("visual_smoke.subprocess.run", side_effect=run):
+                visual_smoke.prepare_visual_client_assets(
+                    ["./gradlew"], ":fabric-1.16.5:downloadAssets", directory, directory)
+            self.assertEqual(2, len(calls))
+            self.assertEqual([ "./gradlew", ":fabric-1.16.5:downloadAssets"], calls[0])
+            self.assertEqual(calls[0], calls[1])
+            self.assertIn("DownloadException", (directory/"asset-download-1.log").read_text())
+            self.assertIn("BUILD SUCCESSFUL", (directory/"asset-download-2.log").read_text())
+            sleep.assert_called_once_with(3)
+
+    @patch("visual_smoke.time.sleep")
+    def test_non_download_failure_is_not_retried(self, sleep):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            def run(command, **kwargs):
+                kwargs["stdout"].write("Could not find task downloadAssets\\n")
+                return Mock(returncode=1)
+            with patch("visual_smoke.subprocess.run", side_effect=run) as runner:
+                with self.assertRaisesRegex(RuntimeError, "preflight failed"):
+                    visual_smoke.prepare_visual_client_assets(
+                        ["./gradlew"], "downloadAssets", directory, directory)
+            runner.assert_called_once()
+            sleep.assert_not_called()
+
+    @patch("visual_smoke.time.sleep")
+    def test_repeated_download_failures_are_bounded(self, sleep):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            def run(command, **kwargs):
+                kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\\n")
+                return Mock(returncode=1)
+            with patch("visual_smoke.subprocess.run", side_effect=run) as runner:
+                with self.assertRaisesRegex(RuntimeError, "attempt 3/3"):
+                    visual_smoke.prepare_visual_client_assets(
+                        ["./gradlew"], "downloadAssets", directory, directory)
+            self.assertEqual(3, runner.call_count)
+            self.assertEqual(2, sleep.call_count)
+            for attempt in (1, 2, 3):
+                self.assertTrue((directory/f"asset-download-{attempt}.log").exists())
+
+
+class ExternalModpackReproductionTests(unittest.TestCase):
+    def test_extra_render_mod_is_copied_only_into_disposable_profile(self):
+        import hashlib
+        import zipfile
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);source=root/'shader-compat.jar'
+            with zipfile.ZipFile(source,'w') as jar:
+                jar.writestr('META-INF/mods.toml','[[mods]]\\nmodId="shader_compat"\\n')
+            client=root/'isolated-client'
+            manifest=visual_smoke.install_extra_client_mods(client,[source])
+            copy=client/'mods'/source.name
+            self.assertTrue(copy.exists())
+            self.assertEqual(source.read_bytes(),copy.read_bytes())
+            self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),manifest[0]['sha256'])
+            self.assertFalse((root/'mods').exists())
+            self.assertEqual([],visual_smoke.install_extra_client_mods(client,[]))
+
+    def test_duplicate_or_invalid_mod_leaves_profile_unchanged(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);source=root/'render-addon.jar';client=root/'test-client'
+            with zipfile.ZipFile(source,'w') as jar:jar.writestr('fabric.mod.json','{"id":"render-addon"}')
+            broken=root/'not-a-jar.jar';broken.write_text('plain text')
+            for batch, message in [([source,source],'Duplicate'),([source,broken],'Not a Minecraft mod JAR')]:
+                with self.subTest(message=message):
+                    with self.assertRaisesRegex(ValueError,message):
+                        visual_smoke.install_extra_client_mods(client,batch)
+                    self.assertFalse((client/'mods'/source.name).exists())
+            # Existing files must survive rejection unchanged.
+            mods=client/'mods';mods.mkdir(parents=True)
+            existing=mods/source.name;existing.write_bytes(b'existing')
+            with self.assertRaisesRegex(ValueError,'Duplicate'):
+                visual_smoke.install_extra_client_mods(client,[source])
+            self.assertEqual(b'existing',existing.read_bytes())
+
+    def test_staging_failure_does_not_install_partial_batch(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);client=root/'test-client'
+            jars=[root/'first.jar',root/'second.jar']
+            for path in jars:
+                with zipfile.ZipFile(path,'w') as jar:jar.writestr('fabric.mod.json','{}')
+            original=visual_smoke.shutil.copy2
+            calls=0
+            def fail_second(*args,**kwargs):
+                nonlocal calls
+                calls+=1
+                if calls==2:raise OSError('staging failure')
+                return original(*args,**kwargs)
+            with patch('visual_smoke.shutil.copy2',side_effect=fail_second):
+                with self.assertRaisesRegex(OSError,'staging failure'):
+                    visual_smoke.install_extra_client_mods(client,jars)
+            self.assertFalse((client/'mods').exists())
+
+
 
 if __name__=="__main__":unittest.main()
