@@ -29,6 +29,8 @@ public abstract class VisualProbeMixin {
     @Unique private int simplymirrors$motionPhase, simplymirrors$motionStart;
     @Unique private long simplymirrors$motionStartPass;
     @Unique private boolean simplymirrors$joining;
+    @Unique private int simplymirrors$cameraPhase;
+    @Unique private long simplymirrors$cameraStartPass;
     /**
      * CI's Mesa software renderer can draw fewer than two frames per second,
      * while a Minecraft attack swing lasts only a few 20-Hz game ticks.
@@ -73,14 +75,17 @@ public abstract class VisualProbeMixin {
         int requested=VisualScene.index(mc.gameDirectory.toPath());
         if(requested<0)return;
         if(requested==6){simplymirrors$done=true;mc.stop();return;}
-        if(requested!=simplymirrors$scene){simplymirrors$scene=requested;simplymirrors$mirrorFrames=0;simplymirrors$sceneFrames=0;simplymirrors$startPasses=MirrorRenderer.completedPasses;simplymirrors$captured=false;simplymirrors$motionPhase=0;}
+        if(requested!=simplymirrors$scene){simplymirrors$scene=requested;simplymirrors$mirrorFrames=0;simplymirrors$sceneFrames=0;simplymirrors$startPasses=MirrorRenderer.completedPasses;simplymirrors$captured=false;simplymirrors$motionPhase=0;simplymirrors$cameraPhase=0;}
         simplymirrors$sceneFrames++;
         if(MirrorRenderer.completedPasses>simplymirrors$startPasses)simplymirrors$mirrorFrames++;
         int phase=simplymirrors$mirrorFrames/20;
         float yaw=VisualScene.yaw(requested)+(phase==1?20:phase==2?-20:0);
         float base=VisualScene.pitch(requested);
         float pitch=base+(phase==3?(base>0?-20:20):phase==4?(base<0?20:-20):0);
+        boolean cameraTest=Boolean.getBoolean("simplymirrors.visualCheckCameraMotion")&&requested==0;
+        if(cameraTest&&(simplymirrors$cameraPhase==1||simplymirrors$cameraPhase==2))yaw+=8;
         double[] eye=VisualScene.eye(requested);double px=eye[0],py=eye[1]-1.62,pz=eye[2];
+        if(cameraTest&&(simplymirrors$cameraPhase==1||simplymirrors$cameraPhase==2))px+=.35;
         mc.player.setPos(px,py,pz);mc.player.xo=px;mc.player.yo=py;mc.player.zo=pz;
         mc.player.setYRot(yaw);mc.player.setXRot(pitch);mc.player.yRotO=yaw;mc.player.xRotO=pitch;mc.player.yBodyRot=yaw;mc.player.yHeadRot=yaw;
         if(simplymirrors$captured)return;
@@ -119,10 +124,46 @@ public abstract class VisualProbeMixin {
             simplymirrors$motionPhase=2;
             System.out.println("SIMPLY_MIRRORS_ENTITY_SWING_CAPTURED attack="+attack+" elapsedFrames="+elapsed+" reflectionPasses="+reflected);
         }
+        if(cameraTest&&simplymirrors$cameraPhase!=4) {
+            Path dir=mc.gameDirectory.toPath().resolve("visual-evidence");
+            Files.createDirectories(dir);
+            long passes=MirrorRenderer.completedPasses;
+            if(simplymirrors$cameraPhase==0) {
+                VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),
+                        mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,
+                        dir.resolve("mirror-camera-idle.png"));
+                simplymirrors$cameraPhase=1;
+                simplymirrors$cameraStartPass=passes;
+                System.out.println("SIMPLY_MIRRORS_CAMERA_PAN_STARTED");
+                return;
+            }
+            if(simplymirrors$cameraPhase==1) {
+                if(passes<=simplymirrors$cameraStartPass)return;
+                VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),
+                        mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,
+                        dir.resolve("mirror-camera-moving.png"));
+                simplymirrors$cameraPhase=2;
+                simplymirrors$cameraStartPass=passes;
+                return;
+            }
+            if(simplymirrors$cameraPhase==2) {
+                if(passes-simplymirrors$cameraStartPass<20)return;
+                VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),
+                        mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,
+                        dir.resolve("mirror-camera-settled.png"));
+                simplymirrors$cameraPhase=3;
+                simplymirrors$cameraStartPass=passes;
+                System.out.println("SIMPLY_MIRRORS_CAMERA_PAN_CAPTURED passes="+passes);
+                return;
+            }
+            // Return to the exact original pose for the regular six-face screenshot.
+            if(passes-simplymirrors$cameraStartPass<5)return;
+            simplymirrors$cameraPhase=4;
+        }
         boolean tab=false;for(CreativeModeTab t:BuiltInRegistries.CREATIVE_MODE_TAB)if(t!=null&&t.getDisplayName().getString().equals("Simply Mirrors"))tab=true;
         int error=glGetError();Path dir=mc.gameDirectory.toPath().resolve("visual-evidence");Files.createDirectories(dir);
         VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,dir.resolve("mirror-"+requested+".png"));
-        String json="{\"passes\":"+(MirrorRenderer.completedPasses-simplymirrors$startPasses)+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+",\"shaderPackActive\":"+com.nstut.simplymirrors.visualsupport.ShaderProbe.active()+",\"stencilEnabled\":"+simplymirrors$stencilReady+",\"motionCaptured\":"+(requested==0&&simplymirrors$motionPhase==2)+"}";
+        String json="{\"passes\":"+(MirrorRenderer.completedPasses-simplymirrors$startPasses)+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+",\"shaderPackActive\":"+com.nstut.simplymirrors.visualsupport.ShaderProbe.active()+",\"stencilEnabled\":"+simplymirrors$stencilReady+",\"motionCaptured\":"+(requested==0&&simplymirrors$motionPhase==2)+",\"cameraMotionCaptured\":"+(cameraTest&&simplymirrors$cameraPhase==4)+"}";
         Files.write(dir.resolve("result-"+requested+".json"),json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         System.out.println("SIMPLY_MIRRORS_VISUAL_RESULT "+requested+" "+json);simplymirrors$captured=true;
     }

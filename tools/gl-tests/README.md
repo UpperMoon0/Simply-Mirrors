@@ -40,3 +40,43 @@ python tools/verify_shader_history_api.py /path/to/checksum-pinned-shader-jars
 The check first verifies each jar's SHA-512 against `tools/shader/stack-lock.json`,
 then checks every field and method the history bridge uses. It does not download
 or alter third-party jars.
+
+## Large mirror compositor benchmark
+
+Run the production OpenGL compositor through its historical per-block path,
+per-plane batching, and exact greedy rectangle merging, with identical mirror
+geometry, varying-color texture, camera, framebuffer, and output pixels:
+
+```sh
+LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a ./gradlew -Ptarget=common :common:mirrorCompositeBenchmark --no-daemon --console=plain
+```
+
+The benchmark reports the median of four measured runs at 64, 256, 1,024, 4,096,
+and 8,192 coplanar faces. It asserts exact RGBA pixel parity before timings and
+prints quad counts (N to M). It also checks exact pixel parity across
+all six face normals with an interior hole, rather than treating a filled wall
+as sufficient evidence. It uses Mesa software GL, **not** a real
+Minecraft client with Complementary; the world renders, shadow pipeline, shader
+color-history snapshots, driver, and GPU are excluded from those timings.
+Do not interpret these isolated compositor figures as full shader FPS.
+The complete Complementary acceptance remains the shader and visual workflows.
+
+The 20-frame stress profiles include 8,192 checkerboard faces, 6,144 scattered
+faces in two planes, 6,144 faces across six planes, and holed surfaces.
+They report median and p95 CPU+software-GL time as well as direct staging
+allocation bytes per steady-state frame. Production's exact identity-checked
+per-plane mesh cache invalidates when any selected face object changes, even
+if the face count remains unchanged. Temporal motion blur is covered separately
+in the shader visual acceptance, not inferred from the compositor GL test.
+
+A camera-pan benchmark now moves the viewer while distance-sorting the same
+faces each frame and recreating all surface objects every 20 frames, matching
+the renderer's usual scan cadence. It changes a single face at frame 32 and
+restores it at frame 48 without changing the face count. The report asserts
+only the initial mesh build plus two genuine edits trigger rebuilds, counts
+cache hits, measures 72-frame p95 and median compositor time, and checks
+baseline-vs-merged RGBA parity on six movement/edit snapshots. Dense and
+fragmented three-plane cases are both covered. The geometry key uses an exact
+order-independent face multiset, not a hash fingerprint; cache hits do not
+allocate keys. These are isolated Mesa/llvmpipe compositor measurements,
+not full in-game GPU FPS or shader-time profiling.

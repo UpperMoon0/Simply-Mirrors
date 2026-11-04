@@ -1,5 +1,6 @@
 package com.nstut.simplymirrors.client;
 import com.nstut.simplymirrors.math.MirrorMatrices;
+import com.nstut.simplymirrors.math.MirrorTemporalHistory;
 import com.nstut.simplymirrors.math.CameraUniformOverrides;
 import java.lang.reflect.Method;
 import static org.lwjgl.opengl.GL33.*;
@@ -50,9 +51,10 @@ public final class ShaderReflection {
         try {return active!=null && (Boolean)active.invoke(active.getDeclaringClass().getMethod("getInstance").invoke(null));}
         catch(ReflectiveOperationException e) {throw new IllegalStateException("Cannot query shader pipeline",e);}
     }
-    public static void begin(float[] perspective,float[] view,double nx,double ny,double nz,double x,double y,double z,Object reflectedCamera,float[] mainView,double[] mainEye,double[] reflectedEye) {
+    public static void begin(float[] perspective,float[] view,double nx,double ny,double nz,double x,double y,double z,Object reflectedCamera,float[] mainView,double[] mainEye,double[] reflectedEye,MirrorTemporalHistory.Pose previous) {
         capturedCamera=IrisCameraState.capture();
-        cameraUniforms=new CameraUniformOverrides(UNIFORMS,perspective,mainView,view,mainEye,reflectedEye);
+        cameraUniforms=new CameraUniformOverrides(UNIFORMS,perspective,mainView,view,mainEye,reflectedEye,
+                previous.view,previous.projection,previous.mainEye,previous.eye,previous.valid);
         renderTargets=ShaderRenderTargetSnapshot.capture();
         framebufferParity=new ReflectionFramebufferParity();
         plane=MirrorMatrices.clipPlane(view,nx,ny,nz,x,y,z);

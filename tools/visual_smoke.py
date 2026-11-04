@@ -184,6 +184,76 @@ def motion_check(idle_path, moving_path):
         return {"movingEntityPixels":changing}
 
 
+def camera_motion_check(idle_path,moving_path,settled_path):
+    """Quantify pan/strafe movement and bound reflected ghosting at the same target pose.
+
+    This is a GPU framebuffer acceptance check with actual Complementary enabled,
+    not a synthetic matrix test. The settled frame serves as a sharp reference at
+    the moving frame's position. Keep thresholds broad for differing Mesa hosts.
+    """
+    from PIL import Image, ImageChops, ImageStat
+    images=[]
+    for p in (idle_path,moving_path,settled_path):
+        with Image.open(p) as image:
+            images.append(image.convert("RGB"))
+    idle,moving,settled=images
+    assert idle.size==moving.size==settled.size,"Camera-motion frames differ in resolution"
+    w,h=idle.size
+    roi=(int(w*.30),int(h*.24),int(w*.70),int(h*.75))
+    baseline=idle.crop(roi)
+    moving=moving.crop(roi)
+    settled=settled.crop(roi)
+    changed=ImageChops.difference(baseline,settled)
+    actual_motion=sum(max(pixel)>15 for pixel in changed.getdata())
+    assert actual_motion>max(200,int((roi[2]-roi[0])*(roi[3]-roi[1])*.006)), (
+        f"Camera pan/strafe produced no meaningful reflected pixel displacement: {actual_motion}")
+    temporal=ImageChops.difference(moving,settled)
+    average=sum(ImageStat.Stat(temporal).mean)/3
+    # A reflected frame may contain legitimate motion blur and temporal shimmer.
+    # Almost full-frame contamination indicates pathological false velocity.
+    assert average<55, f"Excessive Complementary camera blur/ghosting after pan/strafe: MAD={average:.2f}"
+    return {"cameraMovedPixels":actual_motion,"cameraMotionVsSettledMeanAbsDifference":round(average,3)}
+
+
+def capture_client_thread_dump(client_dir, evidence):
+    """Record the actual disposable client thread stack before aborting a stalled probe.
+
+    Only attach to Java processes whose command line explicitly includes this
+    fixture's unique client directory. Never inspect unrelated game instances.
+    """
+    if os.name != "posix" or not Path("/proc").is_dir():
+        return
+    jcmd = shutil.which("jcmd")
+    report = evidence / "client-thread-dump.txt"
+    lines = []
+    if not jcmd:
+        report.write_text("jcmd not installed; could not inspect visual fixture.\n")
+        return
+    target = str(client_dir.resolve()).encode()
+    try:
+        processes = sorted((entry for entry in Path("/proc").iterdir()
+                            if entry.name.isdecimal()),key=lambda entry:int(entry.name))
+        for entry in processes:
+            try:
+                command = (entry / "cmdline").read_bytes()
+            except (FileNotFoundError, PermissionError, ProcessLookupError):
+                continue
+            if target not in command or b"java" not in command.lower():
+                continue
+            pid = entry.name
+            lines.append(f"=== client JVM {pid} ({command[:700]!r}) ===\n")
+            try:
+                dump = subprocess.run([jcmd,pid,"Thread.print","-l"],
+                        capture_output=True,text=True,timeout=12,check=False)
+                lines.append(f"exit={dump.returncode}\n{dump.stdout[-180000:]}\n{dump.stderr[-5000:]}\n")
+            except (OSError, subprocess.TimeoutExpired) as error:
+                lines.append(f"Thread dump unavailable: {error!r}\n")
+        report.write_text("".join(lines) if lines else
+                "No running fixture Java process contained its client path.\n")
+    except BaseException as error:
+        report.write_text(f"Client diagnostic collection failed: {error!r}\n")
+
+
 def finish_capture(client_dir,evidence,results,failures,client):
     # Preserve diagnostic captures even when shutdown or image acceptance fails.
     (evidence/"results.json").write_text(json.dumps(results,indent=2)+"\n")
@@ -266,6 +336,8 @@ def main():
     parser.add_argument("--enclosed", action="store_true", help="Build an indoor mirror room (issue #5 regression)")
     parser.add_argument("--check-motion", action="store_true",
                         help="Animate a reflected player swing and verify two real framebuffer captures")
+    parser.add_argument("--check-camera-motion", action="store_true",
+                        help="Capture a reflected camera strafe/pan with pinned Complementary TAA and motion blur enabled")
     parser.add_argument("--force-stencil", action="store_true",
                         help="Exercise NeoForge main framebuffer stencil as enabled by Immersive Engineering")
     parser.add_argument("--require-entity", action="store_true",
@@ -276,6 +348,8 @@ def main():
     args=parser.parse_args()
     if args.check_motion and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
         parser.error("--check-motion requires NeoForge 1.21.1 enclosed shader validation")
+    if args.check_camera_motion and (args.target!="neoforge-1.21.1" or not args.shaders):
+        parser.error("--check-camera-motion requires NeoForge 1.21.1 shader validation")
     if args.force_stencil and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
         parser.error("--force-stencil is for NeoForge 1.21.1 enclosed shader validation")
     if args.require_entity and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
@@ -293,6 +367,12 @@ def main():
         if pack.suffix.lower() != ".zip":
             parser.error("--shader-pack must be a shaderpack ZIP")
         install_pack(client_dir,pack,loader=t['loader'])
+        if args.check_camera_motion:
+            # A disposable shaderpack profile, never applied to the user's game.
+            # Complementary r5.9.3's exact options are pinned in the shader ZIP.
+            (client_dir/"shaderpacks"/(pack.name+".txt")).write_text(
+                "MOTION_BLUR_EFFECT=1\nMOTION_BLURRING_STRENGTH=1.00\n"
+                "TAA_DEFINE=1\nTAA_SMOOTHING=3\n")
     # Native mods are copied only into the disposable client profile, never
     # the production game directory or server. Keep a reproducible hash ledger.
     extra_mods=install_extra_client_mods(client_dir,args.extra_client_mod)
@@ -338,6 +418,9 @@ def main():
             print("Fixture ready; starting client",args.target,flush=True)
             client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
             client_env=os.environ.copy()
+            if args.check_camera_motion:
+                client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
+                                                   " -Dsimplymirrors.visualCheckCameraMotion=true").strip()
             if args.check_motion:
                 client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
                                                    " -Dsimplymirrors.visualCheckMotion=true").strip()
@@ -355,21 +438,34 @@ def main():
                         reply=rcon.command(text)
                         if any(word in reply for word in ["Unknown","Incorrect","too many blocks"]):raise RuntimeError(f"Fixture failed: {text}: {reply}")
                 activate_scene(rcon,client_dir,scene,client)
-                result=client_dir/f"visual-evidence/result-{scene}.json";deadline=time.monotonic()+(600 if scene==0 else 180)
+                result=client_dir/f"visual-evidence/result-{scene}.json"
+                started=time.monotonic()
+                deadline=started+(600 if scene==0 else 180)
+                diagnostic_captured=False
                 while time.monotonic()<deadline and not result.exists():
                     if client.poll() is not None:raise RuntimeError(f"Client exited before {face} capture: {evidence/'client.log'}")
+                    if not diagnostic_captured and scene==0 and time.monotonic()-started>=180:
+                        capture_client_thread_dump(client_dir,evidence)
+                        diagnostic_captured=True
                     time.sleep(1)
-                if not result.exists():raise TimeoutError(f"Client visual probe timed out on {face}: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
+                if not result.exists():
+                    if not diagnostic_captured:capture_client_thread_dump(client_dir,evidence)
+                    raise TimeoutError(f"Client visual probe timed out on {face}: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
                 if args.force_stencil:assert data.get('stencilEnabled') is True,data
                 if args.check_motion and scene==0:assert data.get('motionCaptured') is True,data
+                if args.check_camera_motion and scene==0:assert data.get('cameraMotionCaptured') is True,data
                 try:
                     data.update(image_check(result.with_name(f"mirror-{scene}.png"),shaders=args.shaders,
                                             require_entity=args.require_entity,face_index=scene))
                     if args.check_motion and scene==0:
                         data.update(motion_check(result.with_name("mirror-motion-idle.png"),
                                                  result.with_name("mirror-motion-swing.png")))
+                    if args.check_camera_motion and scene==0:
+                        data.update(camera_motion_check(result.with_name("mirror-camera-idle.png"),
+                                                        result.with_name("mirror-camera-moving.png"),
+                                                        result.with_name("mirror-camera-settled.png")))
                 except AssertionError as error:
                     failures[face]=str(error);data['imageError']=str(error)
                 results[face]=data

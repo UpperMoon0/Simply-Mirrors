@@ -102,6 +102,45 @@ jobs:
           if-no-files-found: warn
 
 
+  camera-motion:
+    name: Complementary TAA + motion blur camera pan (NeoForge 1.21.1)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install software rendering dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libopenal1 libxrandr2 libxcursor1 libxi6 libxinerama1
+          python -m pip install pillow
+          chmod +x gradlew
+      - name: Verify moving camera with explicit Complementary blur and TAA
+        env:
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+          ALSOFT_DRIVERS: 'null'
+        run: >-
+          xvfb-run -a -s '-screen 0 1280x720x24'
+          python tools/visual_smoke.py
+          --target neoforge-1.21.1 --shaders --enclosed --check-camera-motion
+          --run-name camera-motion
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mirror-complementary-camera-motion
+          path: |
+            neoforge-1.21.1/run/camera-motion-evidence/**
+            neoforge-1.21.1/run/camera-motion-client/visual-evidence/**
+            neoforge-1.21.1/run/camera-motion-client/logs/**
+          if-no-files-found: warn
+
   euphoria-compat:
     name: Euphoria Patcher shader compatibility (NeoForge 1.21.1)
     runs-on: ubuntu-24.04
