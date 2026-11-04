@@ -280,4 +280,50 @@ class ExternalModpackReproductionTests(unittest.TestCase):
 
 
 
+class VisualThreadDumpDiscoveryTests(unittest.TestCase):
+    def test_isolated_client_cwd_matches_without_client_path_in_jvm_args(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            proc = root / "proc"
+            proc.mkdir()
+            client = root / "visual-client"
+            client.mkdir()
+            unrelated = root / "unrelated-game"
+            unrelated.mkdir()
+            for pid, cwd, cmdline in [
+                (101, client, b"/usr/lib/jvm/bin/java\\0net.minecraft.client.main.Main\\0"),
+                (102, unrelated, b"/usr/lib/jvm/bin/java\\0net.minecraft.client.main.Main\\0"),
+                (103, client, b"/usr/bin/python3\\0test_fixture.py\\0"),
+                (104, unrelated, b"/usr/lib/jvm/bin/java\\0-Dvisual.client=" +
+                    str(client.resolve()).encode() + b"\\0"),
+            ]:
+                entry = proc / str(pid)
+                entry.mkdir()
+                (entry / "cmdline").write_bytes(cmdline)
+                (entry / "cwd").symlink_to(cwd, target_is_directory=True)
+            # Also cover a launch whose working directory is unavailable:
+            # the explicitly scoped client path still identifies it.
+            entry = proc / "105"
+            entry.mkdir()
+            (entry / "cmdline").write_bytes(b"/usr/bin/java\\0-Dclient=" +
+                                           str(client.resolve()).encode() + b"\\0")
+            self.assertEqual(
+                ["101", "104", "105"],
+                [pid for pid, _ in visual_smoke.fixture_java_processes(client, proc)]
+            )
+
+    def test_missing_proc_or_process_cannot_match_unrelated_java(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.assertEqual([], visual_smoke.fixture_java_processes(
+                root / "client", root / "missing-proc"))
+            proc = root / "proc"
+            proc.mkdir()
+            (proc / "not-a-pid").mkdir()
+            self.assertEqual([], visual_smoke.fixture_java_processes(
+                root / "client", proc))
+
+
+
+
 if __name__=="__main__":unittest.main()
