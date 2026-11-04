@@ -2,6 +2,8 @@ package com.nstut.simplymirrors.client;
 
 import com.nstut.simplymirrors.math.MirrorMatrices;
 import com.nstut.simplymirrors.math.MirrorSurface;
+import com.nstut.simplymirrors.math.MirrorGeometry;
+import com.nstut.simplymirrors.math.MirrorPatch;
 import org.lwjgl.BufferUtils;
 import java.nio.FloatBuffer;
 import java.util.Collections;
@@ -16,8 +18,16 @@ public final class GlMirrorComposite implements AutoCloseable {
     public void draw(int texture,int width,int height,float[] viewProjection,double eyeX,double eyeY,double eyeZ,MirrorSurface surface) {
         drawBatch(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,Collections.singletonList(surface));
     }
-    /** One state transaction, buffer upload and draw per coplanar reflection, not per mirror block. */
+    /** Compatibility path: one draw per plane, with an individual quad per face. */
     public void drawBatch(int texture,int width,int height,float[] viewProjection,double eyeX,double eyeY,double eyeZ,List<MirrorSurface> surfaces) {
+        drawGeometry(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,surfaces);
+    }
+    /** Merge adjacent unit faces into exact rectangle coverage; retain the full-resolution texture. */
+    public void drawMergedBatch(int texture,int width,int height,float[] viewProjection,double eyeX,double eyeY,double eyeZ,List<MirrorSurface> surfaces) {
+        if(surfaces.size()<16)drawGeometry(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,surfaces);
+        else drawGeometry(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,MirrorPatch.merge(surfaces));
+    }
+    private void drawGeometry(int texture,int width,int height,float[] viewProjection,double eyeX,double eyeY,double eyeZ,List<? extends MirrorGeometry> surfaces) {
         if(surfaces.isEmpty())return;
         if(program==0) initialize();
         int oldProgram=glGetInteger(GL_CURRENT_PROGRAM),oldVao=glGetInteger(GL_VERTEX_ARRAY_BINDING),oldBuffer=glGetInteger(GL_ARRAY_BUFFER_BINDING);
@@ -29,7 +39,7 @@ public final class GlMirrorComposite implements AutoCloseable {
         boolean depthMask=glGetBoolean(GL_DEPTH_WRITEMASK);int depthFunc=glGetInteger(GL_DEPTH_FUNC);
         try {
             FloatBuffer vertices=BufferUtils.createFloatBuffer(Math.multiplyExact(surfaces.size(),24));
-            for(MirrorSurface surface:surfaces) {
+            for(MirrorGeometry surface:surfaces) {
                 double[][] corners=surface.corners();
                 for(int index:TRIANGLE_INDICES) {
                     double[] p=corners[index];double[] clip=MirrorMatrices.transform(viewProjection,p[0]-eyeX,p[1]-eyeY,p[2]-eyeZ,1);

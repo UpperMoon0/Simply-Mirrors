@@ -1,9 +1,10 @@
 package com.nstut.simplymirrors.math;
 
 /** The complete outward-facing surface of a full mirror cube. */
-public final class MirrorSurface {
+public final class MirrorSurface implements MirrorGeometry {
     public final int x,y,z,nx,ny,nz;
     public final double cx,cy,cz;
+    private final String planeKey;
     public MirrorSurface(int x,int y,int z,int nx,int nz) {
         this(x,y,z,nx,0,nz);
     }
@@ -11,6 +12,7 @@ public final class MirrorSurface {
         if(Math.abs(nx)+Math.abs(ny)+Math.abs(nz)!=1)throw new IllegalArgumentException("Expected a cube-face normal");
         this.x=x;this.y=y;this.z=z;this.nx=nx;this.ny=ny;this.nz=nz;
         cx=x+.5+nx*.5;cy=y+.5+ny*.5;cz=z+.5+nz*.5;
+        planeKey=nx+":"+ny+":"+nz+":"+Math.round((nx*cx+ny*cy+nz*cz)*16);
     }
     public static MirrorSurface[] faces(int x,int y,int z) {
         return new MirrorSurface[]{new MirrorSurface(x,y,z,0,0,-1),new MirrorSurface(x,y,z,0,0,1),
@@ -18,7 +20,11 @@ public final class MirrorSurface {
             new MirrorSurface(x,y,z,0,1,0),new MirrorSurface(x,y,z,0,-1,0)};
     }
     public MirrorPlane plane() { return new MirrorPlane(cx,cy,cz,nx,ny,nz); }
-    public String planeKey() { return nx+":"+ny+":"+nz+":"+Math.round((nx*cx+ny*cy+nz*cz)*16); }
+    public String planeKey() { return planeKey; }
+    /** Axis normals are already unit length; skip the temporary MirrorPlane allocation. */
+    public boolean frontFacing(double eyeX,double eyeY,double eyeZ,double epsilon) {
+        return (eyeX-cx)*nx+(eyeY-cy)*ny+(eyeZ-cz)*nz>epsilon;
+    }
     public double[][] corners() {
         double ux=ny==0?-nz*.5:.5,uz=ny==0?nx*.5:0;
         double vy=ny==0?.5:0,vz=ny*.5;

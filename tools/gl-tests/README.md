@@ -43,9 +43,9 @@ or alter third-party jars.
 
 ## Large mirror compositor benchmark
 
-Run the production OpenGL compositor through its historical per-block path and
-its new per-plane batched path with identical mirror geometry, texture, camera,
-OpenGL framebuffer, and output pixels:
+Run the production OpenGL compositor through its historical per-block path,
+per-plane batching, and exact greedy rectangle merging, with identical mirror
+geometry, varying-color texture, camera, framebuffer, and output pixels:
 
 ```sh
 LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a ./gradlew -Ptarget=common :common:mirrorCompositeBenchmark --no-daemon --console=plain
@@ -53,7 +53,9 @@ LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a ./gradlew -Ptarget=common :common:mirrorC
 
 The benchmark reports the median of four measured runs at 64, 256, 1,024, 4,096,
 and 8,192 coplanar faces. It asserts exact RGBA pixel parity before timings and
-prints observed draw counts (N to 1). It uses Mesa software GL, **not** a real
+prints quad counts (N to M). It also checks exact pixel parity across
+all six face normals with an interior hole, rather than treating a filled wall
+as sufficient evidence. It uses Mesa software GL, **not** a real
 Minecraft client with Complementary; the world renders, shadow pipeline, shader
 color-history snapshots, driver, and GPU are excluded from those timings.
 Do not interpret these isolated compositor figures as full shader FPS.

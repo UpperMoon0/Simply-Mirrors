@@ -61,11 +61,12 @@ public final class MirrorRenderer {
         float[] vp=MirrorMatrices.multiply(proj,view);
         Map<String,List<MirrorSurface>> groups=new LinkedHashMap<>();
         cached.sort(Comparator.comparingDouble(s->distance(s,eye)));
+        BlockPos.MutableBlockPos queryPos=new BlockPos.MutableBlockPos();
         for(MirrorSurface s:cached) {
-            if(distance(s,eye)>32*32||!s.plane().isFrontFacing(eye.x,eye.y,eye.z,.025))continue;
-            BlockState state=mc.level.getBlockState(new BlockPos(s.x,s.y,s.z));
+            if(distance(s,eye)>32*32||!s.frontFacing(eye.x,eye.y,eye.z,.025))continue;
+            BlockState state=mc.level.getBlockState(queryPos.set(s.x,s.y,s.z));
             if(!(state.getBlock() instanceof MirrorBlock))continue;
-            if(mc.level.getBlockState(new BlockPos(s.x+s.nx,s.y+s.ny,s.z+s.nz)).getBlock() instanceof MirrorBlock)continue;
+            if(mc.level.getBlockState(queryPos.set(s.x+s.nx,s.y+s.ny,s.z+s.nz)).getBlock() instanceof MirrorBlock)continue;
             double[] clip=MirrorMatrices.transform(vp,s.cx-eye.x,s.cy-eye.y,s.cz-eye.z,1);
             if(clip[3]<=.01||Math.abs(clip[0])>clip[3]+1.5||Math.abs(clip[1])>clip[3]+1.5)continue;
             groups.computeIfAbsent(s.planeKey(),k->new ArrayList<>()).add(s);
@@ -135,7 +136,7 @@ public final class MirrorRenderer {
                     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_TEXTURE_2D,((GlTexture)main.getDepthTexture()).glId(),0);
                     if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)throw new IllegalStateException("Mirror composite framebuffer incomplete");
                     glViewport(0,0,main.width,main.height);
-                    COMPOSITE.drawBatch(((GlTexture)target.getColorTexture()).glId(),main.width,main.height,vp,eye.x,eye.y,eye.z,surfaces);
+                    COMPOSITE.drawMergedBatch(((GlTexture)target.getColorTexture()).glId(),main.width,main.height,vp,eye.x,eye.y,eye.z,surfaces);
                     completedPasses++;
                 } finally { glBindFramebuffer(GL_DRAW_FRAMEBUFFER,oldDraw); }
             }
