@@ -215,41 +215,59 @@ def camera_motion_check(idle_path,moving_path,settled_path):
     return {"cameraMovedPixels":actual_motion,"cameraMotionVsSettledMeanAbsDifference":round(average,3)}
 
 
-def capture_client_thread_dump(client_dir, evidence):
-    """Record the actual disposable client thread stack before aborting a stalled probe.
+def fixture_java_processes(client_dir, proc_root=Path("/proc")):
+    """Find the disposable client JVM, including launches with a cwd-only run dir.
 
-    Only attach to Java processes whose command line explicitly includes this
-    fixture's unique client directory. Never inspect unrelated game instances.
+    Gradle/Loom passes the game directory as the process working directory,
+    not necessarily as a JVM command-line argument. Both matches are strictly
+    scoped to this exact disposable directory; other Minecraft clients must
+    never be inspected.
     """
+    target = client_dir.resolve()
+    target_arg = os.fsencode(str(target))
+    try:
+        processes = sorted((entry for entry in proc_root.iterdir()
+                            if entry.name.isdecimal()), key=lambda entry: int(entry.name))
+    except OSError:
+        return []
+    matches = []
+    for entry in processes:
+        try:
+            command = (entry / "cmdline").read_bytes()
+        except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
+            continue
+        if b"java" not in command.lower():
+            continue
+        try:
+            same_cwd = (entry / "cwd").resolve(strict=True) == target
+        except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
+            same_cwd = False
+        if same_cwd or target_arg in command:
+            matches.append((entry.name, command))
+    return matches
+
+
+def capture_client_thread_dump(client_dir, evidence):
+    """Record this disposable client's JVM threads without attaching to other games."""
     if os.name != "posix" or not Path("/proc").is_dir():
         return
     jcmd = shutil.which("jcmd")
     report = evidence / "client-thread-dump.txt"
-    lines = []
     if not jcmd:
         report.write_text("jcmd not installed; could not inspect visual fixture.\n")
         return
-    target = str(client_dir.resolve()).encode()
+    lines = []
     try:
-        processes = sorted((entry for entry in Path("/proc").iterdir()
-                            if entry.name.isdecimal()),key=lambda entry:int(entry.name))
-        for entry in processes:
-            try:
-                command = (entry / "cmdline").read_bytes()
-            except (FileNotFoundError, PermissionError, ProcessLookupError):
-                continue
-            if target not in command or b"java" not in command.lower():
-                continue
-            pid = entry.name
+        for pid, command in fixture_java_processes(client_dir):
             lines.append(f"=== client JVM {pid} ({command[:700]!r}) ===\n")
             try:
-                dump = subprocess.run([jcmd,pid,"Thread.print","-l"],
-                        capture_output=True,text=True,timeout=12,check=False)
+                dump = subprocess.run([jcmd, pid, "Thread.print", "-l"],
+                        capture_output=True, text=True, timeout=12, check=False)
                 lines.append(f"exit={dump.returncode}\n{dump.stdout[-180000:]}\n{dump.stderr[-5000:]}\n")
             except (OSError, subprocess.TimeoutExpired) as error:
                 lines.append(f"Thread dump unavailable: {error!r}\n")
         report.write_text("".join(lines) if lines else
-                "No running fixture Java process contained its client path.\n")
+                "No running fixture Java process matched the exact client directory.\n")
     except BaseException as error:
         report.write_text(f"Client diagnostic collection failed: {error!r}\n")
 
