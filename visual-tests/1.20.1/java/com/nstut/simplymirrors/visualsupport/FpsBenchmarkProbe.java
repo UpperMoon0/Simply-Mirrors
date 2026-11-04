@@ -51,7 +51,9 @@ public final class FpsBenchmarkProbe {
             mc.stop();
             return;
         }
-        if (requested != 7 && requested != 8 && requested != 9)
+        // Encode trial number in the tens digit to support alternating repeated rounds.
+        int kind = requested % 10;
+        if (requested < 7 || (kind != 7 && kind != 8 && kind != 9))
             throw new IllegalStateException("Unknown performance scenario: " + requested);
 
         long now = System.nanoTime();
@@ -105,8 +107,8 @@ public final class FpsBenchmarkProbe {
         if (error != GL_NO_ERROR) throw new IllegalStateException("OpenGL error: " + error);
         long totalPasses = 0;
         for (Long count : reflectionPasses) totalPasses += count;
-        if (scene == 7 && totalPasses != 0) throw new IllegalStateException("Baseline unexpectedly rendered mirror passes");
-        if (scene != 7 && totalPasses == 0) throw new IllegalStateException("Mirror rendering did not run");
+        if (kind == 7 && totalPasses != 0) throw new IllegalStateException("Baseline unexpectedly rendered mirror passes");
+        if (kind != 7 && totalPasses == 0) throw new IllegalStateException("Mirror rendering did not run");
 
         List<Long> sorted = new ArrayList<Long>(durations);
         Collections.sort(sorted);
