@@ -56,6 +56,10 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: 'true'
         run: xvfb-run -a ./gradlew -Ptarget=common :common:shaderHistoryGlTest --no-daemon --console=plain
+      - name: Compare per-block and batched mirror composites with pixel parity
+        env:
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+        run: xvfb-run -a ./gradlew -Ptarget=common :common:mirrorCompositeBenchmark --no-daemon --console=plain
   builds:
     name: ${{ matrix.target }}
     runs-on: ubuntu-latest

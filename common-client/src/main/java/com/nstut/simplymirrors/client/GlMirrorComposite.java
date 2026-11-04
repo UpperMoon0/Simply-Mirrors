@@ -4,12 +4,21 @@ import com.nstut.simplymirrors.math.MirrorMatrices;
 import com.nstut.simplymirrors.math.MirrorSurface;
 import org.lwjgl.BufferUtils;
 import java.nio.FloatBuffer;
+import java.util.Collections;
+import java.util.List;
 import static org.lwjgl.opengl.GL33.*;
 
 /** Projectively samples the reflection at its screen-space location, retaining the world's depth test. */
 public final class GlMirrorComposite implements AutoCloseable {
     private int program, vao, vbo;
+    private static final int[] TRIANGLE_INDICES = {0,1,2,0,2,3};
+    /** Compatibility path retained for the baseline benchmark. */
     public void draw(int texture,int width,int height,float[] viewProjection,double eyeX,double eyeY,double eyeZ,MirrorSurface surface) {
+        drawBatch(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,Collections.singletonList(surface));
+    }
+    /** One state transaction, buffer upload and draw per coplanar reflection, not per mirror block. */
+    public void drawBatch(int texture,int width,int height,float[] viewProjection,double eyeX,double eyeY,double eyeZ,List<MirrorSurface> surfaces) {
+        if(surfaces.isEmpty())return;
         if(program==0) initialize();
         int oldProgram=glGetInteger(GL_CURRENT_PROGRAM),oldVao=glGetInteger(GL_VERTEX_ARRAY_BINDING),oldBuffer=glGetInteger(GL_ARRAY_BUFFER_BINDING);
         int oldActive=glGetInteger(GL_ACTIVE_TEXTURE);glActiveTexture(GL_TEXTURE0);int oldTexture=glGetInteger(GL_TEXTURE_BINDING_2D);
@@ -19,16 +28,18 @@ public final class GlMirrorComposite implements AutoCloseable {
         boolean depth=glIsEnabled(GL_DEPTH_TEST),cull=glIsEnabled(GL_CULL_FACE),blend=glIsEnabled(GL_BLEND);
         boolean depthMask=glGetBoolean(GL_DEPTH_WRITEMASK);int depthFunc=glGetInteger(GL_DEPTH_FUNC);
         try {
-            FloatBuffer vertices=BufferUtils.createFloatBuffer(24);
-            double[][] corners=surface.corners();
-            for(int index:new int[]{0,1,2,0,2,3}) {
-                double[] p=corners[index];double[] clip=MirrorMatrices.transform(viewProjection,p[0]-eyeX,p[1]-eyeY,p[2]-eyeZ,1);
-                vertices.put((float)clip[0]).put((float)clip[1]).put((float)(clip[2]-clip[3]*0.00001)).put((float)clip[3]);
+            FloatBuffer vertices=BufferUtils.createFloatBuffer(Math.multiplyExact(surfaces.size(),24));
+            for(MirrorSurface surface:surfaces) {
+                double[][] corners=surface.corners();
+                for(int index:TRIANGLE_INDICES) {
+                    double[] p=corners[index];double[] clip=MirrorMatrices.transform(viewProjection,p[0]-eyeX,p[1]-eyeY,p[2]-eyeZ,1);
+                    vertices.put((float)clip[0]).put((float)clip[1]).put((float)(clip[2]-clip[3]*0.00001)).put((float)clip[3]);
+                }
             }
             vertices.flip();glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LEQUAL);glDepthMask(false);glDisable(GL_CULL_FACE);glDisable(GL_BLEND);
             glUseProgram(program);glUniform1i(glGetUniformLocation(program,"Reflection"),0);glUniform2f(glGetUniformLocation(program,"Size"),width,height);
             glBindTexture(GL_TEXTURE_2D,texture);glBindVertexArray(vao);glBindBuffer(GL_ARRAY_BUFFER,vbo);glBufferData(GL_ARRAY_BUFFER,vertices,GL_STREAM_DRAW);
-            glDrawArrays(GL_TRIANGLES,0,6);
+            glDrawArrays(GL_TRIANGLES,0,Math.multiplyExact(surfaces.size(),6));
         } finally {
             glBindBuffer(GL_ARRAY_BUFFER,oldBuffer);glBindVertexArray(oldVao);glUseProgram(oldProgram);
             glBindTexture(GL_TEXTURE_2D,oldTexture);if(samplers)glBindSampler(0,oldSampler);glActiveTexture(oldActive);glDepthMask(depthMask);glDepthFunc(depthFunc);

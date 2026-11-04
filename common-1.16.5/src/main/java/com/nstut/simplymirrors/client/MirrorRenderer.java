@@ -93,7 +93,7 @@ public final class MirrorRenderer {
                     
                     mc.getEntityRenderDispatcher().prepare(mc.level,camera,mc.crosshairPickEntity);
                 }
-                for(MirrorSurface cell:surfaces)COMPOSITE.draw(target.getColorTextureId(),main.width,main.height,vp,eye.x,eye.y,eye.z,cell);
+                COMPOSITE.drawBatch(target.getColorTextureId(),main.width,main.height,vp,eye.x,eye.y,eye.z,surfaces);
                 completedPasses++;
             }
         } catch(RuntimeException exception) {
@@ -117,7 +117,7 @@ public final class MirrorRenderer {
             }
         }
         surfaces.sort(Comparator.comparingDouble(s->distance(s,eye)));
-        return surfaces.size()>1536?new ArrayList<>(surfaces.subList(0,1536)):surfaces;
+        return surfaces.size()>16384?new ArrayList<>(surfaces.subList(0,16384)):surfaces;
     }
     public static void release() {
         if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;COMPOSITE.close();

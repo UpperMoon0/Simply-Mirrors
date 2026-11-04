@@ -135,7 +135,7 @@ public final class MirrorRenderer {
                     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_TEXTURE_2D,((GlTexture)main.getDepthTexture()).glId(),0);
                     if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)throw new IllegalStateException("Mirror composite framebuffer incomplete");
                     glViewport(0,0,main.width,main.height);
-                    for(MirrorSurface cell:surfaces)COMPOSITE.draw(((GlTexture)target.getColorTexture()).glId(),main.width,main.height,vp,eye.x,eye.y,eye.z,cell);
+                    COMPOSITE.drawBatch(((GlTexture)target.getColorTexture()).glId(),main.width,main.height,vp,eye.x,eye.y,eye.z,surfaces);
                     completedPasses++;
                 } finally { glBindFramebuffer(GL_DRAW_FRAMEBUFFER,oldDraw); }
             }

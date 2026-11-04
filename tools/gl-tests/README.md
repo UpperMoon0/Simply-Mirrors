@@ -40,3 +40,21 @@ python tools/verify_shader_history_api.py /path/to/checksum-pinned-shader-jars
 The check first verifies each jar's SHA-512 against `tools/shader/stack-lock.json`,
 then checks every field and method the history bridge uses. It does not download
 or alter third-party jars.
+
+## Large mirror compositor benchmark
+
+Run the production OpenGL compositor through its historical per-block path and
+its new per-plane batched path with identical mirror geometry, texture, camera,
+OpenGL framebuffer, and output pixels:
+
+```sh
+LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a ./gradlew -Ptarget=common :common:mirrorCompositeBenchmark --no-daemon --console=plain
+```
+
+The benchmark reports the median of four measured runs at 64, 256, 1,024, 4,096,
+and 8,192 coplanar faces. It asserts exact RGBA pixel parity before timings and
+prints observed draw counts (N to 1). It uses Mesa software GL, **not** a real
+Minecraft client with Complementary; the world renders, shadow pipeline, shader
+color-history snapshots, driver, and GPU are excluded from those timings.
+Do not interpret these isolated compositor figures as full shader FPS.
+The complete Complementary acceptance remains the shader and visual workflows.

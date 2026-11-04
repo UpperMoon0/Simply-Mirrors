@@ -14,6 +14,7 @@ public final class CameraUniformOverrides {
         void writeInts(int program, String name, int[] value);
     }
     private static final String[] MATRICES = {"gbufferModelView", "gbufferModelViewInverse", "gbufferProjection", "gbufferProjectionInverse"};
+    private static final String[] PREVIOUS = {"gbufferPreviousModelView", "gbufferPreviousModelViewInverse", "gbufferPreviousProjection", "gbufferPreviousProjectionInverse"};
     private static final String[] SHADOWS = {"shadowModelView", "shadowModelViewInverse", "shadowProjection", "shadowProjectionInverse"};
     private static final String[] DIRECTIONS = {"sunPosition", "moonPosition", "shadowLightPosition", "upPosition"};
     private final Uniforms uniforms;
@@ -64,7 +65,13 @@ public final class CameraUniformOverrides {
         int[] originalInt, reflectedInt;
         Program(int id) {
             this.id = id;
-            for (int i=0; i<MATRICES.length; i++) capture(MATRICES[i], 16, matrices[i]);
+            for (int i=0; i<MATRICES.length; i++) {
+                capture(MATRICES[i], 16, matrices[i]);
+                // A reflected view has no independent previous frame. Reusing the real
+                // camera's previous matrices creates enormous false velocity vectors
+                // in Complementary motion blur and temporal reprojection.
+                capture(PREVIOUS[i], 16, matrices[i]);
+            }
             for (String name : SHADOWS) {
                 float[] saved=uniforms.readFloats(id,name,16);
                 if(saved!=null)original.put(name,saved);
@@ -75,6 +82,9 @@ public final class CameraUniformOverrides {
                 for (int i=0; i<3; i++) value[i] += delta[i];
                 original.put("cameraPosition", position);
                 reflected.put("cameraPosition", value);
+                // Keep the reflected view stationary for shader velocity calculations.
+                // Restoring both positions below preserves Iris main-camera history.
+                capture("previousCameraPosition", 3, value);
             }
             capture("eyeAltitude", 1, new float[] {(float)eye[1]});
             capture("cameraPositionFract", 3, new float[] {(float)(eye[0]-Math.floor(eye[0])), (float)(eye[1]-Math.floor(eye[1])), (float)(eye[2]-Math.floor(eye[2]))});

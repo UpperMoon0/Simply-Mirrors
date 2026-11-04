@@ -21,6 +21,9 @@ public class CameraUniformOverridesTest {
             values.put("gbufferProjection", IDENTITY.clone());
             values.put("gbufferProjectionInverse", IDENTITY.clone());
             values.put("gbufferPreviousModelView", REFLECT_Y.clone());
+            values.put("gbufferPreviousModelViewInverse", REFLECT_Y.clone());
+            values.put("gbufferPreviousProjection", REFLECT_Y.clone());
+            values.put("gbufferPreviousProjectionInverse", REFLECT_Y.clone());
             values.put("shadowModelView", IDENTITY.clone());
             values.put("shadowModelViewInverse", IDENTITY.clone());
             values.put("cameraPosition", new float[] {12.5f, 64.25f, -2.25f});
@@ -53,8 +56,11 @@ public class CameraUniformOverridesTest {
         assertArrayEquals(REFLECT_X,gl.get("gbufferModelViewInverse"),0);
         assertArrayEquals(new float[] {8.5f,64.25f,-2.25f},gl.get("cameraPosition"),0);
         assertArrayEquals(new float[] {-10,20,30},gl.get("sunPosition"),0);
-        assertArrayEquals(REFLECT_Y,gl.get("gbufferPreviousModelView"),0);
-        assertArrayEquals(new float[] {11,64,-3},gl.get("previousCameraPosition"),0);
+        assertArrayEquals(REFLECT_X,gl.get("gbufferPreviousModelView"),0);
+        assertArrayEquals(REFLECT_X,gl.get("gbufferPreviousModelViewInverse"),0);
+        assertArrayEquals(IDENTITY,gl.get("gbufferPreviousProjection"),0);
+        assertArrayEquals(IDENTITY,gl.get("gbufferPreviousProjectionInverse"),0);
+        assertArrayEquals(new float[] {8.5f,64.25f,-2.25f},gl.get("previousCameraPosition"),0);
         pass.upload(); // repeated draws must not accumulate the eye delta
         assertEquals(8.5f,gl.get("cameraPosition")[0],0);
         gl.bind(2);pass.upload();gl.bind(99);
@@ -63,6 +69,11 @@ public class CameraUniformOverridesTest {
         for(int id:new int[]{1,2}) {
             gl.bind(id);
             assertArrayEquals(IDENTITY,gl.get("gbufferModelView"),0);
+            assertArrayEquals(REFLECT_Y,gl.get("gbufferPreviousModelView"),0);
+            assertArrayEquals(REFLECT_Y,gl.get("gbufferPreviousModelViewInverse"),0);
+            assertArrayEquals(REFLECT_Y,gl.get("gbufferPreviousProjection"),0);
+            assertArrayEquals(REFLECT_Y,gl.get("gbufferPreviousProjectionInverse"),0);
+            assertArrayEquals(new float[] {11,64,-3},gl.get("previousCameraPosition"),0);
             assertArrayEquals(new float[] {12.5f,64.25f,-2.25f},gl.get("cameraPosition"),0);
             assertArrayEquals(new int[] {30012,64,-3},gl.ints.get(id));
         }
