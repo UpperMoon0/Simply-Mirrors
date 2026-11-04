@@ -68,3 +68,15 @@ allocation bytes per steady-state frame. Production's exact identity-checked
 per-plane mesh cache invalidates when any selected face object changes, even
 if the face count remains unchanged. Temporal motion blur is covered separately
 in the shader visual acceptance, not inferred from the compositor GL test.
+
+A camera-pan benchmark now moves the viewer while distance-sorting the same
+faces each frame and recreating all surface objects every 20 frames, matching
+the renderer's usual scan cadence. It changes a single face at frame 32 and
+restores it at frame 48 without changing the face count. The report asserts
+only the initial mesh build plus two genuine edits trigger rebuilds, counts
+cache hits, measures 72-frame p95 and median compositor time, and checks
+baseline-vs-merged RGBA parity on six movement/edit snapshots. Dense and
+fragmented three-plane cases are both covered. The geometry key uses an exact
+order-independent face multiset, not a hash fingerprint; cache hits do not
+allocate keys. These are isolated Mesa/llvmpipe compositor measurements,
+not full in-game GPU FPS or shader-time profiling.

@@ -4,10 +4,10 @@ import com.nstut.simplymirrors.math.MirrorMatrices;
 import com.nstut.simplymirrors.math.MirrorSurface;
 import com.nstut.simplymirrors.math.MirrorGeometry;
 import com.nstut.simplymirrors.math.MirrorPatch;
+import com.nstut.simplymirrors.math.MirrorFaceSet;
 import org.lwjgl.BufferUtils;
 import java.nio.FloatBuffer;
 import java.util.Collections;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.List;
@@ -20,24 +20,24 @@ public final class GlMirrorComposite implements AutoCloseable {
     private FloatBuffer staging;
     private final double[] corners=new double[12];
     private long nativeAllocationBytes;
-    /** Exact identity-checked cache; surviving a frame never implies an old world state. */
+    /** Per-plane LRU: compare exact face coordinates, independent of camera order. */
     private final Map<String,CachedMesh> meshes=new LinkedHashMap<String,CachedMesh>(16,.75f,true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String,CachedMesh> eldest) {
             return size()>12;
         }
     };
     private static final class CachedMesh {
-        final List<MirrorSurface> input;
+        final MirrorFaceSet faces;
         final List<MirrorPatch> patches;
         CachedMesh(List<MirrorSurface> surfaces,List<MirrorPatch> patches) {
-            this.input=new ArrayList<MirrorSurface>(surfaces);this.patches=patches;
+            this.faces=new MirrorFaceSet(surfaces);
+            this.patches=patches;
         }
-        boolean matches(List<MirrorSurface> surfaces) {
-            if(input.size()!=surfaces.size())return false;
-            for(int i=0;i<input.size();i++)if(input.get(i)!=surfaces.get(i))return false;
-            return true;
-        }
+        boolean matches(List<MirrorSurface> surfaces) { return faces.matches(surfaces); }
     }
+    private long meshCacheHits,meshCacheBuilds;
+    public long meshCacheHits() { return meshCacheHits; }
+    public long meshCacheBuilds() { return meshCacheBuilds; }
     public long nativeVertexAllocationBytes() { return nativeAllocationBytes; }
     private FloatBuffer vertices(int floats,boolean persistent) {
         if(!persistent) {
@@ -72,6 +72,9 @@ public final class GlMirrorComposite implements AutoCloseable {
             if(cached==null||!cached.matches(surfaces)) {
                 cached=new CachedMesh(surfaces,MirrorPatch.merge(surfaces));
                 meshes.put(key,cached);
+                meshCacheBuilds++;
+            } else {
+                meshCacheHits++;
             }
             drawGeometry(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,cached.patches,true);
         }

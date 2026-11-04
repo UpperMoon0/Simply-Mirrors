@@ -49,6 +49,8 @@ public final class MirrorCompositeGlBenchmark {
                 for(int[] normal : new int[][]{{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}})
                     runFaceParity(composite,texture,normal);
                 cacheInvalidationParity(composite,texture);
+                cameraPanCase(texture,"dense",4096,1);
+                cameraPanCase(texture,"fragmented",6144,3);
                 stressCase(texture,"checkerboard",8192,1);
                 stressCase(texture,"scattered",6144,2);
                 stressCase(texture,"multi-plane",6144,6);
@@ -111,6 +113,85 @@ public final class MirrorCompositeGlBenchmark {
         if(!Arrays.equals(baseline,readPixels()))
             throw new AssertionError("Same-size mirror edit reused stale cached geometry");
         System.out.println("PASS: exact cache invalidation after changing one tile");
+    }
+
+    /**
+     * Move the camera across static geometry and distance-sort it each frame.
+     * Every 20 frames rebuild all MirrorSurface objects as find() does.
+     * At frames 32 and 48 edit/restore one tile without changing face count.
+     * The benchmark reports exact mesh-cache hits/rebuilds and moving-frame p95.
+     */
+    private static void cameraPanCase(int texture,String layout,int totalFaces,int planes) {
+        final int frames=72,perPlane=totalFaces/planes;
+        int columns=(int)Math.ceil(Math.sqrt(perPlane*(layout.equals("fragmented")?2.0:1.0)));
+        List<List<MirrorSurface>> originals=new ArrayList<List<MirrorSurface>>();
+        for(int p=0;p<planes;p++) {
+            List<MirrorSurface> faces=new ArrayList<MirrorSurface>(perPlane);
+            for(int i=0;i<perPlane;i++) {
+                int index=layout.equals("fragmented")?i*2:i;
+                faces.add(new MirrorSurface(index%columns,index/columns,p*3,0,0,-1));
+            }
+            originals.add(faces);
+        }
+        float[] vp=MATRIX.clone();vp[0]=2f/columns;vp[5]=2f/columns;
+        List<List<MirrorSurface>> active=new ArrayList<List<MirrorSurface>>();
+        double[] before=new double[frames],after=new double[frames];
+        int comparisons=0;
+        try(GlMirrorComposite composite=new GlMirrorComposite()) {
+            for(int frame=0;frame<frames;frame++) {
+                // Real camera movement changes the distance order within a plane.
+                double eyeX=columns/2.0+Math.sin(frame*.16)*columns*.27;
+                double eyeY=columns/2.0+Math.cos(frame*.13)*columns*.21;
+                double eyeZ=-3+Math.sin(frame*.11)*.5;
+                if(frame%20==0||frame==32||frame==48) {
+                    active.clear();
+                    for(int p=0;p<planes;p++) {
+                        List<MirrorSurface> refreshed=new ArrayList<MirrorSurface>(perPlane);
+                        for(MirrorSurface s:originals.get(p))
+                            refreshed.add(new MirrorSurface(s.x,s.y,s.z,s.nx,s.ny,s.nz));
+                        if(p==0&&frame>=32&&frame<48) {
+                            MirrorSurface removed=refreshed.get(50);
+                            refreshed.set(50,new MirrorSurface(-10,removed.y,removed.z,0,0,-1));
+                        }
+                        // If the original list was refreshed at frame 40, the changed tile
+                        // remains until frame 48, and a new geometry build is unnecessary.
+                        active.add(refreshed);
+                    }
+                }
+                // Keep the edited tile through the normal frame-40 rescan.
+                for(List<MirrorSurface> surfaces:active)
+                    Collections.sort(surfaces,java.util.Comparator.comparingDouble(s -> {
+                        double x=s.cx-eyeX,y=s.cy-eyeY,z=s.cz-eyeZ;
+                        return x*x+y*y+z*z;
+                    }));
+                before[frame]=renderMany(composite,texture,vp,eyeX,eyeY,eyeZ,active,false);
+                byte[] baseline=(frame==0||frame==20||frame==32||frame==40||frame==48||frame==71)
+                        ?readPixels():null;
+                after[frame]=renderMany(composite,texture,vp,eyeX,eyeY,eyeZ,active,true);
+                if(baseline!=null) {
+                    if(!Arrays.equals(baseline,readPixels()))
+                        throw new AssertionError("Camera pan/edit changed pixels: "+layout+" frame="+frame);
+                    comparisons++;
+                }
+            }
+            long expectedBuilds=planes+2;
+            long expectedHits=(long)frames*planes-expectedBuilds;
+            if(composite.meshCacheBuilds()!=expectedBuilds||composite.meshCacheHits()!=expectedHits)
+                throw new AssertionError("Camera motion caused redundant mesh rebuilds: "+
+                        "layout="+layout+" builds="+composite.meshCacheBuilds()+"/"+expectedBuilds+
+                        " hits="+composite.meshCacheHits()+"/"+expectedHits);
+            Arrays.sort(before);Arrays.sort(after);
+            int p95=(int)Math.ceil(frames*.95)-1;
+            System.out.printf(java.util.Locale.ROOT,
+                    "CAMERA_PAN=%s FACES=%d PLANES=%d FRAMES=%d "+
+                    "MESH_BUILDS=%d CACHE_HITS=%d EXPECTED_BUILDS=%d "+
+                    "BATCH_P95_MS=%.3f MERGED_P95_MS=%.3f "+
+                    "BATCH_MEDIAN_MS=%.3f MERGED_MEDIAN_MS=%.3f "+
+                    "PARITY_CAPTURES=%d PIXELS=IDENTICAL%n",
+                    layout,totalFaces,planes,frames,composite.meshCacheBuilds(),
+                    composite.meshCacheHits(),expectedBuilds,before[p95],after[p95],
+                    (before[35]+before[36])/2,(after[35]+after[36])/2,comparisons);
+        }
     }
 
     /** Frame-time tail and direct staging-allocation rate for shapes dense walls miss. */
