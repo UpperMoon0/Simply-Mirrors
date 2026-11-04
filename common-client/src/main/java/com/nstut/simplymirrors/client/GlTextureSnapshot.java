@@ -13,6 +13,9 @@ final class GlTextureSnapshot implements AutoCloseable {
     private int textureFramebuffer, backupFramebuffer;
     private boolean closed;
 
+    /** Reclaim persistent GL scratch when the world/renderer is released. */
+    static void releaseScratch() { GlHistoryBackupPool.clear(); }
+
     static GlTextureSnapshot capture(int[] textureIds) {
         GlTextureSnapshot snapshot = new GlTextureSnapshot();
         try (State ignored = new State()) {
@@ -43,10 +46,10 @@ final class GlTextureSnapshot implements AutoCloseable {
             if (w == 0 || h == 0) continue;
             int format = glGetTexLevelParameteri(GL_TEXTURE_2D, level, GL_TEXTURE_INTERNAL_FORMAT);
             int type = glGetTexLevelParameteri(GL_TEXTURE_2D, level, GL_TEXTURE_RED_TYPE);
-            Image image = new Image(texture, level, w, h, type, glGenRenderbuffers());
-            images.add(image); // Own the allocation before any operation can fail.
+            int backup = GlHistoryBackupPool.acquire(format, w, h);
+            Image image = new Image(texture, level, w, h, type, format, backup);
+            images.add(image); // Own the lease before any operation can fail.
             glBindRenderbuffer(GL_RENDERBUFFER, image.backup);
-            glRenderbufferStorage(GL_RENDERBUFFER, format, w, h);
             attachTexture(GL_READ_FRAMEBUFFER, image);
             attachBackup(GL_DRAW_FRAMEBUFFER, image);
             copy(image);
@@ -111,7 +114,8 @@ final class GlTextureSnapshot implements AutoCloseable {
                 if (failure instanceof Error) throw (Error) failure;
                 if (failure != null) throw (RuntimeException) failure;
             } finally {
-                for (Image image : images) glDeleteRenderbuffers(image.backup);
+                for (Image image : images)
+                    GlHistoryBackupPool.release(image.backup, image.format, image.width, image.height);
                 if (textureFramebuffer != 0) glDeleteFramebuffers(textureFramebuffer);
                 if (backupFramebuffer != 0) glDeleteFramebuffers(backupFramebuffer);
                 images.clear(); textures.clear();
@@ -120,10 +124,11 @@ final class GlTextureSnapshot implements AutoCloseable {
     }
 
     private static final class Image {
-        final int texture, level, width, height, type, backup;
+        final int texture, level, width, height, type, format, backup;
         boolean saved;
-        Image(int texture, int level, int width, int height, int type, int backup) {
-            this.texture=texture; this.level=level; this.width=width; this.height=height; this.type=type; this.backup=backup;
+        Image(int texture, int level, int width, int height, int type, int format, int backup) {
+            this.texture=texture; this.level=level; this.width=width; this.height=height;
+            this.type=type; this.format=format; this.backup=backup;
         }
     }
 
