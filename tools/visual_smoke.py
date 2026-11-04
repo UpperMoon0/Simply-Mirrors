@@ -236,13 +236,21 @@ def fixture_java_processes(client_dir, proc_root=Path("/proc")):
             command = (entry / "cmdline").read_bytes()
         except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
             continue
-        if b"java" not in command.lower():
+        # Match the Java executable, not a non-Java process mentioning it
+        # among its arguments (e.g. a Python test launcher).
+        executable = command.split(b"\\0", 1)[0].rsplit(b"/", 1)[-1].lower()
+        if executable not in (b"java", b"javaw"):
             continue
         try:
             same_cwd = (entry / "cwd").resolve(strict=True) == target
         except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
             same_cwd = False
-        if same_cwd or target_arg in command:
+        # An argv substring is unsafe: "visual-client-other" must not match
+        # "visual-client". Accept only an exact path or a -Dkey=path value.
+        explicit_path = any(arg == target_arg or
+                            (arg.startswith(b"-D") and arg.endswith(b"=" + target_arg))
+                            for arg in command.split(b"\\0"))
+        if same_cwd or explicit_path:
             matches.append((entry.name, command))
     return matches
 
