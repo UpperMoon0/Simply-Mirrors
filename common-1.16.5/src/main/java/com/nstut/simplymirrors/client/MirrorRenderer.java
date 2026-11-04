@@ -46,12 +46,11 @@ public final class MirrorRenderer {
         float[] view=array(mainViewMatrix),proj=array(mainProjectionMatrix),vp=MirrorMatrices.multiply(proj,view);
         Map<String,List<MirrorSurface>> groups=new LinkedHashMap<>();
         cached.sort(Comparator.comparingDouble(s->distance(s,eye)));
-        BlockPos.MutableBlockPos queryPos=new BlockPos.MutableBlockPos();
         for(MirrorSurface s:cached) {
             if(distance(s,eye)>32*32||!s.frontFacing(eye.x,eye.y,eye.z,.025))continue;
-            BlockState state=mc.level.getBlockState(queryPos.set(s.x,s.y,s.z));
+            BlockState state=mc.level.getBlockState(new BlockPos(s.x,s.y,s.z));
             if(!(state.getBlock() instanceof MirrorBlock))continue;
-            if(mc.level.getBlockState(queryPos.set(s.x+s.nx,s.y+s.ny,s.z+s.nz)).getBlock() instanceof MirrorBlock)continue;
+            if(mc.level.getBlockState(new BlockPos(s.x+s.nx,s.y+s.ny,s.z+s.nz)).getBlock() instanceof MirrorBlock)continue;
             if(!visible(s,vp,eye))continue;
             groups.computeIfAbsent(s.planeKey(),k->new ArrayList<>()).add(s);
         }
