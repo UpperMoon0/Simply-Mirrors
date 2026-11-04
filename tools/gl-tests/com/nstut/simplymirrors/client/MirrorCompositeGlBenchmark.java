@@ -5,6 +5,9 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Random;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL;
 import static org.lwjgl.glfw.GLFW.*;
@@ -45,6 +48,11 @@ public final class MirrorCompositeGlBenchmark {
                 for(int count : new int[]{64,256,1024,4096,8192}) run(composite,texture,count);
                 for(int[] normal : new int[][]{{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}})
                     runFaceParity(composite,texture,normal);
+                cacheInvalidationParity(composite,texture);
+                stressCase(texture,"checkerboard",8192,1);
+                stressCase(texture,"scattered",6144,2);
+                stressCase(texture,"multi-plane",6144,6);
+                stressCase(texture,"holed",4096,3);
             } finally { glDeleteTextures(texture); }
             if(glGetError()!=GL_NO_ERROR)throw new AssertionError("OpenGL error after benchmark");
         } finally { glfwDestroyWindow(window); glfwTerminate(); }
@@ -87,6 +95,100 @@ public final class MirrorCompositeGlBenchmark {
         System.out.printf(java.util.Locale.ROOT,
             "MIRRORS=%d BASELINE_MS=%.3f BATCHED_MS=%.3f MERGED_MS=%.3f VS_BATCHED=%.2fx VS_ORIGINAL=%.2fx PIXELS=IDENTICAL QUADS=%d->%d%n",
             count,base,patch,mergedMs,patch/mergedMs,base/mergedMs,count,rectangles);
+    }
+
+    /** A tile removed and replaced in the same plane must invalidate the mesh cache. */
+    private static void cacheInvalidationParity(GlMirrorComposite composite,int texture) {
+        List<MirrorSurface> original=new ArrayList<MirrorSurface>();
+        for(int i=0;i<64;i++)original.add(new MirrorSurface(i%8,i/8,0,0,0,-1));
+        float[] vp=MATRIX.clone();vp[0]=.25f;vp[5]=.25f;
+        render(composite,texture,vp,4,4,-3,original,2);
+        List<MirrorSurface> changed=new ArrayList<MirrorSurface>(original);
+        changed.set(25,new MirrorSurface(10,10,0,0,0,-1));
+        render(composite,texture,vp,4,4,-3,changed,1);
+        byte[] baseline=readPixels();
+        render(composite,texture,vp,4,4,-3,changed,2);
+        if(!Arrays.equals(baseline,readPixels()))
+            throw new AssertionError("Same-size mirror edit reused stale cached geometry");
+        System.out.println("PASS: exact cache invalidation after changing one tile");
+    }
+
+    /** Frame-time tail and direct staging-allocation rate for shapes dense walls miss. */
+    private static void stressCase(int texture,String layout,int totalFaces,int planeCount) {
+        List<List<MirrorSurface>> planes=new ArrayList<List<MirrorSurface>>();
+        int perPlane=totalFaces/planeCount;
+        int columns=(int)Math.ceil(Math.sqrt(perPlane*(layout.equals("checkerboard")?2:1.25)));
+        Random random=new Random(4751);
+        for(int plane=0;plane<planeCount;plane++) {
+            List<MirrorSurface> faces=new ArrayList<MirrorSurface>(perPlane);
+            HashSet<Long> occupied=new HashSet<Long>();
+            for(int i=0;i<perPlane;) {
+                int x,y;
+                if(layout.equals("checkerboard")) {
+                    int index=i*2;
+                    x=index%columns;y=index/columns;
+                } else if(layout.equals("scattered")) {
+                    x=random.nextInt(columns);y=random.nextInt(columns);
+                } else if(layout.equals("holed")) {
+                    int index=i+((i/Math.max(1,columns-4))*4);
+                    x=index%columns;y=index/columns;
+                } else {
+                    x=i%columns;y=i/columns;
+                }
+                if(x>=columns||y>=columns*2)break;
+                long position=(((long)x)<<32)|(y&0xffffffffL);
+                if(!occupied.add(position))continue;
+                // Different plane offsets avoid accidentally merging independent reflections.
+                faces.add(new MirrorSurface(x,y,plane*3,0,0,-1));i++;
+            }
+            planes.add(faces);
+        }
+        float[] vp=MATRIX.clone();vp[0]=2f/columns;vp[5]=2f/columns;
+        double eyeX=columns/2.0,eyeY=columns/2.0,eyeZ=-3;
+        try(GlMirrorComposite composite=new GlMirrorComposite()) {
+            renderMany(composite,texture,vp,eyeX,eyeY,eyeZ,planes,false);
+            byte[] baselinePixels=readPixels();
+            renderMany(composite,texture,vp,eyeX,eyeY,eyeZ,planes,true);
+            if(!Arrays.equals(baselinePixels,readPixels()))
+                throw new AssertionError("Stress layout changed visible pixels: "+layout);
+            // Warm up GPU, JIT, and the reusable buffer to full scene capacity.
+            for(int i=0;i<3;i++)renderMany(composite,texture,vp,eyeX,eyeY,eyeZ,planes,true);
+            long before=composite.nativeVertexAllocationBytes();
+            final int samples=20;
+            double[] after=new double[samples],prior=new double[samples];
+            for(int i=0;i<samples;i++) {
+                after[i]=renderMany(composite,texture,vp,eyeX,eyeY,eyeZ,planes,true);
+                prior[i]=renderMany(composite,texture,vp,eyeX,eyeY,eyeZ,planes,false);
+            }
+            long nativeTotal=composite.nativeVertexAllocationBytes()-before;
+            // Baseline buffer allocations above are known exactly: each drawBatch
+            // creates one direct buffer of faces*24 floats per group each frame.
+            int actualFaces=0;
+            for(List<MirrorSurface> plane:planes)actualFaces+=plane.size();
+            long originalNative=(long)actualFaces*24*Float.BYTES*samples;
+            long mergedNative=nativeTotal-originalNative;
+            if(mergedNative!=0)throw new AssertionError("Steady-state merged compositor allocated direct buffers: "+mergedNative);
+            Arrays.sort(after);Arrays.sort(prior);
+            int p95=(int)Math.ceil(samples*.95)-1;
+            System.out.printf(java.util.Locale.ROOT,
+                "STRESS=%s FACES=%d PLANES=%d BATCH_P95_MS=%.3f MERGED_P95_MS=%.3f "+
+                "BATCH_MEDIAN_MS=%.3f MERGED_MEDIAN_MS=%.3f NEW_DIRECT_BYTES_PER_FRAME=%d "+
+                "BASELINE_DIRECT_BYTES_PER_FRAME=%d PIXELS=IDENTICAL%n",
+                layout,actualFaces,planeCount,prior[p95],after[p95],
+                (prior[9]+prior[10])/2,(after[9]+after[10])/2,mergedNative/samples,
+                originalNative/samples);
+        }
+    }
+    private static double renderMany(GlMirrorComposite composite,int texture,float[] vp,
+            double eyeX,double eyeY,double eyeZ,List<List<MirrorSurface>> planes,boolean merged) {
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        long start=System.nanoTime();
+        for(List<MirrorSurface> plane:planes) {
+            if(merged)composite.drawMergedBatch(texture,WIDTH,HEIGHT,vp,eyeX,eyeY,eyeZ,plane);
+            else composite.drawBatch(texture,WIDTH,HEIGHT,vp,eyeX,eyeY,eyeZ,plane);
+        }
+        glFinish();
+        return (System.nanoTime()-start)/1_000_000.0;
     }
 
     private static void runFaceParity(GlMirrorComposite composite,int texture,int[] normal) {

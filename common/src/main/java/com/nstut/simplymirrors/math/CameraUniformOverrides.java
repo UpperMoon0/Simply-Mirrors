@@ -24,13 +24,31 @@ public final class CameraUniformOverrides {
     private float[][] shadowMatrices;
     private final Map<Integer, Program> programs = new LinkedHashMap<Integer, Program>();
 
+    private final float[][] previousMatrices;
+    private final double[] previousEye, previousDelta;
+    private final boolean previousValid;
     public CameraUniformOverrides(Uniforms uniforms, float[] projection, float[] mainView,
                                   float[] reflectedView, double[] mainEye, double[] reflectedEye) {
-        this.uniforms = uniforms;
-        matrices = new float[][] {reflectedView.clone(), MirrorMatrices.inverse(reflectedView), projection.clone(), MirrorMatrices.inverse(projection)};
-        viewChange = MirrorMatrices.multiply(reflectedView, MirrorMatrices.inverse(mainView));
-        eye = reflectedEye.clone();
-        delta = new double[] {eye[0]-mainEye[0], eye[1]-mainEye[1], eye[2]-mainEye[2]};
+        this(uniforms, projection,mainView,reflectedView,mainEye,reflectedEye,
+                reflectedView,projection,mainEye,reflectedEye,false);
+    }
+    public CameraUniformOverrides(Uniforms uniforms, float[] projection, float[] mainView,
+                                  float[] reflectedView, double[] mainEye, double[] reflectedEye,
+                                  float[] previousReflectedView, float[] previousReflectedProjection,
+                                  double[] previousMainEye,double[] previousReflectedEye,
+                                  boolean previousValid) {
+        this.uniforms=uniforms;
+        matrices=new float[][] {reflectedView.clone(),MirrorMatrices.inverse(reflectedView),
+                projection.clone(),MirrorMatrices.inverse(projection)};
+        previousMatrices=new float[][] {previousReflectedView.clone(),MirrorMatrices.inverse(previousReflectedView),
+                previousReflectedProjection.clone(),MirrorMatrices.inverse(previousReflectedProjection)};
+        viewChange=MirrorMatrices.multiply(reflectedView,MirrorMatrices.inverse(mainView));
+        eye=reflectedEye.clone();
+        previousEye=previousReflectedEye.clone();
+        previousDelta=new double[] {previousEye[0]-previousMainEye[0],
+                previousEye[1]-previousMainEye[1],previousEye[2]-previousMainEye[2]};
+        this.previousValid=previousValid;
+        delta=new double[] {eye[0]-mainEye[0],eye[1]-mainEye[1],eye[2]-mainEye[2]};
     }
     public void shadows(float[] view, float[] projection) {
         shadowMatrices = view==null || projection==null ? null : new float[][] {view,MirrorMatrices.inverse(view),projection,MirrorMatrices.inverse(projection)};
@@ -67,10 +85,9 @@ public final class CameraUniformOverrides {
             this.id = id;
             for (int i=0; i<MATRICES.length; i++) {
                 capture(MATRICES[i], 16, matrices[i]);
-                // A reflected view has no independent previous frame. Reusing the real
-                // camera's previous matrices creates enormous false velocity vectors
-                // in Complementary motion blur and temporal reprojection.
-                capture(PREVIOUS[i], 16, matrices[i]);
+                // Reproject the actual prior main-camera frame across the same mirror
+                // plane. Zero velocity is only used for the first frame in a world.
+                capture(PREVIOUS[i], 16, previousMatrices[i]);
             }
             for (String name : SHADOWS) {
                 float[] saved=uniforms.readFloats(id,name,16);
@@ -82,9 +99,15 @@ public final class CameraUniformOverrides {
                 for (int i=0; i<3; i++) value[i] += delta[i];
                 original.put("cameraPosition", position);
                 reflected.put("cameraPosition", value);
-                // Keep the reflected view stationary for shader velocity calculations.
-                // Restoring both positions below preserves Iris main-camera history.
-                capture("previousCameraPosition", 3, value);
+                // Iris's prior world-camera position must not leak into the reflected
+                // velocity pass; use the previous reflected eye at the same plane.
+                float[] prior=uniforms.readFloats(id,"previousCameraPosition",3);
+                if(prior!=null) {
+                    float[] reflectedPrior=previousValid?prior.clone():value.clone();
+                    if(previousValid)for(int i=0;i<3;i++)reflectedPrior[i]+=previousDelta[i];
+                    original.put("previousCameraPosition",prior);
+                    reflected.put("previousCameraPosition",reflectedPrior);
+                }
             }
             capture("eyeAltitude", 1, new float[] {(float)eye[1]});
             capture("cameraPositionFract", 3, new float[] {(float)(eye[0]-Math.floor(eye[0])), (float)(eye[1]-Math.floor(eye[1])), (float)(eye[2]-Math.floor(eye[2]))});

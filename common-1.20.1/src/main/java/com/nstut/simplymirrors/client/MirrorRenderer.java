@@ -32,6 +32,7 @@ public final class MirrorRenderer {
     private static List<MirrorSurface> cached=new ArrayList<>();
     private static int frame;
     private static boolean failed;
+    private static final MirrorTemporalHistory TEMPORAL=new MirrorTemporalHistory();
     private MirrorRenderer() { }
 
     public static void render(PoseStack mainPose,float partial,long deadline,Camera camera,GameRenderer game,LightTexture light,Matrix4f mainProjectionMatrix) {
@@ -42,19 +43,22 @@ public final class MirrorRenderer {
         Vec3 eye=camera.getPosition();
         if(mc.level!=lastLevel) { release();lastLevel=mc.level; }
         if(frame++%20==0)cached=find(mc.level,eye);
+        float[] view=array(mainViewMatrix),proj=array(mainProjectionMatrix);
+        MirrorTemporalHistory.Frame priorFrame=TEMPORAL.advance(view,proj,eye.x,eye.y,eye.z);
         if(cached.isEmpty()||failed)return;
-        float[] view=array(mainViewMatrix),proj=array(mainProjectionMatrix),vp=MirrorMatrices.multiply(proj,view);
+        float[] vp=MirrorMatrices.multiply(proj,view);
         Map<String,List<MirrorSurface>> groups=new LinkedHashMap<>();
         cached.sort(Comparator.comparingDouble(s->distance(s,eye)));
         BlockPos.MutableBlockPos queryPos=new BlockPos.MutableBlockPos();
-        for(MirrorSurface s:cached) {
-            if(distance(s,eye)>32*32||!s.frontFacing(eye.x,eye.y,eye.z,.025))continue;
-            BlockState state=mc.level.getBlockState(queryPos.set(s.x,s.y,s.z));
-            if(!(state.getBlock() instanceof MirrorBlock))continue;
-            if(mc.level.getBlockState(queryPos.set(s.x+s.nx,s.y+s.ny,s.z+s.nz)).getBlock() instanceof MirrorBlock)continue;
-            if(!visible(s,vp,eye))continue;
+        // Do not let nearer back-facing or off-screen tiles consume the visible budget.
+        List<MirrorSurface> selected=MirrorFaceSelector.select(cached,vp,eye.x,eye.y,eye.z,
+                MirrorFaceSelector.MAX_VISIBLE_FACES,s -> {
+                    BlockState state=mc.level.getBlockState(queryPos.set(s.x,s.y,s.z));
+                    return state.getBlock() instanceof MirrorBlock
+                        && !(mc.level.getBlockState(queryPos.set(s.x+s.nx,s.y+s.ny,s.z+s.nz)).getBlock() instanceof MirrorBlock);
+                });
+        for(MirrorSurface s:selected)
             groups.computeIfAbsent(s.planeKey(),k->new ArrayList<>()).add(s);
-        }
         RenderTarget main=mc.getMainRenderTarget();int passes=0;
         try {
             if(target==null||target.width!=main.width||target.height!=main.height) {
@@ -83,7 +87,7 @@ public final class MirrorRenderer {
                     // Iris final compositing leaves depth writes disabled; clears obey that mask.
                     RenderSystem.depthMask(true);
                     target.setClearColor(0.615f,0.718f,0.792f,1);target.clear(Minecraft.ON_OSX);target.bindWrite(true);
-                    if(shaders)ShaderReflection.begin(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected);
+                    if(shaders)ShaderReflection.begin(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected,priorFrame.reflect(surface));
                     RenderSystem.setProjectionMatrix(projection,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);glFrontFace(GL_CW);
                     // Vanilla camera-cube fitting can loop forever with an oblique near plane.
                     // Cull conservatively with perspective; retain oblique projection for drawing.
@@ -120,10 +124,10 @@ public final class MirrorRenderer {
             }
         }
         surfaces.sort(Comparator.comparingDouble(s->distance(s,eye)));
-        return surfaces.size()>16384?new ArrayList<>(surfaces.subList(0,16384)):surfaces;
+        return surfaces;
     }
     public static void release() {
-        if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;COMPOSITE.close();
+        if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;TEMPORAL.reset();COMPOSITE.close();
     }
     private static float[] array(Matrix4f matrix) { return matrix.get(new float[16]); }
     private static Matrix4f matrix(float[] values) { return new Matrix4f().set(values); }

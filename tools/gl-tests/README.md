@@ -60,3 +60,11 @@ Minecraft client with Complementary; the world renders, shadow pipeline, shader
 color-history snapshots, driver, and GPU are excluded from those timings.
 Do not interpret these isolated compositor figures as full shader FPS.
 The complete Complementary acceptance remains the shader and visual workflows.
+
+The 20-frame stress profiles include 8,192 checkerboard faces, 6,144 scattered
+faces in two planes, 6,144 faces across six planes, and holed surfaces.
+They report median and p95 CPU+software-GL time as well as direct staging
+allocation bytes per steady-state frame. Production's exact identity-checked
+per-plane mesh cache invalidates when any selected face object changes, even
+if the face count remains unchanged. Temporal motion blur is covered separately
+in the shader visual acceptance, not inferred from the compositor GL test.

@@ -21,22 +21,42 @@ public final class MirrorPatch implements MirrorGeometry {
 
     /** Original outward winding and 0.001-block surface offset are preserved. */
     @Override public double[][] corners() {
-        if (nx!=0) {
-            double plane=x+(nx>0?1:0)+nx*.001, y0=y,y1=y+height,z0=z,z1=z+width;
-            return nx>0
-                    ? new double[][]{{plane,y0,z1},{plane,y0,z0},{plane,y1,z0},{plane,y1,z1}}
-                    : new double[][]{{plane,y0,z0},{plane,y0,z1},{plane,y1,z1},{plane,y1,z0}};
-        }
-        if (ny!=0) {
+        double[] c=new double[12];writeCorners(c);
+        return new double[][]{{c[0],c[1],c[2]},{c[3],c[4],c[5]},
+                {c[6],c[7],c[8]},{c[9],c[10],c[11]}};
+    }
+    private static void corner(double[] c,int i,double x,double y,double z) {
+        int n=i*3;c[n]=x;c[n+1]=y;c[n+2]=z;
+    }
+    @Override public void writeCorners(double[] out) {
+        if(nx!=0) {
+            double plane=x+(nx>0?1:0)+nx*.001,y0=y,y1=y+height,z0=z,z1=z+width;
+            if(nx>0) {
+                corner(out,0,plane,y0,z1);corner(out,1,plane,y0,z0);
+                corner(out,2,plane,y1,z0);corner(out,3,plane,y1,z1);
+            } else {
+                corner(out,0,plane,y0,z0);corner(out,1,plane,y0,z1);
+                corner(out,2,plane,y1,z1);corner(out,3,plane,y1,z0);
+            }
+        } else if(ny!=0) {
             double plane=y+(ny>0?1:0)+ny*.001,x0=x,x1=x+width,z0=z,z1=z+height;
-            return ny>0
-                    ? new double[][]{{x1,plane,z0},{x0,plane,z0},{x0,plane,z1},{x1,plane,z1}}
-                    : new double[][]{{x1,plane,z1},{x0,plane,z1},{x0,plane,z0},{x1,plane,z0}};
+            if(ny>0) {
+                corner(out,0,x1,plane,z0);corner(out,1,x0,plane,z0);
+                corner(out,2,x0,plane,z1);corner(out,3,x1,plane,z1);
+            } else {
+                corner(out,0,x1,plane,z1);corner(out,1,x0,plane,z1);
+                corner(out,2,x0,plane,z0);corner(out,3,x1,plane,z0);
+            }
+        } else {
+            double plane=z+(nz>0?1:0)+nz*.001,x0=x,x1=x+width,y0=y,y1=y+height;
+            if(nz>0) {
+                corner(out,0,x0,y0,plane);corner(out,1,x1,y0,plane);
+                corner(out,2,x1,y1,plane);corner(out,3,x0,y1,plane);
+            } else {
+                corner(out,0,x1,y0,plane);corner(out,1,x0,y0,plane);
+                corner(out,2,x0,y1,plane);corner(out,3,x1,y1,plane);
+            }
         }
-        double plane=z+(nz>0?1:0)+nz*.001,x0=x,x1=x+width,y0=y,y1=y+height;
-        return nz>0
-                ? new double[][]{{x0,y0,plane},{x1,y0,plane},{x1,y1,plane},{x0,y1,plane}}
-                : new double[][]{{x1,y0,plane},{x0,y0,plane},{x0,y1,plane},{x1,y1,plane}};
     }
 
     /** Per-plane input only; individual mirror visibility remains the renderer's decision. */

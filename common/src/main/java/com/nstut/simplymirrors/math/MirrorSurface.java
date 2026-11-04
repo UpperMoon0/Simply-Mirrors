@@ -26,10 +26,20 @@ public final class MirrorSurface implements MirrorGeometry {
         return (eyeX-cx)*nx+(eyeY-cy)*ny+(eyeZ-cz)*nz>epsilon;
     }
     public double[][] corners() {
+        double[] c=new double[12];writeCorners(c);
+        return new double[][]{{c[0],c[1],c[2]},{c[3],c[4],c[5]},
+                {c[6],c[7],c[8]},{c[9],c[10],c[11]}};
+    }
+    private static void corner(double[] c,int i,double x,double y,double z) {
+        int n=i*3;c[n]=x;c[n+1]=y;c[n+2]=z;
+    }
+    @Override public void writeCorners(double[] out) {
         double ux=ny==0?-nz*.5:.5,uz=ny==0?nx*.5:0;
         double vy=ny==0?.5:0,vz=ny*.5;
         double bx=cx+nx*.001,by=cy+ny*.001,bz=cz+nz*.001;
-        return new double[][] {{bx+ux,by-vy,bz+uz-vz},{bx-ux,by-vy,bz-uz-vz},
-            {bx-ux,by+vy,bz-uz+vz},{bx+ux,by+vy,bz+uz+vz}};
+        corner(out,0,bx+ux,by-vy,bz+uz-vz);
+        corner(out,1,bx-ux,by-vy,bz-uz-vz);
+        corner(out,2,bx-ux,by+vy,bz-uz+vz);
+        corner(out,3,bx+ux,by+vy,bz+uz+vz);
     }
 }

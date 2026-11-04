@@ -39,6 +39,7 @@ public final class MirrorRenderer {
     private static List<MirrorSurface> cached=new ArrayList<>();
     private static int frame,compositeFbo;
     private static boolean failed;
+    private static final MirrorTemporalHistory TEMPORAL=new MirrorTemporalHistory();
     private MirrorRenderer() { }
 
     public static void render(GraphicsResourceAllocator allocator,DeltaTracker delta,CameraRenderState camera,
@@ -51,26 +52,27 @@ public final class MirrorRenderer {
         if(mc.level!=lastLevel) { release();lastLevel=mc.level; }
         Vec3 eye=camera.pos;
         if(frame++%20==0)cached=find(mc.level,eye);
-        if(cached.isEmpty()||failed)return;
         float partial=delta.getGameTimeDeltaPartialTick(false);
         Matrix4f savedView=new Matrix4f(mainViewMatrix);
         // Use the exact world projection captured before the GPU upload.
         Matrix4f savedProjection=new Matrix4f(camera.projectionMatrix);
         Matrix4f renderedProjection=new Matrix4f(mainProjection);
         float[] view=savedView.get(new float[16]),proj=renderedProjection.get(new float[16]);
+        MirrorTemporalHistory.Frame priorFrame=TEMPORAL.advance(view,proj,eye.x,eye.y,eye.z);
+        if(cached.isEmpty()||failed)return;
         float[] vp=MirrorMatrices.multiply(proj,view);
         Map<String,List<MirrorSurface>> groups=new LinkedHashMap<>();
         cached.sort(Comparator.comparingDouble(s->distance(s,eye)));
         BlockPos.MutableBlockPos queryPos=new BlockPos.MutableBlockPos();
-        for(MirrorSurface s:cached) {
-            if(distance(s,eye)>32*32||!s.frontFacing(eye.x,eye.y,eye.z,.025))continue;
-            BlockState state=mc.level.getBlockState(queryPos.set(s.x,s.y,s.z));
-            if(!(state.getBlock() instanceof MirrorBlock))continue;
-            if(mc.level.getBlockState(queryPos.set(s.x+s.nx,s.y+s.ny,s.z+s.nz)).getBlock() instanceof MirrorBlock)continue;
-            double[] clip=MirrorMatrices.transform(vp,s.cx-eye.x,s.cy-eye.y,s.cz-eye.z,1);
-            if(clip[3]<=.01||Math.abs(clip[0])>clip[3]+1.5||Math.abs(clip[1])>clip[3]+1.5)continue;
+        // Do not let nearer back-facing or off-screen tiles consume the visible budget.
+        List<MirrorSurface> selected=MirrorFaceSelector.select(cached,vp,eye.x,eye.y,eye.z,
+                MirrorFaceSelector.MAX_VISIBLE_FACES,s -> {
+                    BlockState state=mc.level.getBlockState(queryPos.set(s.x,s.y,s.z));
+                    return state.getBlock() instanceof MirrorBlock
+                        && !(mc.level.getBlockState(queryPos.set(s.x+s.nx,s.y+s.ny,s.z+s.nz)).getBlock() instanceof MirrorBlock);
+                });
+        for(MirrorSurface s:selected)
             groups.computeIfAbsent(s.planeKey(),k->new ArrayList<>()).add(s);
-        }
         if(groups.isEmpty())return;
         LevelRendererAccessor access=(LevelRendererAccessor)mc.levelRenderer;
         LevelRenderState state=access.simplymirrors$state();
@@ -118,7 +120,7 @@ public final class MirrorRenderer {
                 var mv=RenderSystem.getModelViewStack();mv.pushMatrix();mv.identity();
                 try(GpuBuffer globals=globals(reflectedEye,main.width,main.height,mc,partial)) {
                     redirect=target;
-                    if(shaders)ShaderReflection.begin(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected);
+                    if(shaders)ShaderReflection.begin(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected,priorFrame.reflect(s));
                     RenderSystem.setGlobalSettingsUniform(globals);
                     RenderSystem.setProjectionMatrix(projectionBuffer.getBuffer(projection),ProjectionType.PERSPECTIVE);glFrontFace(GL_CW);
                     mc.levelRenderer.renderLevel(allocator,delta,false,state.cameraRenderState,reflectedView,fog,new Vector4f(color),sky,state.chunkSectionsToRender);

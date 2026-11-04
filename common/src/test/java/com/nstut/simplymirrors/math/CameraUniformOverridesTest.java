@@ -111,6 +111,26 @@ public class CameraUniformOverridesTest {
         gl.bind(0);pass.upload();gl.bind(1);pass.upload();pass.restore();
         assertTrue(gl.floats.get(1).isEmpty()); assertTrue(gl.ints.isEmpty());
     }
+    @Test public void reflectedCameraVelocityUsesActualHistoricalPoseAndRestoresIt() {
+        Uniforms gl=new Uniforms();
+        float[] priorView=IDENTITY.clone();priorView[12]=.25f;
+        float[] priorProjection=IDENTITY.clone();priorProjection[0]=2;
+        CameraUniformOverrides pass=new CameraUniformOverrides(gl,IDENTITY,IDENTITY,REFLECT_X,
+                new double[]{30012.5,64.25,-2.25},new double[]{30008.5,64.25,-2.25},
+                priorView,priorProjection,new double[]{30011.5,64.25,-2.25},
+                new double[]{30009.0,64.25,-2.25},true);
+        pass.upload();
+        assertArrayEquals(priorView,gl.get("gbufferPreviousModelView"),0);
+        assertArrayEquals(priorProjection,gl.get("gbufferPreviousProjection"),0);
+        // Previous main camera-position GPU uniform was 11, not absolute world 30011.5.
+        // Apply the historical reflection delta (-2.5) to preserve the origin shift.
+        assertArrayEquals(new float[]{8.5f,64,-3},gl.get("previousCameraPosition"),0);
+        assertArrayEquals(new float[]{8.5f,64.25f,-2.25f},gl.get("cameraPosition"),0);
+        pass.restore();
+        assertArrayEquals(REFLECT_Y,gl.get("gbufferPreviousModelView"),0);
+        assertArrayEquals(new float[]{11,64,-3},gl.get("previousCameraPosition"),0);
+    }
+
     @Test public void restorationRunsAfterAnInterruptedMirror() {
         Uniforms gl=new Uniforms();
         CameraUniformOverrides pass=pass(gl,REFLECT_X,new double[] {30008.5,64.25,-2.25});
