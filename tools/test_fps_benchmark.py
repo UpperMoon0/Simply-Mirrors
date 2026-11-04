@@ -1,0 +1,55 @@
+"""Offline regression coverage for Windows real-GPU benchmark teardown.
+
+No Minecraft, GPU, network or live processes are used in these tests.
+"""
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch, call
+
+import fps_benchmark
+
+
+class OwnedGradleWrapperCleanupTests(unittest.TestCase):
+    @patch.object(fps_benchmark.subprocess, "run")
+    def test_lookup_scopes_exact_run_directory_name_and_gradle_wrapper(self, run):
+        run.return_value = SimpleNamespace(returncode=0, stdout="4132\n5801\n",
+                                           stderr="")
+        root = Path(r"D:\Workspaces\_work\simply-mirrors-real-gpu-fps-20261105")
+        found = fps_benchmark.owned_gradle_server_wrapper_pids(root, "fps-unique-03")
+        self.assertEqual([4132, 5801], found)
+        args = run.call_args.args[0]
+        self.assertEqual("powershell.exe", args[0].lower())
+        powershell = args[-1]
+        self.assertIn("GradleWrapperMain", powershell)
+        self.assertIn("-PvisualRunName=fps-unique-03", powershell)
+        self.assertIn("$_." + "Name -eq 'java.exe'", powershell)
+        self.assertIn("simply-mirrors-real-gpu-fps-20261105", powershell)
+
+    @patch("fps_benchmark.stop_tree")
+    @patch("fps_benchmark.owned_gradle_server_wrapper_pids",
+           side_effect=[[4132, 5801], []])
+    def test_cleanup_kills_only_scoped_wrappers_and_rechecks(self, lookup, terminate):
+        fps_benchmark.cleanup_owned_gradle_servers(Path("D:/isolated"), "fps-a")
+        self.assertEqual([call(4132), call(5801)], terminate.call_args_list)
+        self.assertEqual(2, lookup.call_count)
+
+    @patch("fps_benchmark.stop_tree")
+    @patch("fps_benchmark.owned_gradle_server_wrapper_pids",
+           side_effect=[[4132], [4132]])
+    def test_cleanup_fails_when_owned_wrapper_remains(self, lookup, terminate):
+        with self.assertRaisesRegex(RuntimeError, "server wrappers leaked"):
+            fps_benchmark.cleanup_owned_gradle_servers(Path("D:/isolated"), "fps-a")
+        terminate.assert_called_once_with(4132)
+
+    @patch.object(fps_benchmark.subprocess, "run")
+    def test_process_enumeration_failure_does_not_claim_clean_exit(self, run):
+        run.return_value = SimpleNamespace(returncode=1, stdout="",
+                                           stderr="WMI not available")
+        with self.assertRaisesRegex(RuntimeError, "Failed to enumerate"):
+            fps_benchmark.owned_gradle_server_wrapper_pids(
+                Path("D:/isolated"), "fps-a")
+
+
+if __name__ == "__main__":
+    unittest.main()
