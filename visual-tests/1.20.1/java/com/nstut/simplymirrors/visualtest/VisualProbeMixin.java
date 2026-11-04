@@ -28,7 +28,7 @@ public abstract class VisualProbeMixin {
     @Inject(method="runTick",at=@At("TAIL"))
     private void simplymirrors$probe(CallbackInfo ci) throws Exception {
         if(simplymirrors$done)return;Minecraft mc=Minecraft.getInstance();
-        if(simplymirrors$frames++==0) {mc.options.onboardAccessibility=false;mc.options.pauseOnLostFocus=false;mc.options.renderDistance().set(4);mc.options.bobView().set(false);mc.options.framerateLimit().set(30);mc.options.hideGui=true;}
+        if(simplymirrors$frames++==0) {mc.options.onboardAccessibility=false;mc.options.pauseOnLostFocus=false;mc.options.renderDistance().set(4);mc.options.bobView().set(false);mc.options.framerateLimit().set(Boolean.getBoolean("simplymirrors.fpsBenchmark")?260:30);mc.options.hideGui=true;if(Boolean.getBoolean("simplymirrors.fpsBenchmark"))FpsBenchmarkProbe.prepareWindow(mc);}
         if(mc.player==null||mc.level==null) {
             if(simplymirrors$frames%300==0)System.out.println("SIMPLY_MIRRORS_VISUAL_STAGE "+(mc.screen==null?"none":mc.screen.getClass().getName()));
             if(mc.getOverlay()==null&&mc.screen instanceof net.minecraft.client.gui.screens.AccessibilityOnboardingScreen)mc.setScreen(new TitleScreen());
@@ -38,6 +38,7 @@ public abstract class VisualProbeMixin {
             }
             return;
         }
+        if(Boolean.getBoolean("simplymirrors.fpsBenchmark")) {FpsBenchmarkProbe.tick(mc);return;}
         mc.player.getAbilities().flying=true;
         int requested=VisualScene.index(mc.gameDirectory.toPath());
         if(requested<0)return;
