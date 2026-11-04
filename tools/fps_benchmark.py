@@ -125,6 +125,47 @@ def stop_tree(pid: int):
                        check=False)
 
 
+def owned_gradle_server_wrapper_pids(work: Path, run_name: str) -> list[int]:
+    """Find only THIS disposable run's orphaned Windows Gradle server launchers.
+
+    On Windows a .bat Popen may terminate while its JVM children survive;
+    waiting for the cmd.exe PID alone is not sufficient process cleanup.
+    This query NEVER matches the user's normal Java/Minecraft processes.
+    """
+    root = str(work).replace("'", "''")
+    tag = ("-PvisualRunName=" + run_name).replace("'", "''")
+    script = (
+        "$root='" + root + "';"
+        "$tag='" + tag + "';"
+        "Get-CimInstance Win32_Process | Where-Object {"
+        "$_.Name -eq 'java.exe' -and $_.CommandLine -and "
+        "$_.CommandLine.Contains('GradleWrapperMain') -and "
+        "$_.CommandLine.Contains($tag) -and "
+        "$_.CommandLine.IndexOf($root,[StringComparison]::OrdinalIgnoreCase) -ge 0"
+        "} | Select-Object -ExpandProperty ProcessId"
+    )
+    found = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True, text=True, timeout=35, check=False)
+    if found.returncode != 0:
+        raise RuntimeError("Failed to enumerate only benchmark-owned server wrappers: "
+                           + found.stderr[-1500:])
+    return [int(line) for line in found.stdout.splitlines() if line.strip().isdigit()]
+
+
+def cleanup_owned_gradle_servers(work: Path, run_name: str):
+    # The gracefully issued RCON 'stop' may leave cmd.exe/GradleWrapperMain
+    # children alive. Kill ONLY the process trees tagged with this run's unique
+    # Gradle -PvisualRunName property, then assert that none remain.
+    stale = owned_gradle_server_wrapper_pids(work, run_name)
+    for pid in stale:
+        print("FPS_CLEANUP owned test wrapper PID=" + str(pid), flush=True)
+        stop_tree(pid)
+    remaining = owned_gradle_server_wrapper_pids(work, run_name)
+    if remaining:
+        raise RuntimeError("Benchmark-owned server wrappers leaked: " + str(remaining))
+
+
 def wait_result(path: Path, client_handle: int, client_log: Path, deadline_s: int):
     until = time.monotonic() + deadline_s
     while time.monotonic() < until:
@@ -389,7 +430,6 @@ def main():
         }
         (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n",
                                                 encoding="utf-8")
-        print("SIMPLY_MIRRORS_REAL_GPU_FPS_PASS " + json.dumps(comparison), flush=True)
         success = True
     except BaseException as failure:
         (evidence / "failure.txt").write_text(repr(failure) + "\n", encoding="utf-8")
@@ -413,6 +453,9 @@ def main():
             ctypes.windll.kernel32.CloseHandle(wintypes.HANDLE(client_handle))
         if not success:
             system_gpu(evidence, "failed")
+        cleanup_owned_gradle_servers(root, args.run_name)
+        if success:
+            print("SIMPLY_MIRRORS_REAL_GPU_FPS_PASS " + json.dumps(comparison), flush=True)
 
 if __name__ == "__main__":
     main()
