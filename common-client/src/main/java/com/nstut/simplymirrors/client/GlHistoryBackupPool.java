@@ -14,7 +14,7 @@ import static org.lwjgl.opengl.GL33.*;
  */
 final class GlHistoryBackupPool {
     private static final long MAX_CACHED_BYTES = 256L * 1024 * 1024;
-    // A conservative bound (16 bytes/texel) also covers RGBA32F buffers.
+    // Cap retained VRAM separately from active one-frame capture storage.
     private static final ArrayDeque<Buffer> FREE = new ArrayDeque<Buffer>();
     private static long cachedBytes;
     private static long allocations;
@@ -45,7 +45,7 @@ final class GlHistoryBackupPool {
     }
 
     static void release(int id, int format, int width, int height) {
-        long bytes = (long) width * height * 16;
+        long bytes = (long) width * height * estimatedBytesPerPixel(format);
         if (bytes > MAX_CACHED_BYTES) {
             glDeleteRenderbuffers(id);
             return;
@@ -58,6 +58,27 @@ final class GlHistoryBackupPool {
         }
         FREE.addLast(new Buffer(id, format, width, height, bytes));
         cachedBytes += bytes;
+    }
+
+    private static int estimatedBytesPerPixel(int format) {
+        // Storage formats are already queried from the actual Iris texture.
+        // Unknown formats are charged at a conservative 16 bytes/pixel.
+        switch (format) {
+            case GL_RGBA32F: case GL_RGBA32I: case GL_RGBA32UI: return 16;
+            case GL_RGB32F: case GL_RGB32I: case GL_RGB32UI: return 12;
+            case GL_RG32F: case GL_RG32I: case GL_RG32UI:
+            case GL_RGBA16F: case GL_RGBA16I: case GL_RGBA16UI: return 8;
+            case GL_RGB16F: case GL_RGB16I: case GL_RGB16UI: return 6;
+            case GL_RGBA8: case GL_RGBA8_SNORM: case GL_SRGB8_ALPHA8:
+            case GL_RGB10_A2: case GL_R11F_G11F_B10F:
+            case GL_R32F: case GL_R32I: case GL_R32UI:
+            case GL_RG16F: case GL_RG16I: case GL_RG16UI: return 4;
+            case GL_RGB8: case GL_RGB8_SNORM: case GL_SRGB8: return 3;
+            case GL_RG8: case GL_RG8_SNORM:
+            case GL_R16F: case GL_R16I: case GL_R16UI: return 2;
+            case GL_R8: case GL_R8_SNORM: return 1;
+            default: return 16;
+        }
     }
 
     /** Must run on the active GL render thread before a context is discarded. */
