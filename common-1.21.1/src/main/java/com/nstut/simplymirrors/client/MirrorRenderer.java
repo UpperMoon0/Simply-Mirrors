@@ -136,7 +136,7 @@ public final class MirrorRenderer {
         return surfaces;
     }
     public static void release() {
-        if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;TEMPORAL.reset();COMPOSITE.close();
+        if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;TEMPORAL.reset();COMPOSITE.close();GlTextureSnapshot.releaseScratch();
     }
     private static float[] array(Matrix4f matrix) { return matrix.get(new float[16]); }
     private static Matrix4f matrix(float[] values) { return new Matrix4f().set(values); }
