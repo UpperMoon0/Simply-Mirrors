@@ -215,6 +215,45 @@ def camera_motion_check(idle_path,moving_path,settled_path):
     return {"cameraMovedPixels":actual_motion,"cameraMotionVsSettledMeanAbsDifference":round(average,3)}
 
 
+def capture_client_thread_dump(client_dir, evidence):
+    """Record the actual disposable client thread stack before aborting a stalled probe.
+
+    Only attach to Java processes whose command line explicitly includes this
+    fixture's unique client directory. Never inspect unrelated game instances.
+    """
+    if os.name != "posix" or not Path("/proc").is_dir():
+        return
+    jcmd = shutil.which("jcmd")
+    report = evidence / "client-thread-dump.txt"
+    lines = []
+    if not jcmd:
+        report.write_text("jcmd not installed; could not inspect visual fixture.\n")
+        return
+    target = str(client_dir.resolve()).encode()
+    try:
+        processes = sorted((entry for entry in Path("/proc").iterdir()
+                            if entry.name.isdecimal()),key=lambda entry:int(entry.name))
+        for entry in processes:
+            try:
+                command = (entry / "cmdline").read_bytes()
+            except (FileNotFoundError, PermissionError, ProcessLookupError):
+                continue
+            if target not in command or b"java" not in command.lower():
+                continue
+            pid = entry.name
+            lines.append(f"=== client JVM {pid} ({command[:700]!r}) ===\n")
+            try:
+                dump = subprocess.run([jcmd,pid,"Thread.print","-l"],
+                        capture_output=True,text=True,timeout=12,check=False)
+                lines.append(f"exit={dump.returncode}\n{dump.stdout[-180000:]}\n{dump.stderr[-5000:]}\n")
+            except (OSError, subprocess.TimeoutExpired) as error:
+                lines.append(f"Thread dump unavailable: {error!r}\n")
+        report.write_text("".join(lines) if lines else
+                "No running fixture Java process contained its client path.\n")
+    except BaseException as error:
+        report.write_text(f"Client diagnostic collection failed: {error!r}\n")
+
+
 def finish_capture(client_dir,evidence,results,failures,client):
     # Preserve diagnostic captures even when shutdown or image acceptance fails.
     (evidence/"results.json").write_text(json.dumps(results,indent=2)+"\n")
@@ -399,11 +438,19 @@ def main():
                         reply=rcon.command(text)
                         if any(word in reply for word in ["Unknown","Incorrect","too many blocks"]):raise RuntimeError(f"Fixture failed: {text}: {reply}")
                 activate_scene(rcon,client_dir,scene,client)
-                result=client_dir/f"visual-evidence/result-{scene}.json";deadline=time.monotonic()+(600 if scene==0 else 180)
+                result=client_dir/f"visual-evidence/result-{scene}.json"
+                started=time.monotonic()
+                deadline=started+(600 if scene==0 else 180)
+                diagnostic_captured=False
                 while time.monotonic()<deadline and not result.exists():
                     if client.poll() is not None:raise RuntimeError(f"Client exited before {face} capture: {evidence/'client.log'}")
+                    if not diagnostic_captured and scene==0 and time.monotonic()-started>=180:
+                        capture_client_thread_dump(client_dir,evidence)
+                        diagnostic_captured=True
                     time.sleep(1)
-                if not result.exists():raise TimeoutError(f"Client visual probe timed out on {face}: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
+                if not result.exists():
+                    if not diagnostic_captured:capture_client_thread_dump(client_dir,evidence)
+                    raise TimeoutError(f"Client visual probe timed out on {face}: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
                 if args.force_stencil:assert data.get('stencilEnabled') is True,data

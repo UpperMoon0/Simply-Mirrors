@@ -181,10 +181,10 @@ public final class MirrorRenderer {
                     if(!(level.getBlockState(new BlockPos(face.x+face.nx,face.y+face.ny,face.z+face.nz)).getBlock() instanceof MirrorBlock))out.add(face);
             }
         }
-        out.sort(Comparator.comparingDouble(s->distance(s,eye)));return out.size()>1536?new ArrayList<>(out.subList(0,1536)):out;
+        out.sort(Comparator.comparingDouble(s->distance(s,eye)));return out;
     }
     public static void release() {
         if(target!=null)target.destroyBuffers();target=null;if(projectionBuffer!=null)projectionBuffer.close();projectionBuffer=null;
-        if(compositeFbo!=0)glDeleteFramebuffers(compositeFbo);compositeFbo=0;COMPOSITE.close();redirect=null;cached.clear();lastLevel=null;failed=false;frame=0;
+        if(compositeFbo!=0)glDeleteFramebuffers(compositeFbo);compositeFbo=0;COMPOSITE.close();TEMPORAL.reset();redirect=null;cached.clear();lastLevel=null;failed=false;frame=0;
     }
 }

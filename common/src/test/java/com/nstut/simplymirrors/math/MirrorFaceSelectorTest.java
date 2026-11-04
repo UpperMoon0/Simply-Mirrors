@@ -26,6 +26,26 @@ public class MirrorFaceSelectorTest {
         assertEquals("All nine on-screen wall tiles survived >16k hidden candidates",wall.size(),result.size());
         assertTrue(result.containsAll(wall));
     }
+    @Test public void legacy1536PrefixMustNotStarveVisible26_1_2Faces() {
+        // The 26.1.2 renderer previously truncated the raw candidate list to
+        // 1,536 before invoking MirrorFaceSelector. Exercise that exact count.
+        List<MirrorSurface> candidates=new ArrayList<MirrorSurface>();
+        for(int i=0;i<1537;i++) {
+            // These blocks are closer than the forward-facing target but point away.
+            candidates.add(new MirrorSurface(i%17-8,i/17%17-8,0,0,0,1));
+        }
+        MirrorSurface target=new MirrorSurface(0,0,12,0,0,-1);
+        candidates.add(target);
+        final double ex=.5,ey=.5,ez=-3;
+        candidates.sort(Comparator.comparingDouble(s -> {
+            double dx=s.cx-ex,dy=s.cy-ey,dz=s.cz-ez;
+            return dx*dx+dy*dy+dz*dz;
+        }));
+        assertFalse(candidates.subList(0,1536).contains(target));
+        List<MirrorSurface> visible=MirrorFaceSelector.select(candidates,PROJECTION,ex,ey,ez,16384,s->true);
+        assertEquals(Collections.singletonList(target),visible);
+    }
+
     @Test public void budgetCountsOnlyExposedFrontFacingProjectedSurfaces() {
         List<MirrorSurface> cells=new ArrayList<MirrorSurface>();
         for(int i=0;i<40;i++)cells.add(new MirrorSurface(0,0,5+i%5,0,0,-1));

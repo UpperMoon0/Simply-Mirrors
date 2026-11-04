@@ -26,6 +26,19 @@ public class MirrorTemporalHistoryTest {
         assertFalse(history.advance(movedView,ID,.25,0,-3).reflect(mirror).valid);
     }
 
+    @Test public void transitionToNewWorldCannotReusePreviousWorldMotion() {
+        MirrorTemporalHistory history=new MirrorTemporalHistory();
+        MirrorSurface wall=new MirrorSurface(0,0,0,0,0,-1);
+        history.advance(ID,ID,300,85,400);
+        assertTrue(history.advance(ID,ID,300.5,85,400).reflect(wall).valid);
+        history.reset(); // invoked by each renderer's release() on level change
+        MirrorTemporalHistory.Pose first=history.advance(ID,ID,-700,64,50).reflect(wall);
+        assertFalse("Previous world pose leaked into new world's first frame",first.valid);
+        assertEquals(-700,first.mainEye[0],0);
+        assertEquals(-700,first.eye[0],0);
+        assertTrue(history.advance(ID,ID,-699.5,64,50).reflect(wall).valid);
+    }
+
     @Test public void independentPlanesReflectSamePriorFrameCorrectly() {
         MirrorTemporalHistory history=new MirrorTemporalHistory();
         history.advance(ID,ID,2,1,-1);
