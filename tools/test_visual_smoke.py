@@ -307,6 +307,13 @@ class VisualThreadDumpDiscoveryTests(unittest.TestCase):
             entry.mkdir()
             (entry / "cmdline").write_bytes(b"/usr/bin/java\\0-Dclient=" +
                                            str(client.resolve()).encode() + b"\\0")
+            # Do not confuse an unrelated client whose argument merely
+            # contains this directory as a prefix.
+            entry = proc / "106"
+            entry.mkdir()
+            (entry / "cmdline").write_bytes(
+                b"/usr/bin/java\\0-Dclient=" + str(client.resolve()).encode() + b"-other\\0")
+            (entry / "cwd").symlink_to(unrelated, target_is_directory=True)
             self.assertEqual(
                 ["101", "104", "105"],
                 [pid for pid, _ in visual_smoke.fixture_java_processes(client, proc)]
