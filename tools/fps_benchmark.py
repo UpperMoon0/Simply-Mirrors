@@ -12,6 +12,7 @@ from ctypes import wintypes
 import hashlib
 import json
 import os
+import statistics
 from pathlib import Path
 import shutil
 import subprocess
@@ -166,7 +167,10 @@ def main():
     parser.add_argument("--shader-cache", type=Path, required=True)
     parser.add_argument("--java-home", default=r"C:\Program Files\Java\jdk-21")
     parser.add_argument("--run-name", default="fps-" + str(int(time.time())))
+    parser.add_argument("--rounds", type=int, default=1, help="1-5 alternating trial rounds")
     args = parser.parse_args()
+    if not 1 <= args.rounds <= 5:
+        parser.error("--rounds must be in [1, 5]")
     if not (640 <= args.width <= 2560 and 360 <= args.height <= 1440):
         parser.error("Unsupported benchmark viewport")
     if not __import__("re").fullmatch(r"fps-[a-z0-9-]+", args.run_name):
@@ -287,39 +291,86 @@ def main():
         if not joined:
             raise TimeoutError("Minecraft graphical client did not join the local server")
         results = []
-        for number, label in CASES:
-            if number == 8:
-                require_command(rcon, "setblock 0 66 0 simply_mirrors:mirror[facing=north]")
-            elif number == 9:
+        for round_index in range(args.rounds):
+            order = CASES if round_index % 2 == 0 else list(reversed(CASES))
+            for kind, label in order:
+                number = round_index * 10 + kind
+                # Restore an equivalent white surface, then install this trial's mirror
+                # topology. The camera is constant and the shader never reloads.
                 for x in range(-1, 2):
                     for y in range(65, 68):
-                        require_command(rcon, f"setblock {x} {y} 0 simply_mirrors:mirror[facing=north]")
-            scene_file(client, number)
-            print("FPS_STAGE measuring " + label, flush=True)
-            result = wait_result(client / "fps-evidence" / f"scene-{number}.json",
-                                 client_handle, client_log, 240)
-            if not result["shaderActive"] or result["windowIconified"] or result["glError"] != 0:
-                raise RuntimeError("Invalid game/shader/GL measurement " + str(result))
-            result["label"] = label
-            results.append(result)
-            system_gpu(evidence, label)
-            print(f"FPS_RESULT {label} avgFPS={result['averageFps']:.2f} "
-                  f"p95ms={result['p95FrameMs']:.2f} passes={result['reflectionPasses']}",
-                  flush=True)
+                        require_command(rcon, f"setblock {x} {y} 0 white_concrete")
+                if kind == 8:
+                    require_command(rcon, "setblock 0 66 0 simply_mirrors:mirror[facing=north]")
+                elif kind == 9:
+                    for x in range(-1, 2):
+                        for y in range(65, 68):
+                            require_command(rcon, f"setblock {x} {y} 0 simply_mirrors:mirror[facing=north]")
+                scene_file(client, number)
+                print(f"FPS_STAGE round={round_index} measuring {label}", flush=True)
+                result = wait_result(client / "fps-evidence" / f"scene-{number}.json",
+                                     client_handle, client_log, 240)
+                if not result["shaderActive"] or result["windowIconified"] or result["glError"] != 0:
+                    raise RuntimeError("Invalid game/shader/GL measurement " + str(result))
+                if "NVIDIA" not in result["glVendor"]:
+                    raise RuntimeError("Hardware GPU not confirmed: " + result["glVendor"])
+                result["label"] = label
+                result["round"] = round_index
+                results.append(result)
+                system_gpu(evidence, f"{label}-round-{round_index}")
+                print(f"FPS_RESULT round={round_index} {label} avgFPS={result['averageFps']:.2f} "
+                      f"p95ms={result['p95FrameMs']:.2f} passes={result['reflectionPasses']}",
+                      flush=True)
         scene_file(client, 6)
         until = time.monotonic() + 90
         while time.monotonic() < until and poll(client_handle) is None:
             time.sleep(.5)
         if poll(client_handle) != 0:
             raise RuntimeError("Client did not exit cleanly after measurement")
-        baseline = results[0]["averageFps"]
-        comparison = {r["label"]: {
-            "avgFps": r["averageFps"],
-            "fpsChangePct": round(100 * (r["averageFps"] / baseline - 1), 2),
-            "p95FrameMs": r["p95FrameMs"],
-            "samples": r["samples"],
-            "reflectionPasses": r["reflectionPasses"],
-        } for r in results}
+        # A/B comparisons use same-round baselines, not a single cold first trial.
+        # Validate the actual framebuffer contents, not just completed render passes.
+        from PIL import Image, ImageChops
+        from visual_smoke import image_check
+        checks = {}
+        for round_index in range(args.rounds):
+            base_image = client / "fps-evidence" / f"scene-{round_index*10+7}.png"
+            one_image = client / "fps-evidence" / f"scene-{round_index*10+8}.png"
+            nine_image = client / "fps-evidence" / f"scene-{round_index*10+9}.png"
+            nine_colors = image_check(nine_image, shaders=True)
+            with Image.open(base_image) as original, Image.open(one_image) as reflection:
+                a = original.convert("RGB")
+                b = reflection.convert("RGB")
+                if a.size != b.size:
+                    raise AssertionError("Single-mirror image resolution changed")
+                region = (int(a.width*.35), int(a.height*.25),
+                          int(a.width*.65), int(a.height*.75))
+                difference = ImageChops.difference(a.crop(region), b.crop(region))
+                changed = sum(max(pixel) > 20 for pixel in difference.getdata())
+                if changed < 1500:
+                    raise AssertionError("One mirror did not change enough actual framebuffer pixels: " + str(changed))
+            checks[str(round_index)] = {"singleMirrorChangedPixels": changed,
+                                        "nineMirrorColorMarkers": nine_colors}
+        rounds = []
+        by_label = {label: [] for _,label in CASES}
+        for round_index in range(args.rounds):
+            members = {r["label"]: r for r in results if r["round"] == round_index}
+            baseline = members["no-mirror"]["averageFps"]
+            deltas = {label: round(100 * (members[label]["averageFps"] / baseline - 1), 2)
+                      for _, label in CASES}
+            rounds.append({"round": round_index, "fpsChangePct": deltas})
+            for _, label in CASES:
+                by_label[label].append(members[label])
+        comparison = {
+            label: {
+                "medianAvgFps": round(statistics.median(r["averageFps"] for r in trials), 3),
+                "medianP95FrameMs": round(statistics.median(r["p95FrameMs"] for r in trials), 3),
+                "fpsChangePctVsPairedBaseline": round(statistics.median(
+                    rr["fpsChangePct"][label] for rr in rounds), 2),
+                "trialAvgFps": [r["averageFps"] for r in trials],
+                "samples": [r["samples"] for r in trials],
+                "reflectionPasses": [r["reflectionPasses"] for r in trials],
+            } for label, trials in by_label.items()
+        }
         summary = {
             "minecraft": "1.20.1",
             "loader": "Forge",
@@ -329,10 +380,12 @@ def main():
                                                    cwd=root, text=True).strip(),
             "resolution": f"{args.width}x{args.height}",
             "stages": comparison,
-            "rawData": [str((client / "fps-evidence" / f"scene-{n}.json").relative_to(root))
-                        for n, _ in CASES],
-            "capturePaths": [str((client / "fps-evidence" / f"scene-{n}.png").relative_to(root))
-                             for n, _ in CASES],
+            "rounds": rounds,
+            "imageChecks": checks,
+            "rawData": [str((client / "fps-evidence" / f"scene-{r['scenario']}.json").relative_to(root))
+                        for r in results],
+            "capturePaths": [str((client / "fps-evidence" / f"scene-{r['scenario']}.png").relative_to(root))
+                             for r in results],
         }
         (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n",
                                                 encoding="utf-8")
