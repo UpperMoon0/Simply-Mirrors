@@ -12,7 +12,7 @@ Oculus 1.8.0, Embeddium 0.3.31, and Complementary Reimagined r5.9.3.
     $env:JAVA_HOME = 'C:\Program Files\Java\jdk-21'
     $env:GRADLE_USER_HOME = 'D:\DevCaches\.gradle'
     $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-    python tools/fps_benchmark.py --target forge-1.20.1 --width 1280 --height 720 --shader-cache "D:\Workspaces\Minecraft Projects\MC Mods\Simply-Mirrors\build\shader-dependencies"
+    python tools/fps_benchmark.py --target forge-1.20.1 --width 1280 --height 720 --rounds 3 --shader-cache "D:\Workspaces\Minecraft Projects\MC Mods\Simply-Mirrors\build\shader-dependencies"
 
 The isolated graphical client is launched in the logged-in interactive Windows
 session, not Session 0, and its own non-minimized GLFW window is moved offscreen.
@@ -26,7 +26,9 @@ No existing user game or Prism instance is changed.
 
 The same shader ZIP, renderer stack, resolution, player camera, seed and world
 stay fixed. Each stage uses 8 seconds of game-frame warmup followed by at least
-15 seconds of measured frames. The test-only mixin samples elapsed monotonic
+15 seconds of measured frames. For --rounds 3, each scenario is repeated three
+times in alternating order (ABC/CBA/ABC); every mirror case is compared to the
+baseline recorded in the same round, then a median across rounds is reported. The test-only mixin samples elapsed monotonic
 time between consecutive Minecraft.runTick TAIL events. Frame intervals
 include real render scheduling and buffer swaps; they are not per-pass GPU
 timestamp queries. Fps = number of frames / sum(frame intervals in seconds).
@@ -49,7 +51,7 @@ missing screenshot, too few frames, client crash or server failure must
 not produce a success report. The user is never sent a synthetic number
 under a real-game label.
 
-A single A/B/C run is exploratory. For a release claim, run several
-alternating trial pairs, include variability, and inspect all captured
-reflections. Hardware driver data must not be conflated with llvmpipe CI
+A single A/B/C run is exploratory. Use --rounds 3 or more for repeated,
+alternating trial comparisons; preserve per-round variation and inspect the
+captured reflections. Hardware driver data must not be conflated with llvmpipe CI
 compositor timings. The script cleans up only its own launched client and server.
