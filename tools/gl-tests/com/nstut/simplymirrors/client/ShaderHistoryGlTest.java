@@ -25,6 +25,14 @@ public final class ShaderHistoryGlTest {
             depthStorageParity();
             depthStencilAttachmentCollision();
             depthStencilArrayLayerRestoration();
+            System.out.println("History backup storage: allocated=" + GlHistoryBackupPool.allocations()
+                    + " reused=" + GlHistoryBackupPool.reuses()
+                    + " retainedBytes=" + GlHistoryBackupPool.cachedBytes());
+            if (GlHistoryBackupPool.reuses() <= GlHistoryBackupPool.allocations())
+                throw new AssertionError("History backup pool did not reuse warmed allocations");
+            GlHistoryBackupPool.clear();
+            if (GlHistoryBackupPool.cachedBytes() != 0)
+                throw new AssertionError("History backup pool was not released");
             System.out.println("PASS: world/shadow main/alt contents, zero history, all mip levels, 11 integer/float/sRGB/SNORM formats, shadow flips, sampler flags, GL state, repeated/exception cleanup");
         } finally { glfwDestroyWindow(window); glfwTerminate(); }
     }
@@ -309,10 +317,18 @@ public final class ShaderHistoryGlTest {
         glEnable(GL_SCISSOR_TEST); glScissor(1,1,1,1); glEnable(GL_FRAMEBUFFER_SRGB);
         glColorMaski(0,false,true,false,true);
         glDepthMask(false);
+        long allocationsAfterWarmup = -1;
         for (int iteration=0; iteration<12; iteration++) {
             List<Integer> allocations=new ArrayList<>();
+            long initialAllocations = GlHistoryBackupPool.allocations();
             ShaderRenderTargetSnapshot snapshot=ShaderRenderTargetSnapshot.capture(pipeline);
             state(read,draw,rb,cleared.main);
+            if (iteration == 0) allocationsAfterWarmup = GlHistoryBackupPool.allocations();
+            else if (allocationsAfterWarmup != GlHistoryBackupPool.allocations())
+                throw new AssertionError("GPU history backup reallocated on a warmed frame for format " + format
+                        + ": +" + (GlHistoryBackupPool.allocations() - allocationsAfterWarmup));
+            if (iteration == 1 && GlHistoryBackupPool.reuses() == 0)
+                throw new AssertionError("No GL renderbuffers were reused");
             // Native GL readbacks establish that both temporal identities are zeroed.
             zero(persistent.main,format); zero(persistent.alt,format); zero(shadow.main,format); zero(shadow.alt,format);
             same(cleared.main,format,original.get(cleared.main));
@@ -342,8 +358,9 @@ public final class ShaderHistoryGlTest {
             if (glGetTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER)!=GL_NEAREST_MIPMAP_NEAREST) throw new AssertionError("Mipmap filter leaked");
             same(persistent.main,format,original.get(persistent.main)); same(persistent.alt,format,original.get(persistent.alt));
             for (int i=0;i<allocations.size();i++) {
-                boolean leaked=i<2?glIsFramebuffer(allocations.get(i)):glIsRenderbuffer(allocations.get(i));
-                if(leaked) throw new AssertionError("Snapshot allocation leaked");
+                boolean alive=i<2?glIsFramebuffer(allocations.get(i)):glIsRenderbuffer(allocations.get(i));
+                if (i<2 && alive) throw new AssertionError("Temporary snapshot FBO leaked");
+                if (i>=2 && !alive) throw new AssertionError("Pooled history backup unexpectedly deleted");
             }
             glBindTexture(GL_TEXTURE_2D,cleared.main); state(read,draw,rb,cleared.main);
             if (glGetError()!=GL_NO_ERROR) throw new AssertionError("OpenGL error for format "+format);
