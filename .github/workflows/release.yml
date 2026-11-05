@@ -32,7 +32,7 @@ jobs:
     uses: ./.github/workflows/shaders.yml
   release:
     needs: [build, visual, shaders]
-    runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     permissions:
       contents: write
     steps:
@@ -104,7 +104,7 @@ jobs:
   resume-curseforge:
     # Manually authorized main-branch recovery; never runs on PR code.
     if: github.event_name == 'workflow_dispatch' && inputs.resume_run != '' && inputs.publish
-    runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     permissions:
       contents: read
       actions: read
