@@ -92,10 +92,12 @@ public final class MirrorRenderer {
                 // The virtual camera is behind the wall; portal clipping replaces ordinary wall occlusion.
                 mc.smartCull=false;
                 redirect=target;
+                ReflectionScissor clipped=null;
                 try {
                     // Iris final compositing leaves depth writes disabled; clears obey that mask.
                     RenderSystem.depthMask(true);
                     target.setClearColor(0.615f,0.718f,0.792f,1);target.clear(Minecraft.ON_OSX);target.bindWrite(true);
+                    clipped=ReflectionScissor.begin(vp,eye.x,eye.y,eye.z,main.width,main.height,surfaces);
                     if(shaders)ShaderReflection.begin(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected,priorFrame.reflect(surface));
                     RenderSystem.setProjectionMatrix(projection,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);glFrontFace(GL_CW);
                     // Vanilla camera-cube fitting can loop forever with an oblique near plane.
@@ -103,7 +105,8 @@ public final class MirrorRenderer {
                     mc.levelRenderer.prepareCullFrustum(reflectedEye,reflectedView,mainProjectionMatrix);
                     mc.levelRenderer.renderLevel(delta,false,virtual,game,light,reflectedView,projection);
                 } finally {
-                    if(shaders)ShaderReflection.end();
+                    try { if(shaders)ShaderReflection.end(); }
+                    finally { if(clipped!=null)clipped.close(); }
                     RenderSystem.depthMask(oldDepthMask);
                     mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);
                     mc.levelRenderer.prepareCullFrustum(eye,mainViewMatrix,mainProjectionMatrix);
