@@ -81,3 +81,40 @@ to full-screen rendering when the projected face crosses unsafe clip planes
 or occupies most of the viewport. Independent visible reflection planes
 still require separate reflected world rendering. The change must be
 reviewed and pass release validation before publishing.
+
+
+## Scaled Iris render-target review regression (2026-11-05)
+
+Independent review identified that an unconditional screen-size scissor must not
+remain active during Iris deferred/composite/final passes whose bound buffers
+are resized by `size.buffer.*`. The fix now disables mirror scissor during
+Iris fullscreen quads, whole deferred stages, final compositing, and their
+framebuffer clears, then restores the previous scissor state for normal
+full-resolution reflected geometry.
+
+A **second, real NVIDIA shader acceptance** verified a disposable copy of
+the exact pinned Complementary r5.9.3 pack with both
+`size.buffer.colortex1` and `size.buffer.colortex7` forced to
+**0.5 × 0.5**. On the same revision of the corrected renderer, isolated
+Forge 1.20.1 + Oculus/Embeddium graphical sessions were run with
+`simplymirrors.coverageScissor=true` versus `false`. Each of the six
+mirror orientations passed 120 actual reflection frames in both modes,
+with the shader active, correct mirror handedness, no GL error and exit 0.
+
+| Face | Central reflected-image on/off mean absolute RGB error (0–255) |
+| --- | ---: |
+| North | 0.667 |
+| South | 0.835 |
+| West | 0.935 |
+| East | 0.860 |
+| Up | 1.035 |
+| Down | 0.695 |
+
+The check compares the same shaderpack and scene, changed only by the
+scissor optimization. Recorded raw PNG captures and manifests remain in
+the isolated on-prem-1 paths
+`forge-1.20.1/run/scissor-scaled50-{on,off}-20261105-*/`.
+The regression is now reproducible by running
+`python tools/scaled_shader_acceptance.py`; CI's
+`scaled-target-parity` job will verify it and upload all six pairs
+of screenshots once GitHub Actions can start jobs again.
