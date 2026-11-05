@@ -15,6 +15,8 @@ Every job uses the fleet's **verified healthy** site-specific JIT worker. There 
 
 Minecraft's headless GUI needs Mesa, Xvfb, Xauth, OpenAL and fonts. These are built into the manager's runner image as root **at image creation time**. Do not reintroduce `sudo apt-get` in the non-root job. Tests use `LIBGL_ALWAYS_SOFTWARE=true` and their pinned shader/mod dependencies. Java and Python toolchains are still installed with official setup actions.
 
+Temporary build outputs, screenshots, logs and release receipts use [private Cloudflare R2 storage](ci-r2-artifacts.md), with seven-day expiration. Normal CI does not require GitHub Actions artifact storage. Permanent release assets remain on GitHub Releases and CurseForge.
+
 ## Trust model
 
 The repository is public. Jobs that execute checked-out PR code on private runners explicitly require a trusted same-repository PR:
