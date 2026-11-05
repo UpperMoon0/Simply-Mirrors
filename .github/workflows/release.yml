@@ -24,12 +24,21 @@ jobs:
   build:
     if: inputs.resume_run == ''
     uses: ./.github/workflows/build.yml
+    secrets:
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
   visual:
     if: inputs.resume_run == ''
     uses: ./.github/workflows/visual.yml
+    secrets:
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
   shaders:
     if: inputs.resume_run == ''
     uses: ./.github/workflows/shaders.yml
+    secrets:
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
   release:
     needs: [build, visual, shaders]
     runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
@@ -43,14 +52,25 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         with:
+          operation: download
+          workflow: build
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           pattern: simply-mirrors-*
           path: release-input
+          expected: simply-mirrors-fabric-1.16.5 simply-mirrors-forge-1.16.5 simply-mirrors-fabric-1.20.1 simply-mirrors-forge-1.20.1 simply-mirrors-fabric-1.21.1 simply-mirrors-neoforge-1.21.1 simply-mirrors-fabric-26.1.2 simply-mirrors-neoforge-26.1.2
       - name: Verify all eight release jars and prepare checksums
         run: python tools/release.py collect --input release-input --output release-output
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         with:
+          operation: upload
+          workflow: release
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: simply-mirrors-release-bundle
           path: release-output/*
           if-no-files-found: error
@@ -95,15 +115,20 @@ jobs:
           CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
           CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
         run: python tools/release.py publish --input release-output
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         if: always()
         with:
+          operation: upload
+          workflow: release
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: curseforge-upload-receipts
           path: release-output/curseforge-receipts.json
           if-no-files-found: ignore
   resume-curseforge:
     # Manually authorized main-branch recovery; never runs on PR code.
-    if: github.event_name == 'workflow_dispatch' && inputs.resume_run != '' && inputs.publish
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.resume_run != '' && inputs.publish
     runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     permissions:
       contents: read
@@ -119,12 +144,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN: ${{ inputs.resume_run }}
+          R2_ENDPOINT: ${{ vars.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
-          gh run download "$SOURCE_RUN" -n simply-mirrors-release-bundle -D release-output
-          gh run download "$SOURCE_RUN" -n curseforge-upload-receipts -D release-output
+          python -m pip install --disable-pip-version-check boto3==1.40.74
+          python tools/r2_recovery.py "$SOURCE_RUN" release-output
           python -m pip install pillow
           python -m unittest discover -s tools -p 'test_*.py'
           python tools/verify_recovery.py "$SOURCE_RUN" release-output
@@ -133,9 +161,14 @@ jobs:
           CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
           CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
         run: python tools/release.py publish --input release-output --resume
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         if: always()
         with:
+          operation: upload
+          workflow: release
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: curseforge-upload-receipts
           path: release-output/curseforge-receipts.json
           if-no-files-found: ignore

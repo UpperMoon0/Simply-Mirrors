@@ -13,13 +13,14 @@ def successful_jobs():
     names += [f"build / {target}" for target in recovery.TARGETS]
     names += [f"visual / Visual {target}" for target in recovery.TARGETS]
     names += [f"shaders / Complementary {target}" for target in recovery.TARGETS]
+    names += sorted(recovery.EXTRA_SHADER_JOBS)
     return [{"name": name, "conclusion": "success"} for name in names]
 
 
 class RecoveryTests(unittest.TestCase):
     def test_exact_matrix_passes_even_when_publishing_failed(self):
         jobs = successful_jobs()
-        self.assertEqual(27, len(jobs))
+        self.assertEqual(27 + len(recovery.EXTRA_SHADER_JOBS), len(jobs))
         recovery.verify_jobs(jobs + [{"name": "release", "conclusion": "failure"}])
 
     def test_failed_skipped_missing_duplicate_or_wrong_jobs_fail(self):
