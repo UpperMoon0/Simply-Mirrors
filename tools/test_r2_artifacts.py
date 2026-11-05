@@ -118,6 +118,58 @@ class Artifacts(unittest.TestCase):
                   namespace('owner/repo', 'build', '123', '1', 'b' * 40)}
         self.assertEqual(len(values), 4)
 
+    def test_failed_downstream_job_rerun_reuses_attempt_one_producers(self):
+        # Eight producers succeeded on attempt 1; only release-package runs on 2.
+        names = [f'build-{i}' for i in range(8)]
+        for name in names:
+            self.put(name)
+        attempt_two = namespace('owner/repo', 'build', '123', '2', 'a' * 40)
+        download(self.store, 'private', attempt_two, 'build-*',
+                 self.root / 'output', expected=names)
+        self.assertEqual(8, len(list((self.root / 'output').rglob('a.jar'))))
+
+    def test_newest_successful_same_commit_producer_wins(self):
+        self.put()
+        attempt_two = namespace('owner/repo', 'build', '123', '2', 'a' * 40)
+        (self.root / 'a.jar').write_bytes(b'rebuilt jar')
+        upload(self.store, 'private', attempt_two, 'build-a', '*.jar', root=self.root)
+        attempt_three = namespace('owner/repo', 'build', '123', '3', 'a' * 40)
+        download(self.store, 'private', attempt_three, 'build-*', self.root / 'output',
+                 expected=['build-a'])
+        self.assertEqual((self.root / 'output/build-a/a.jar').read_bytes(), b'rebuilt jar')
+
+    def test_retry_does_not_accept_other_commit_or_run_or_workflow(self):
+        for other in [
+            namespace('owner/repo', 'build', '123', '1', 'b' * 40),
+            namespace('owner/repo', 'build', '124', '1', 'a' * 40),
+            namespace('owner/repo', 'shader', '123', '1', 'a' * 40),
+        ]:
+            with self.subTest(other=other):
+                store = Store()
+                upload(store, 'private', other, 'build-a', '*.jar', root=self.root)
+                with self.assertRaisesRegex(ValueError, 'Missing or expired'):
+                    download(store, 'private', self.prefix, 'build-*',
+                             self.root / 'output')
+
+    def test_retry_cannot_read_producers_from_future_attempt(self):
+        future = namespace('owner/repo', 'build', '123', '3', 'a' * 40)
+        upload(self.store, 'private', future, 'build-a', '*.jar', root=self.root)
+        current = namespace('owner/repo', 'build', '123', '2', 'a' * 40)
+        with self.assertRaisesRegex(ValueError, 'Missing or expired'):
+            download(self.store, 'private', current, 'build-*', self.root / 'output')
+
+    def test_corrupt_newer_attempt_does_not_silently_fall_back(self):
+        self.put()
+        current = namespace('owner/repo', 'build', '123', '2', 'a' * 40)
+        upload(self.store, 'private', current, 'build-a', '*.jar', root=self.root)
+        key = current + 'build-a/manifest.json'
+        manifest = json.loads(self.store.objects[key])
+        manifest['key'] = 'untrusted.zip'
+        self.store.objects[key] = json.dumps(manifest).encode()
+        with self.assertRaisesRegex(ValueError, 'Invalid R2 artifact manifest'):
+            download(self.store, 'private', current, 'build-*', self.root / 'output')
+        self.assertFalse((self.root / 'output').exists())
+
     def test_path_traversal_rejected(self):
         for name in ['../escape', '/absolute', 'C:/absolute']:
             archive = self.root / 'evil.zip'
