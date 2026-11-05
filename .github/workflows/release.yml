@@ -32,13 +32,14 @@ jobs:
     uses: ./.github/workflows/shaders.yml
   release:
     needs: [build, visual, shaders]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -101,13 +102,16 @@ jobs:
           path: release-output/curseforge-receipts.json
           if-no-files-found: ignore
   resume-curseforge:
+    # Manually authorized main-branch recovery; never runs on PR code.
     if: github.event_name == 'workflow_dispatch' && inputs.resume_run != '' && inputs.publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     permissions:
       contents: read
       actions: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
