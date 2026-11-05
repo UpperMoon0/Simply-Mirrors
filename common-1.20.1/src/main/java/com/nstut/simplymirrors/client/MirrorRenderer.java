@@ -84,6 +84,7 @@ public final class MirrorRenderer {
                 mc.smartCull=false;
                 redirect=target;
                 MirrorGpuProfiler.begin();
+                ReflectionScissor clipped=ReflectionScissor.begin(vp,eye.x,eye.y,eye.z,main.width,main.height,surfaces);
                 try {
                     // Iris final compositing leaves depth writes disabled; clears obey that mask.
                     RenderSystem.depthMask(true);
@@ -97,7 +98,8 @@ public final class MirrorRenderer {
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
                     MirrorGpuProfiler.mark(4);
                 } finally {
-                    if(shaders)ShaderReflection.end();
+                    try { if(shaders)ShaderReflection.end(); }
+                    finally { clipped.close(); }
                     RenderSystem.depthMask(oldDepthMask);
                     mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);
                     mc.levelRenderer.prepareCullFrustum(mainPose,eye,mainProjectionMatrix);
