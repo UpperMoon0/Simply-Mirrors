@@ -1,0 +1,60 @@
+name: R2 artifact integration
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  upload:
+    name: Upload private transport fixture
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare transport fixture
+        run: |
+          mkdir smoke-input
+          printf 'Simply Mirrors private R2 transport\n' > smoke-input/fixture.txt
+      - uses: ./.github/actions/r2-artifact
+        with:
+          operation: upload
+          workflow: storage-smoke
+          name: cross-job-transport
+          path: smoke-input/*
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  download:
+    name: Download and verify private transport fixture
+    needs: upload
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ./.github/actions/r2-artifact
+        with:
+          operation: download
+          workflow: storage-smoke
+          pattern: cross-job-transport
+          expected: cross-job-transport
+          path: smoke-output
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      - name: Verify exact bytes and artifact failure behavior
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          assert Path('smoke-output/cross-job-transport/fixture.txt').read_bytes() == b'Simply Mirrors private R2 transport\n'
+          print('Cross-job R2 fixture content and archive SHA-256 verified')
+          PY
+          python -m unittest discover -s tools -p test_r2_artifacts.py
