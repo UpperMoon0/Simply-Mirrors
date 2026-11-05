@@ -84,11 +84,12 @@ public final class MirrorRenderer {
                 mc.smartCull=false;
                 redirect=target;
                 MirrorGpuProfiler.begin();
-                ReflectionScissor clipped=ReflectionScissor.begin(vp,eye.x,eye.y,eye.z,main.width,main.height,surfaces);
+                ReflectionScissor clipped=null;
                 try {
                     // Iris final compositing leaves depth writes disabled; clears obey that mask.
                     RenderSystem.depthMask(true);
                     target.setClearColor(0.615f,0.718f,0.792f,1);target.clear(Minecraft.ON_OSX);target.bindWrite(true);
+                    clipped=ReflectionScissor.begin(vp,eye.x,eye.y,eye.z,main.width,main.height,surfaces);
                     if(shaders)ShaderReflection.begin(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected,priorFrame.reflect(surface));
                     MirrorGpuProfiler.mark(1);
                     RenderSystem.setProjectionMatrix(projection,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);glFrontFace(GL_CW);
@@ -99,7 +100,7 @@ public final class MirrorRenderer {
                     MirrorGpuProfiler.mark(4);
                 } finally {
                     try { if(shaders)ShaderReflection.end(); }
-                    finally { clipped.close(); }
+                    finally { if(clipped!=null)clipped.close(); }
                     RenderSystem.depthMask(oldDepthMask);
                     mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);
                     mc.levelRenderer.prepareCullFrustum(mainPose,eye,mainProjectionMatrix);
