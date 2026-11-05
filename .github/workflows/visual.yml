@@ -1,6 +1,11 @@
 name: Mirror visual acceptance
 on:
   workflow_call:
+    secrets:
+      R2_ACCESS_KEY_ID:
+        required: true
+      R2_SECRET_ACCESS_KEY:
+        required: true
   pull_request:
   workflow_dispatch:
 permissions:
@@ -53,9 +58,14 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: 'true'
           ALSOFT_DRIVERS: 'null'
         run: xvfb-run -a -s '-screen 0 1280x720x24' python tools/visual_smoke.py --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         if: always()
         with:
+          operation: upload
+          workflow: visual
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: mirror-visual-${{ matrix.target }}
           path: |
             ${{ matrix.target }}/run/visual-evidence/**

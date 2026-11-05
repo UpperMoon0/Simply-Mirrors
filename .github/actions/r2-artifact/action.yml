@@ -1,0 +1,57 @@
+name: Private R2 artifact
+description: Store or retrieve a SHA-256 verified private CI archive
+inputs:
+  operation:
+    required: true
+    description: upload or download
+  workflow:
+    required: true
+    description: Stable producer namespace
+  name:
+    default: ''
+    description: Unique upload name
+  pattern:
+    default: ''
+    description: Download name pattern
+  path:
+    required: true
+    description: Upload glob lines or empty download destination
+  if-no-files-found:
+    default: error
+    description: error, warn, or ignore
+  expected:
+    default: ''
+    description: Exact space-separated download artifact set
+  merge:
+    default: 'false'
+    description: Extract directly into destination
+  endpoint:
+    required: true
+    description: Private S3 endpoint
+  access-key-id:
+    required: true
+    description: Bucket-scoped S3 key
+  secret-access-key:
+    required: true
+    description: Bucket-scoped S3 secret
+runs:
+  using: composite
+  steps:
+    - if: always()
+      shell: bash
+      run: python -m pip install --disable-pip-version-check boto3==1.40.74
+    - if: always()
+      shell: bash
+      env:
+        ARTIFACT_OPERATION: ${{ inputs.operation }}
+        R2_WORKFLOW: ${{ inputs.workflow }}
+        ARTIFACT_NAME: ${{ inputs.name }}
+        ARTIFACT_PATTERN: ${{ inputs.pattern }}
+        ARTIFACT_PATH: ${{ inputs.path }}
+        ARTIFACT_MISSING: ${{ inputs.if-no-files-found }}
+        ARTIFACT_EXPECTED: ${{ inputs.expected }}
+        ARTIFACT_MERGE: ${{ inputs.merge }}
+        R2_ENDPOINT: ${{ inputs.endpoint }}
+        R2_ACCESS_KEY_ID: ${{ inputs.access-key-id }}
+        R2_SECRET_ACCESS_KEY: ${{ inputs.secret-access-key }}
+      run: python tools/r2_artifacts.py "$ARTIFACT_OPERATION"

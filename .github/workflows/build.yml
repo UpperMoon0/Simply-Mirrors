@@ -1,6 +1,11 @@
 name: Build and verify
 on:
   workflow_call:
+    secrets:
+      R2_ACCESS_KEY_ID:
+        required: true
+      R2_SECRET_ACCESS_KEY:
+        required: true
   push:
     branches: [main]
   pull_request:
@@ -34,9 +39,14 @@ jobs:
       - run: python -m unittest discover -s tools -p 'test_*.py'
       - run: chmod +x gradlew
       - run: ./gradlew -Ptarget=common :common:test --no-daemon --console=plain
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         if: always()
         with:
+          operation: upload
+          workflow: build
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: reflection-core-test-results
           path: common/build/test-results/test
   shader-history-gl:
@@ -102,8 +112,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew forge-1.16.5/gradlew fabric-26.1.2/gradlew neoforge-26.1.2/gradlew
       - run: python tools/build.py --target ${{ matrix.target }} --skip-tests
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         with:
+          operation: upload
+          workflow: build
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: simply-mirrors-${{ matrix.target }}
           path: |
             ${{ matrix.target }}/build/libs/*.jar
@@ -124,13 +139,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         with:
+          operation: download
+          workflow: build
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           pattern: simply-mirrors-*
           path: release-input
+          expected: simply-mirrors-fabric-1.16.5 simply-mirrors-forge-1.16.5 simply-mirrors-fabric-1.20.1 simply-mirrors-forge-1.20.1 simply-mirrors-fabric-1.21.1 simply-mirrors-neoforge-1.21.1 simply-mirrors-fabric-26.1.2 simply-mirrors-neoforge-26.1.2
       - run: python tools/release.py collect --input release-input --output release-output
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         with:
+          operation: upload
+          workflow: build
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: verified-release-bundle
           path: release-output/*
           if-no-files-found: error
