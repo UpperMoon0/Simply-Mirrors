@@ -15,7 +15,7 @@ jobs:
     # Untrusted fork PRs must never execute on private self-hosted machines.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Reflection math (Java 8)
-    runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,7 +43,7 @@ jobs:
     # Untrusted fork PRs must never execute on private self-hosted machines.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Shader history isolation (OpenGL)
-    runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -73,7 +73,7 @@ jobs:
     # Untrusted fork PRs must never execute on private self-hosted machines.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: ${{ matrix.target }}
-    runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     strategy:
       fail-fast: false
       matrix:
@@ -116,7 +116,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Verify eight-target release bundle
     needs: [reflection-core, shader-history-gl, builds]
-    runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     steps:
       - uses: actions/checkout@v4
         with:
