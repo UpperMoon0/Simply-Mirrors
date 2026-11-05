@@ -1,6 +1,6 @@
 package com.nstut.simplymirrors.client;
 
-import com.nstut.simplymirrors.math.MirrorMatrices;
+import com.nstut.simplymirrors.math.MirrorCoverage;
 import com.nstut.simplymirrors.math.MirrorSurface;
 import org.lwjgl.BufferUtils;
 import java.nio.IntBuffer;
@@ -20,7 +20,6 @@ import static org.lwjgl.opengl.GL33.*;
  * their original resolution. No texture downscaling or frame skipping.
  */
 public final class ReflectionScissor implements AutoCloseable {
-    private static final double FULL_SCREEN_THRESHOLD = 0.85;
     private static final boolean ENABLED =
         !"false".equalsIgnoreCase(System.getProperty("simplymirrors.coverageScissor", "true"));
     private static final ReflectionScissor NOOP = new ReflectionScissor();
@@ -61,45 +60,10 @@ public final class ReflectionScissor implements AutoCloseable {
         return new ReflectionScissor(bounds[0],bounds[1],bounds[2],bounds[3]);
     }
 
-    /**
-     * Return null to render the full screen when a face straddles the near
-     * plane, has an invalid projection, or covers most of the viewport.
-     * This is a correctness fallback, never a reason to omit a mirror.
-     */
+    /** Pure projection bounds are unit-tested in the common math module. */
     static int[] calculate(float[] vp,double eyeX,double eyeY,double eyeZ,
                            int width,int height,List<MirrorSurface> faces) {
-        double minX=Double.POSITIVE_INFINITY,minY=Double.POSITIVE_INFINITY;
-        double maxX=Double.NEGATIVE_INFINITY,maxY=Double.NEGATIVE_INFINITY;
-        double[] corners=new double[12];
-        for(MirrorSurface surface:faces) {
-            surface.writeCorners(corners);
-            for(int i=0;i<4;i++) {
-                int j=i*3;
-                double[] clip=MirrorMatrices.transform(vp,
-                    corners[j]-eyeX,corners[j+1]-eyeY,corners[j+2]-eyeZ,1);
-                double w=clip[3];
-                if(!Double.isFinite(w)||w<=.001 ||
-                    !Double.isFinite(clip[0])||!Double.isFinite(clip[1])||
-                    !Double.isFinite(clip[2])||
-                    clip[2]<-w || clip[2]>w) return null;
-                double x=(clip[0]/w*.5+.5)*width;
-                double y=(clip[1]/w*.5+.5)*height;
-                if(!Double.isFinite(x)||!Double.isFinite(y)) return null;
-                minX=Math.min(minX,x);minY=Math.min(minY,y);
-                maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);
-            }
-        }
-        // Padding scales with screen resolution so large-frame postprocess
-        // kernels keep their neighboring samples fully rendered.
-        int pad=Math.max(96,Math.max(width,height)/16);
-        int x0=Math.max(0,(int)Math.floor(minX)-pad);
-        int y0=Math.max(0,(int)Math.floor(minY)-pad);
-        int x1=Math.min(width,(int)Math.ceil(maxX)+pad);
-        int y1=Math.min(height,(int)Math.ceil(maxY)+pad);
-        int areaWidth=x1-x0,areaHeight=y1-y0;
-        if(areaWidth<=0||areaHeight<=0 ||
-            (double)areaWidth*areaHeight >= FULL_SCREEN_THRESHOLD*width*height) return null;
-        return new int[]{x0,y0,areaWidth,areaHeight};
+        return MirrorCoverage.scissor(vp,eyeX,eyeY,eyeZ,width,height,faces);
     }
 
     @Override public void close() {
