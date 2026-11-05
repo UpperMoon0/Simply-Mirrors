@@ -1,0 +1,6 @@
+self-hosted-runner:
+  labels:
+    - nstut-linux-pool
+    - cloud-1
+    - on-prem-1
+    - nstut-profile-minecraft-ci

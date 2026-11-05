@@ -6,6 +6,14 @@ import subprocess
 import sys
 from release import TARGETS, expected_name, version
 
+EXTRA_SHADER_JOBS = {
+    "shaders / Enclosed Complementary baseline (NeoForge 1.21.1)",
+    "shaders / Complementary TAA + motion blur camera pan (NeoForge 1.21.1)",
+    "shaders / Euphoria Patcher shader compatibility (NeoForge 1.21.1)",
+}
+if Path(__file__).with_name("scaled_shader_acceptance.py").exists():
+    EXTRA_SHADER_JOBS.add("shaders / Complementary 50%-buffer visual parity (Forge 1.20.1)")
+
 
 def gh(*args):
     return json.loads(subprocess.check_output(["gh", *args], text=True))
@@ -19,6 +27,7 @@ def verify_jobs(jobs):
         *{f"build / {target}" for target in TARGETS},
         *{f"visual / Visual {target}" for target in TARGETS},
         *{f"shaders / Complementary {target}" for target in TARGETS},
+        *EXTRA_SHADER_JOBS,
     }
     checked = [job for job in jobs if job["name"].startswith(("build /", "visual /", "shaders /"))]
     if (len(checked) != len(expected) or {job["name"] for job in checked} != expected

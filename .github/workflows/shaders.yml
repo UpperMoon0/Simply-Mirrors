@@ -1,6 +1,11 @@
 name: Mirror shader acceptance
 on:
   workflow_call:
+    secrets:
+      R2_ACCESS_KEY_ID:
+        required: true
+      R2_SECRET_ACCESS_KEY:
+        required: true
   pull_request:
   workflow_dispatch:
 permissions:
@@ -53,9 +58,14 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: 'true'
           ALSOFT_DRIVERS: 'null'
         run: xvfb-run -a -s '-screen 0 1280x720x24' python tools/visual_smoke.py --target ${{ matrix.target }} --shaders
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         if: always()
         with:
+          operation: upload
+          workflow: shaders
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: mirror-shader-${{ matrix.target }}
           path: |
             ${{ matrix.target }}/run/shader-evidence/**
@@ -100,9 +110,14 @@ jobs:
           python tools/visual_smoke.py
           --target neoforge-1.21.1 --shaders --enclosed
           --run-name enclosed-baseline --require-entity --force-stencil --check-motion
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         if: always()
         with:
+          operation: upload
+          workflow: shaders
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: mirror-enclosed-baseline
           path: |
             neoforge-1.21.1/run/enclosed-baseline-evidence/**
@@ -146,9 +161,14 @@ jobs:
           python tools/visual_smoke.py
           --target neoforge-1.21.1 --shaders --enclosed --check-camera-motion
           --run-name camera-motion
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         if: always()
         with:
+          operation: upload
+          workflow: shaders
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: mirror-complementary-camera-motion
           path: |
             neoforge-1.21.1/run/camera-motion-evidence/**
@@ -214,9 +234,14 @@ jobs:
         # Independent API regression must still execute when the visual gate fails.
         if: success() || failure()
         run: python tools/verify_iris_framebuffer_api.py --cache build/shader-dependencies
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         if: always()
         with:
+          operation: upload
+          workflow: shaders
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: mirror-euphoria-compat
           path: |
             neoforge-1.21.1/run/euphoria-compat-evidence/**
@@ -259,9 +284,14 @@ jobs:
         run: >-
           xvfb-run -a -s '-screen 0 1280x720x24'
           python tools/scaled_shader_acceptance.py
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/r2-artifact
         if: always()
         with:
+          operation: upload
+          workflow: shaders
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           name: mirror-scaled-target-coverage-parity
           path: |
             forge-1.20.1/run/scaled-coverage-*-evidence/**
