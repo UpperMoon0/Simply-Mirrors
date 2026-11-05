@@ -26,6 +26,42 @@ class EnclosedRoomFixtureTests(unittest.TestCase):
                 self.assertTrue(all(cmd.startswith("setblock ") for cmd in indoor[-9:]))
 
 
+
+class WindowsSceneFileHandoffTests(unittest.TestCase):
+    @patch("visual_smoke.time.sleep")
+    def test_transient_reader_lock_retries_without_destroying_scene(self, sleeper):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            visual_smoke.scene_file(directory, 0)
+            original = Path.replace
+            calls = []
+
+            def replace(path, destination):
+                calls.append((path, destination))
+                if len(calls) == 1:
+                    self.assertEqual("0", (directory / "visual-scene.txt").read_text())
+                    raise PermissionError(13, "Windows reader sharing violation")
+                return original(path, destination)
+
+            with patch.object(Path, "replace", replace):
+                visual_smoke.scene_file(directory, 6)
+            self.assertEqual(2, len(calls))
+            self.assertEqual("6", (directory / "visual-scene.txt").read_text())
+            self.assertFalse((directory / "visual-scene.next").exists())
+            sleeper.assert_called_once_with(.05)
+
+    @patch("visual_smoke.time.sleep")
+    def test_persistent_permission_error_remains_a_failure(self, sleeper):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            visual_smoke.scene_file(directory, 0)
+            with patch.object(Path, "replace", side_effect=PermissionError(13, "Denied")):
+                with self.assertRaisesRegex(PermissionError, "Denied"):
+                    visual_smoke.scene_file(directory, 6)
+            self.assertEqual("0", (directory / "visual-scene.txt").read_text())
+            self.assertEqual(11, sleeper.call_count)
+
+
 class SceneActivationTests(unittest.TestCase):
     @patch("visual_smoke.time.sleep")
     def test_scene_stays_parked_until_server_teleport_succeeds(self,sleep):
