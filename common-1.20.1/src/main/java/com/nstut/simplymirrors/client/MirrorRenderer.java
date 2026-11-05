@@ -83,24 +83,29 @@ public final class MirrorRenderer {
                 // The virtual camera is behind the wall; portal clipping replaces ordinary wall occlusion.
                 mc.smartCull=false;
                 redirect=target;
+                MirrorGpuProfiler.begin();
                 try {
                     // Iris final compositing leaves depth writes disabled; clears obey that mask.
                     RenderSystem.depthMask(true);
                     target.setClearColor(0.615f,0.718f,0.792f,1);target.clear(Minecraft.ON_OSX);target.bindWrite(true);
                     if(shaders)ShaderReflection.begin(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected,priorFrame.reflect(surface));
+                    MirrorGpuProfiler.mark(1);
                     RenderSystem.setProjectionMatrix(projection,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);glFrontFace(GL_CW);
                     // Vanilla camera-cube fitting can loop forever with an oblique near plane.
                     // Cull conservatively with perspective; retain oblique projection for drawing.
                     mc.levelRenderer.prepareCullFrustum(pose,reflectedEye,mainProjectionMatrix);
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
+                    MirrorGpuProfiler.mark(4);
                 } finally {
                     if(shaders)ShaderReflection.end();
                     RenderSystem.depthMask(oldDepthMask);
                     mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);
                     mc.levelRenderer.prepareCullFrustum(mainPose,eye,mainProjectionMatrix);
                     mc.getEntityRenderDispatcher().prepare(mc.level,camera,mc.crosshairPickEntity);
+                    MirrorGpuProfiler.mark(5);
                 }
                 COMPOSITE.drawMergedBatch(target.getColorTextureId(),main.width,main.height,vp,eye.x,eye.y,eye.z,surfaces);
+                MirrorGpuProfiler.mark(6);
                 completedPasses++;
             }
         } catch(RuntimeException exception) {
@@ -127,7 +132,7 @@ public final class MirrorRenderer {
         return surfaces;
     }
     public static void release() {
-        if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;TEMPORAL.reset();COMPOSITE.close();GlTextureSnapshot.releaseScratch();
+        if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;TEMPORAL.reset();COMPOSITE.close();GlTextureSnapshot.releaseScratch();MirrorGpuProfiler.reset();
     }
     private static float[] array(Matrix4f matrix) { return matrix.get(new float[16]); }
     private static Matrix4f matrix(float[] values) { return new Matrix4f().set(values); }
