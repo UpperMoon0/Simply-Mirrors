@@ -10,8 +10,10 @@ concurrency:
   cancel-in-progress: true
 jobs:
   shader:
+    # Only trusted same-repository PRs may reach private JIT runners.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Complementary ${{ matrix.target }}
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, on-prem-1, nstut-profile-minecraft-ci]
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -27,6 +29,8 @@ jobs:
           - {target: neoforge-26.1.2, java: '25', gradle_java: '25'}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -37,10 +41,11 @@ jobs:
             ${{ matrix.java }}
             ${{ matrix.gradle_java }}
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install software rendering dependencies
+      - name: Prepare preinstalled Mesa/Xvfb runner image
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libopenal1 libxrandr2 libxcursor1 libxi6 libxinerama1
+          command -v Xvfb
+          command -v xvfb-run
+          test -f /usr/lib/x86_64-linux-gnu/libGLX_mesa.so.0
           python -m pip install pillow
           chmod +x gradlew forge-1.16.5/gradlew fabric-26.1.2/gradlew neoforge-26.1.2/gradlew
       - name: Render all six faces with Complementary enabled
@@ -62,11 +67,15 @@ jobs:
 
 
   enclosed-baseline:
+    # Only trusted same-repository PRs may reach private JIT runners.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Enclosed Complementary baseline (NeoForge 1.21.1)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, on-prem-1, nstut-profile-minecraft-ci]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -75,10 +84,11 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install software rendering dependencies
+      - name: Prepare preinstalled Mesa/Xvfb runner image
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libopenal1 libxrandr2 libxcursor1 libxi6 libxinerama1
+          command -v Xvfb
+          command -v xvfb-run
+          test -f /usr/lib/x86_64-linux-gnu/libGLX_mesa.so.0
           python -m pip install pillow
           chmod +x gradlew
       - name: Render enclosed room with identical shaders and no Euphoria Patcher
@@ -103,11 +113,15 @@ jobs:
 
 
   camera-motion:
+    # Only trusted same-repository PRs may reach private JIT runners.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Complementary TAA + motion blur camera pan (NeoForge 1.21.1)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, on-prem-1, nstut-profile-minecraft-ci]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -116,10 +130,11 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install software rendering dependencies
+      - name: Prepare preinstalled Mesa/Xvfb runner image
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libopenal1 libxrandr2 libxcursor1 libxi6 libxinerama1
+          command -v Xvfb
+          command -v xvfb-run
+          test -f /usr/lib/x86_64-linux-gnu/libGLX_mesa.so.0
           python -m pip install pillow
           chmod +x gradlew
       - name: Verify moving camera with explicit Complementary blur and TAA
@@ -142,11 +157,15 @@ jobs:
           if-no-files-found: warn
 
   euphoria-compat:
+    # Only trusted same-repository PRs may reach private JIT runners.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Euphoria Patcher shader compatibility (NeoForge 1.21.1)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, on-prem-1, nstut-profile-minecraft-ci]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -155,10 +174,11 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install software rendering dependencies
+      - name: Prepare preinstalled Mesa/Xvfb runner image
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libopenal1 libxrandr2 libxcursor1 libxi6 libxinerama1
+          command -v Xvfb
+          command -v xvfb-run
+          test -f /usr/lib/x86_64-linux-gnu/libGLX_mesa.so.0
           python -m pip install pillow
           chmod +x gradlew
       - name: Download checksum-pinned Euphoria Patcher
