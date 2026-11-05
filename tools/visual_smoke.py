@@ -50,7 +50,21 @@ def fixture(scene, enclosed=False):
     return commands
 
 def scene_file(client_dir,scene):
-    temporary=client_dir/"visual-scene.next";temporary.write_text(str(scene));temporary.replace(client_dir/"visual-scene.txt")
+    temporary = client_dir / "visual-scene.next"
+    destination = client_dir / "visual-scene.txt"
+    temporary.write_text(str(scene))
+    # The visual-test JVM reads visual-scene.txt each render tick.
+    # Windows does not allow replace() while that reader holds the file open.
+    # Retry the brief sharing violation without deleting the live scene file;
+    # an actual persistent access denial still fails after a bounded interval.
+    for attempt in range(12):
+        try:
+            temporary.replace(destination)
+            return
+        except PermissionError:
+            if attempt == 11:
+                raise
+            time.sleep(0.05)
 
 def activate_scene(rcon,client_dir,scene,client,timeout=600):
     # Do not let the client pose a new scene until the server has authorized its
