@@ -1,12 +1,17 @@
 # Self-hosted CI for Simply Mirrors
 
-All Build, Visual, Shader and release-bundle jobs use the private `UpperMoon0/NsTut-Actions-Runner` just-in-time Linux fleet:
+All Build, Visual, Shader and release-bundle jobs use the private `UpperMoon0/NsTut-Actions-Runner` just-in-time Linux fleet. Build/release jobs are pinned to `cloud-1`, and all offscreen Mesa/Xvfb visual and shader jobs are pinned to `on-prem-1`:
 
 ```yaml
-runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+# Build, release and isolated OpenGL math
+runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
+# Minecraft visual and shader world rendering (Linux containers, no desktop window)
+runs-on: [self-hosted, linux, x64, nstut-linux-pool, on-prem-1, nstut-profile-minecraft-ci]
 ```
 
-The fleet picks an eligible physical node; there is no host-specific data path, and test worlds are disposable. The manager's `minecraft-ci` profile is socketless/non-root, limited to **6 GiB RAM**, **2 CPUs** (1 CPU on the VPS when protected game-server traffic is present), **1024 PIDs**, and **one concurrent Minecraft job per physical node**. Each JIT worker/container runs just one job and is removed.
+Explicit node affinity avoids the scheduler stranding work on on-prem-2/3 while their Linux worker managers are offline. It can be reconsidered after those nodes become healthy.
+
+Every job uses the fleet's **verified healthy** site-specific JIT worker. There are no host-specific data paths, and test worlds remain disposable. The manager's `minecraft-ci` profile is socketless/non-root, limited to **6 GiB RAM**, **2 CPUs** (1 CPU on the VPS when protected game-server traffic is present), **1024 PIDs**, and **one concurrent Minecraft job per physical node**. Each JIT worker/container runs just one job and is removed.
 
 Minecraft's headless GUI needs Mesa, Xvfb, Xauth, OpenAL and fonts. These are built into the manager's runner image as root **at image creation time**. Do not reintroduce `sudo apt-get` in the non-root job. Tests use `LIBGL_ALWAYS_SOFTWARE=true` and their pinned shader/mod dependencies. Java and Python toolchains are still installed with official setup actions.
 
