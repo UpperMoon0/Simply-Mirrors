@@ -27,7 +27,8 @@ CASES = [(7, "no-mirror"), (8, "one-mirror"), (9, "nine-coplanar-mirrors")]
 
 
 def new_interactive_client(command: list[str], work: Path, client: Path,
-                           log_path: Path, java_home: str, gpu_profile: bool = False, coverage_scissor: bool = True) -> tuple[int, int]:
+                           log_path: Path, java_home: str, gpu_profile: bool = False, coverage_scissor: bool = True,
+                           java_tool_options: str | None = None) -> tuple[int, int]:
     """Create in the active user's graphical session without taking focus."""
     if os.name != "nt":
         raise RuntimeError("This on-prem-1 controller requires Windows")
@@ -64,9 +65,13 @@ def new_interactive_client(command: list[str], work: Path, client: Path,
                 'cd /d "' + str(work) + '"',
                 'set "JAVA_HOME=' + java_home + '"',
                 r'set "GRADLE_USER_HOME=D:\DevCaches\.gradle"',
-                (r'set "JAVA_TOOL_OPTIONS=-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true' +
-                 (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
-                 (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "") + '"'),
+                'set "JAVA_TOOL_OPTIONS=' + (
+                    java_tool_options if java_tool_options is not None else (
+                        "-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
+                        (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
+                        (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "")
+                    )
+                ) + '"',
                 'set "PATH=%JAVA_HOME%\\bin;%PATH%"',
                 'call ' + subprocess.list2cmdline(command) + ' > "' + str(log_path) + '" 2>&1',
                 'exit /b %errorlevel%',
