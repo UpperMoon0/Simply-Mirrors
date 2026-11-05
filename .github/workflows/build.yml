@@ -12,10 +12,14 @@ concurrency:
   cancel-in-progress: true
 jobs:
   reflection-core:
+    # Untrusted fork PRs must never execute on private self-hosted machines.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Reflection math (Java 8)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -36,10 +40,14 @@ jobs:
           name: reflection-core-test-results
           path: common/build/test-results/test
   shader-history-gl:
+    # Untrusted fork PRs must never execute on private self-hosted machines.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Shader history isolation (OpenGL)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -47,10 +55,11 @@ jobs:
             8
             21
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install software OpenGL
+      - name: Verify runner's preinstalled headless OpenGL
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libxrandr2 libxcursor1 libxi6 libxinerama1
+          command -v Xvfb
+          command -v xvfb-run
+          test -f /usr/lib/x86_64-linux-gnu/libGLX_mesa.so.0
           chmod +x gradlew
       - name: Verify native texture history and GL state restoration
         env:
@@ -61,8 +70,10 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: 'true'
         run: xvfb-run -a ./gradlew -Ptarget=common :common:mirrorCompositeBenchmark --no-daemon --console=plain
   builds:
+    # Untrusted fork PRs must never execute on private self-hosted machines.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: ${{ matrix.target }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     strategy:
       fail-fast: false
       matrix:
@@ -77,6 +88,8 @@ jobs:
           - {target: neoforge-26.1.2, java: '25', gradle_java: '25'}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -99,11 +112,15 @@ jobs:
             !${{ matrix.target }}/build/libs/*-dev-shadow.jar
           if-no-files-found: error
   release-package:
+    # Untrusted fork PRs must never execute on private self-hosted machines.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Verify eight-target release bundle
     needs: [reflection-core, shader-history-gl, builds]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, cloud-1, nstut-profile-minecraft-ci]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
