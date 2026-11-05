@@ -8,7 +8,7 @@ import static org.junit.Assert.*;
 /** Regression: never clip a visible reflection or return invalid GL scissor bounds. */
 public class MirrorCoverageTest {
     private static float[] identity() {
-        return new float[]{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+        return new float[]{.6f,0,0,0, 0,.6f,0,0, 0,0,.5f,0, 0,0,0,1};
     }
     private static void containsCorners(int[] rect, float[] projection,
                                         MirrorSurface surface, int width, int height) {
@@ -87,7 +87,8 @@ public class MirrorCoverageTest {
     @Test public void fullScreenCoverageFallsBackWithoutQualityLoss() {
         MirrorSurface a=new MirrorSurface(-1,-1,0,0,0,-1);
         MirrorSurface b=new MirrorSurface(0,0,0,0,0,-1);
-        assertNull(MirrorCoverage.scissor(identity(),0,0,0,1280,720,Arrays.asList(a,b)));
+        float[] wide=identity();wide[0]=1;wide[5]=1;
+        assertNull(MirrorCoverage.scissor(wide,0,0,0,1280,720,Arrays.asList(a,b)));
     }
 
     @Test public void emptyAndInvalidViewportsFallBack() {
