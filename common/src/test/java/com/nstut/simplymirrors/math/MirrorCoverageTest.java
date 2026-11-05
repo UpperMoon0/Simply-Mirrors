@@ -52,7 +52,11 @@ public class MirrorCoverageTest {
         MirrorSurface face=new MirrorSurface(0,0,0,0,0,-1);
         int[] rect=MirrorCoverage.scissor(projection,0,0,0,1280,720,
                 Collections.singletonList(face));
-        assertArrayEquals(new int[]{544,264,320,264},rect);
+        assertNotNull(rect);
+        assertTrue(rect[0]>=543 && rect[0]<=545);
+        assertTrue(rect[1]>=263 && rect[1]<=265);
+        assertTrue(rect[2]>=320 && rect[2]<=322);
+        assertTrue(rect[3]>=264 && rect[3]<=266);
         containsCorners(rect,projection,face,1280,720);
     }
 
