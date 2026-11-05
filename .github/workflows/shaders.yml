@@ -13,7 +13,7 @@ jobs:
     # Only trusted same-repository PRs may reach private JIT runners.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Complementary ${{ matrix.target }}
-    runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, on-prem-1, nstut-profile-minecraft-ci]
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -70,7 +70,7 @@ jobs:
     # Only trusted same-repository PRs may reach private JIT runners.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Enclosed Complementary baseline (NeoForge 1.21.1)
-    runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, on-prem-1, nstut-profile-minecraft-ci]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -116,7 +116,7 @@ jobs:
     # Only trusted same-repository PRs may reach private JIT runners.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Complementary TAA + motion blur camera pan (NeoForge 1.21.1)
-    runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, on-prem-1, nstut-profile-minecraft-ci]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -160,7 +160,7 @@ jobs:
     # Only trusted same-repository PRs may reach private JIT runners.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Euphoria Patcher shader compatibility (NeoForge 1.21.1)
-    runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, on-prem-1, nstut-profile-minecraft-ci]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
