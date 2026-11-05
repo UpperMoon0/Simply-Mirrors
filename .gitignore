@@ -10,6 +10,7 @@
 local.properties
 .env
 .env.*
+.wrangler/
 __pycache__/
 *.pyc
 artifacts/
