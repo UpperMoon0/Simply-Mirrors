@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
-POOL = "runs-on: [self-hosted, linux, x64, nstut-linux-pool, nstut-profile-minecraft-ci]"
+POOL = "runs-on: [self-hosted, linux, x64, nstut-linux-pool, {site}, nstut-profile-minecraft-ci]"
 TRUST = "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
 
 
@@ -25,12 +25,13 @@ class PrivateFleetCiTests(unittest.TestCase):
                 self.assertNotIn("sudo apt-get", source)
                 self.assertNotIn("pull_request_target:", source)
                 runners = 0
+                site = 'on-prem-1' if workflow in ('visual.yml', 'shaders.yml') else 'cloud-1'
                 for name, body in definitions.items():
                     if "runs-on:" not in body:
                         self.assertIn("uses: ./.github/workflows/", body)
                         continue
                     runners += 1
-                    self.assertIn(POOL, body, f"{workflow} job {name}")
+                    self.assertIn(POOL.format(site=site), body, f"{workflow} job {name}")
                     if workflow != "release.yml":
                         self.assertIn(f"if: {TRUST}", body, f"Fork PR code must not run on {name}")
                 self.assertGreater(runners, 0)
