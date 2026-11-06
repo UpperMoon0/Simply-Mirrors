@@ -36,10 +36,12 @@ pipeline {
                     env.GRADLE_USER_HOME = "${env.CI_SCRATCH}/gradle"
                     env.PATH = "${env.CI_SCRATCH}/venv/bin:${env.JAVA_HOME_21}/bin:${env.PATH}"
                     env.JAVA_HOME = env.JAVA_HOME_21
-                    env.GRADLE_OPTS = "-Dorg.gradle.workers.max=1 -Dorg.gradle.jvmargs=-Xmx1536m -Dorg.gradle.java.installations.paths=${env.JAVA_HOME_8},${env.JAVA_HOME_17},${env.JAVA_HOME_21},${env.JAVA_HOME_25}"
+                    env.GRADLE_OPTS = "-Dorg.gradle.workers.max=1 -Dorg.gradle.jvmargs=-Xmx1536m"
                 }
                 sh '''#!/usr/bin/env bash
 set -euo pipefail
+mkdir -p "$GRADLE_USER_HOME"
+printf 'org.gradle.java.installations.paths=%s,%s,%s,%s\\norg.gradle.java.installations.auto-download=false\\n' "$JAVA_HOME_8" "$JAVA_HOME_17" "$JAVA_HOME_21" "$JAVA_HOME_25" > "$GRADLE_USER_HOME/gradle.properties"
 python3 -m venv "$CI_SCRATCH/venv"
 python -m pip install --no-cache-dir 'pillow==12.0.0'
 command -v Xvfb
