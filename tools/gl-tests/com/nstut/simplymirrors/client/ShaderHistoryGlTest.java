@@ -310,9 +310,12 @@ public final class ShaderHistoryGlTest {
         glColorMaski(0,false,true,false,true);
         glDepthMask(false);
         for (int iteration=0; iteration<12; iteration++) {
+            boolean dither=(iteration&1)==0;
+            if(dither)glEnable(GL_DITHER);else glDisable(GL_DITHER);
             List<Integer> allocations=new ArrayList<>();
             ShaderRenderTargetSnapshot snapshot=ShaderRenderTargetSnapshot.capture(pipeline);
             state(read,draw,rb,cleared.main);
+            if(glIsEnabled(GL_DITHER)!=dither)throw new AssertionError("Capture changed dithering state");
             // Native GL readbacks establish that both temporal identities are zeroed.
             zero(persistent.main,format); zero(persistent.alt,format); zero(shadow.main,format); zero(shadow.alt,format);
             same(cleared.main,format,original.get(cleared.main));
@@ -335,6 +338,7 @@ public final class ShaderHistoryGlTest {
                 throw new Expected();
             } catch (Expected expected) { }
             snapshot.close(); // End/unload cleanup can safely repeat.
+            if(glIsEnabled(GL_DITHER)!=dither)throw new AssertionError("Restore changed dithering state");
             if (pipeline.shadowRenderTargets.flipped[0]) throw new AssertionError("Shadow flip leaked");
             same(shadow.main,format,original.get(shadow.main)); same(shadow.alt,format,original.get(shadow.alt));
             if (!persistent.mipmapsOnMain || persistent.mipmapsOnAlt) throw new AssertionError("Sampler flags leaked");
@@ -416,7 +420,7 @@ public final class ShaderHistoryGlTest {
         boolean alpha=format!=GL_R8 && format!=GL_RGB8_SNORM && format!=GL_RGB16F && format!=GL_R11F_G11F_B10F;
         for(byte[] level:pixels(texture,format))for(int i=0;i<level.length;i++) {
             if (!integer(format) && !alpha && i%16>=12) continue; // Missing alpha reads as one.
-            if(level[i]!=0)throw new AssertionError("Reflected history was not cleared");
+            if(level[i]!=0)throw new AssertionError("Reflected history was not cleared: format="+format+" texture="+texture+" byte="+i);
         }
     }
     private static final class Expected extends RuntimeException { }

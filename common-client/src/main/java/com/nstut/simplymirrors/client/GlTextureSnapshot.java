@@ -136,17 +136,17 @@ final class GlTextureSnapshot implements AutoCloseable {
     private static final class State implements AutoCloseable {
         final int read=glGetInteger(GL_READ_FRAMEBUFFER_BINDING), draw=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
         final int texture=glGetInteger(GL_TEXTURE_BINDING_2D), renderbuffer=glGetInteger(GL_RENDERBUFFER_BINDING);
-        final boolean scissor=glIsEnabled(GL_SCISSOR_TEST), srgb=glIsEnabled(GL_FRAMEBUFFER_SRGB);
+        final boolean scissor=glIsEnabled(GL_SCISSOR_TEST), srgb=glIsEnabled(GL_FRAMEBUFFER_SRGB), dither=glIsEnabled(GL_DITHER);
         final ByteBuffer colorMask=BufferUtils.createByteBuffer(4);
         State() {
             glGetBooleanv(GL_COLOR_WRITEMASK, colorMask);
-            glDisable(GL_SCISSOR_TEST); glDisable(GL_FRAMEBUFFER_SRGB);
+            glDisable(GL_SCISSOR_TEST); glDisable(GL_FRAMEBUFFER_SRGB); glDisable(GL_DITHER);
             glColorMaski(0, true, true, true, true);
         }
         @Override public void close() {
             glBindFramebuffer(GL_READ_FRAMEBUFFER, read); glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw);
             glBindTexture(GL_TEXTURE_2D, texture); glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
-            set(GL_SCISSOR_TEST, scissor); set(GL_FRAMEBUFFER_SRGB, srgb);
+            set(GL_SCISSOR_TEST, scissor); set(GL_FRAMEBUFFER_SRGB, srgb); set(GL_DITHER, dither);
             glColorMaski(0, colorMask.get(0)!=0, colorMask.get(1)!=0, colorMask.get(2)!=0, colorMask.get(3)!=0);
         }
         private static void set(int state, boolean enabled) { if (enabled) glEnable(state); else glDisable(state); }
