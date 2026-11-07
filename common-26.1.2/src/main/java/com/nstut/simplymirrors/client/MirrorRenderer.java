@@ -185,6 +185,6 @@ public final class MirrorRenderer {
     }
     public static void release() {
         if(target!=null)target.destroyBuffers();target=null;if(projectionBuffer!=null)projectionBuffer.close();projectionBuffer=null;
-        if(compositeFbo!=0)glDeleteFramebuffers(compositeFbo);compositeFbo=0;COMPOSITE.close();TEMPORAL.reset();redirect=null;cached.clear();lastLevel=null;failed=false;frame=0;
+        if(compositeFbo!=0)glDeleteFramebuffers(compositeFbo);compositeFbo=0;COMPOSITE.close();TEMPORAL.reset();GlTextureSnapshot.releaseScratch();redirect=null;cached.clear();lastLevel=null;failed=false;frame=0;
     }
 }
