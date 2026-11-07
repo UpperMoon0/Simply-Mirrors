@@ -92,9 +92,9 @@ class FaceProgressDeadlineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             log = Path(temp)/"client.log"
             log.write_text(
-                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=1 ticks=120 reflectionPasses=120\\n"
-                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks=30 reflectionPasses=15\\n"
-                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks=120 reflectionPasses=105\\n")
+                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=1 ticks=120 reflectionPasses=120\n"
+                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks=30 reflectionPasses=15\n"
+                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks=120 reflectionPasses=105\n")
             self.assertEqual((120,105),visual_smoke.latest_visual_heartbeat(log,2))
             self.assertEqual((120,120),visual_smoke.latest_visual_heartbeat(log,1))
             self.assertIsNone(visual_smoke.latest_visual_heartbeat(log,3))
@@ -109,9 +109,9 @@ class FaceProgressDeadlineTests(unittest.TestCase):
             result=Mock()
             result.exists.side_effect=lambda:clock[0]>=220
             client=Mock();client.poll.return_value=None
-            with patch.object(visual_smoke.time,"monotonic",side_effect=lambda:clock[0]), \\
-                 patch.object(visual_smoke.time,"sleep",side_effect=lambda n:clock.__setitem__(0,clock[0]+n)), \\
-                 patch.object(visual_smoke,"latest_visual_heartbeat",side_effect=heartbeat), \\
+            with patch.object(visual_smoke.time,"monotonic",side_effect=lambda:clock[0]), \
+                 patch.object(visual_smoke.time,"sleep",side_effect=lambda n:clock.__setitem__(0,clock[0]+n)), \
+                 patch.object(visual_smoke,"latest_visual_heartbeat",side_effect=heartbeat), \
                  patch.object(visual_smoke,"capture_client_thread_dump") as dump:
                 visual_smoke.wait_for_visual_face(result,"west",2,client,directory,directory,log)
             self.assertGreaterEqual(clock[0],220)
@@ -123,9 +123,9 @@ class FaceProgressDeadlineTests(unittest.TestCase):
             clock=[0.0]
             result=Mock();result.exists.return_value=False
             client=Mock();client.poll.return_value=None
-            with patch.object(visual_smoke.time,"monotonic",side_effect=lambda:clock[0]), \\
-                 patch.object(visual_smoke.time,"sleep",side_effect=lambda n:clock.__setitem__(0,clock[0]+n)), \\
-                 patch.object(visual_smoke,"latest_visual_heartbeat",return_value=None), \\
+            with patch.object(visual_smoke.time,"monotonic",side_effect=lambda:clock[0]), \
+                 patch.object(visual_smoke.time,"sleep",side_effect=lambda n:clock.__setitem__(0,clock[0]+n)), \
+                 patch.object(visual_smoke,"latest_visual_heartbeat",return_value=None), \
                  patch.object(visual_smoke,"capture_client_thread_dump") as dump:
                 with self.assertRaisesRegex(TimeoutError,"west"):
                     visual_smoke.wait_for_visual_face(result,"west",2,client,directory,directory,log)
@@ -286,9 +286,9 @@ class ClientAssetPreflightTests(unittest.TestCase):
                 self.assertEqual(subprocess.STDOUT, kwargs["stderr"])
                 self.assertIs(False, kwargs["check"])
                 if len(calls) == 1:
-                    kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\\n")
+                    kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\n")
                     return Mock(returncode=1)
-                kwargs["stdout"].write("BUILD SUCCESSFUL\\n")
+                kwargs["stdout"].write("BUILD SUCCESSFUL\n")
                 return Mock(returncode=0)
             with patch("visual_smoke.subprocess.run", side_effect=run):
                 visual_smoke.prepare_visual_client_assets(
@@ -305,7 +305,7 @@ class ClientAssetPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             def run(command, **kwargs):
-                kwargs["stdout"].write("Could not find task downloadAssets\\n")
+                kwargs["stdout"].write("Could not find task downloadAssets\n")
                 return Mock(returncode=1)
             with patch("visual_smoke.subprocess.run", side_effect=run) as runner:
                 with self.assertRaisesRegex(RuntimeError, "preflight failed"):
@@ -319,7 +319,7 @@ class ClientAssetPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             def run(command, **kwargs):
-                kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\\n")
+                kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\n")
                 return Mock(returncode=1)
             with patch("visual_smoke.subprocess.run", side_effect=run) as runner:
                 with self.assertRaisesRegex(RuntimeError, "attempt 3/3"):
@@ -338,7 +338,7 @@ class ExternalModpackReproductionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);source=root/'shader-compat.jar'
             with zipfile.ZipFile(source,'w') as jar:
-                jar.writestr('META-INF/mods.toml','[[mods]]\\nmodId="shader_compat"\\n')
+                jar.writestr('META-INF/mods.toml','[[mods]]\nmodId="shader_compat"\n')
             client=root/'isolated-client'
             manifest=visual_smoke.install_extra_client_mods(client,[source])
             copy=client/'mods'/source.name
