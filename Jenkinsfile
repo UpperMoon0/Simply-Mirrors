@@ -14,7 +14,7 @@ pipeline {
     agent { label 'linux-minecraft-ci' }
     options {
         skipDefaultCheckout(true)
-        disableConcurrentBuilds()
+        disableConcurrentBuilds(abortPrevious: true)
         timestamps()
         timeout(time: 12, unit: 'HOURS')
         buildDiscarder(logRotator(numToKeepStr: '8', daysToKeepStr: '14'))
@@ -28,7 +28,9 @@ pipeline {
         stage('Trusted source and runtime') {
             steps {
                 script {
-                    if (env.CHANGE_ID || env.BRANCH_NAME != 'main') { error('Reviewed main only') }
+                    // Host registry discovers only reviewed main or verified same-repository
+                    // PR HEAD branches; fork PRs and merge refs are never admitted.
+                    if (env.CHANGE_ID || !env.BRANCH_NAME) { error('Unverified Jenkins SCM head') }
                     checkout scm
                     env.CI_SCRATCH = sh(returnStdout: true, script: 'mktemp -d /home/jenkins/agent/mirrors-ci-XXXXXX').trim()
                     env.TMPDIR = env.CI_SCRATCH
@@ -78,6 +80,7 @@ chmod +x gradlew forge-1.16.5/gradlew fabric-26.1.2/gradlew neoforge-26.1.2/grad
             }
         }
         stage('Verify eight-target release bundle') {
+            when { branch 'main' }
             steps {
                 sh 'python tools/jenkins_collect.py'
                 archiveArtifacts artifacts: 'release-output/*', fingerprint: true
