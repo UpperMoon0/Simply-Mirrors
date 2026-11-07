@@ -133,6 +133,83 @@ class FaceProgressDeadlineTests(unittest.TestCase):
             dump.assert_called_once()
 
 
+class CrossVersionHeartbeatTests(unittest.TestCase):
+    """The Python watchdog relies on this exact render-thread wire contract."""
+
+    VERSIONS = ("1.16.5", "1.20.1", "1.21.1", "26.1.2")
+
+    def test_every_supported_probe_emits_live_scene_heartbeat(self):
+        for version in self.VERSIONS:
+            with self.subTest(minecraft=version):
+                source = (visual_smoke.ROOT / "visual-tests" / version / "java" /
+                          "com/nstut/simplymirrors/visualtest/VisualProbeMixin.java").read_text()
+                marker = source.index('"SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene="+requested+')
+                reset = source.index("simplymirrors$sceneFrames=0;")
+                counter = source.index("simplymirrors$sceneFrames++;")
+                captured = source.index("if(simplymirrors$captured)return;")
+                self.assertLess(reset, counter)
+                self.assertLess(counter, marker)
+                self.assertLess(marker, captured)
+                self.assertIn("simplymirrors$sceneFrames==1 || simplymirrors$sceneFrames%30==0", source)
+                self.assertIn('" ticks="+simplymirrors$sceneFrames+', source)
+                self.assertIn('" reflectionPasses="+(MirrorRenderer.completedPasses-simplymirrors$startPasses)', source)
+
+    def test_non_120_slow_face_progress_reaches_capture(self):
+        # Model the exact heartbeat text emitted by the other MC versioned probes
+        # under llvmpipe, not a mocked heartbeat parser.
+        for version in ("1.16.5", "1.21.1", "26.1.2"):
+            with self.subTest(minecraft=version), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                log = directory / "client.log"
+                log.write_text("")
+                result = directory / "result.json"
+                clock = [0.0]
+                def sleep(seconds):
+                    clock[0] += seconds
+                    if int(clock[0]) in (45, 90, 135, 180, 225):
+                        ticks = int(clock[0] / 45) * 30
+                        with log.open("a") as output:
+                            output.write(
+                                f"SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks={ticks} "
+                                f"reflectionPasses={ticks - 10}\n")
+                    if clock[0] >= 240 and not result.exists():
+                        result.write_text("{}")
+                client = Mock()
+                client.poll.return_value = None
+                with patch.object(visual_smoke.time, "monotonic", side_effect=lambda:clock[0]), \
+                     patch.object(visual_smoke.time, "sleep", side_effect=sleep), \
+                     patch.object(visual_smoke, "capture_client_thread_dump") as diagnostic:
+                    visual_smoke.wait_for_visual_face(
+                        result, "west", 2, client, directory, directory, log)
+                self.assertGreaterEqual(clock[0], 240)
+                self.assertEqual((150, 140), visual_smoke.latest_visual_heartbeat(log, 2))
+                diagnostic.assert_not_called()
+
+    def test_non_120_stalled_face_reports_dump_and_fails(self):
+        for version in ("1.16.5", "1.21.1", "26.1.2"):
+            with self.subTest(minecraft=version), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                log = directory / "client.log"
+                log.write_text("")
+                result = directory / "missing.json"
+                clock = [0.0]
+                def sleep(seconds):
+                    clock[0] += seconds
+                    if clock[0] == 40:
+                        log.write_text(
+                            "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks=30 reflectionPasses=22\n")
+                client = Mock()
+                client.poll.return_value = None
+                with patch.object(visual_smoke.time, "monotonic", side_effect=lambda:clock[0]), \
+                     patch.object(visual_smoke.time, "sleep", side_effect=sleep), \
+                     patch.object(visual_smoke, "capture_client_thread_dump") as diagnostic:
+                    with self.assertRaisesRegex(TimeoutError, r"west .*ticks=30, passes=22"):
+                        visual_smoke.wait_for_visual_face(
+                            result, "west", 2, client, directory, directory, log)
+                self.assertLess(clock[0], 200)
+                diagnostic.assert_called_once_with(directory, directory)
+
+
 class SceneActivationTests(unittest.TestCase):
     @patch("visual_smoke.time.sleep")
     def test_scene_stays_parked_until_server_teleport_succeeds(self,sleep):
