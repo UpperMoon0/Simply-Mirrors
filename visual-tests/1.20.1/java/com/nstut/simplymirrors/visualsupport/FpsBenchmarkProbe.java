@@ -106,9 +106,15 @@ public final class FpsBenchmarkProbe {
         if (iconified != GLFW.GLFW_FALSE) throw new IllegalStateException("Benchmark window was minimized");
         if (error != GL_NO_ERROR) throw new IllegalStateException("OpenGL error: " + error);
         long totalPasses = 0;
-        for (Long count : reflectionPasses) totalPasses += count;
-        if (kind == 7 && totalPasses != 0) throw new IllegalStateException("Baseline unexpectedly rendered mirror passes");
-        if (kind != 7 && totalPasses == 0) throw new IllegalStateException("Mirror rendering did not run");
+        final long expectedPassesPerFrame = kind == 7 ? 0L : 1L;
+        for (int i = 0; i < reflectionPasses.size(); i++) {
+            long count = reflectionPasses.get(i);
+            if (count != expectedPassesPerFrame)
+                throw new IllegalStateException("Scene " + scene + " frame " + i +
+                        " rendered " + count + " reflection passes; expected " +
+                        expectedPassesPerFrame);
+            totalPasses += count;
+        }
 
         List<Long> sorted = new ArrayList<Long>(durations);
         Collections.sort(sorted);

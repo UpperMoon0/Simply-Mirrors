@@ -1,6 +1,6 @@
 """Verify actual reflections on all six block faces with one isolated server/client session."""
 from __future__ import annotations
-import argparse, json, math, os, shutil, signal, socket, struct, subprocess, sys, time
+import argparse, json, math, os, re, shutil, signal, socket, struct, subprocess, sys, time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 TARGETS={t["target"]:t for t in json.loads((ROOT/"tools/targets.json").read_text())}
@@ -397,6 +397,73 @@ def prepare_visual_client_assets(command, task, cwd, evidence, attempts=3):
         time.sleep(3 * attempt)
 
 
+def prepare_visual_server_build(command, task, cwd, evidence, timeout=900):
+    """Bound the cold Gradle compile/remap phase independently of RCON readiness."""
+    log = evidence / "server-preparation.log"
+    try:
+        with log.open("w") as output:
+            result = subprocess.run(command + [task], cwd=cwd, stdout=output,
+                                    stderr=subprocess.STDOUT, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired as error:
+        raise TimeoutError(f"Visual server build preparation exceeded {timeout}s: {log}") from error
+    if result.returncode != 0:
+        raise RuntimeError(f"Visual server build preparation failed ({result.returncode}): " +
+                           log.read_text(errors="replace")[-8000:])
+    print(f"Server build prepared: {task}", flush=True)
+
+
+def latest_visual_heartbeat(log, scene):
+    """Return progress only for the active scene, never a previous face."""
+    if not log.exists():
+        return None
+    # Read a bounded tail to avoid growing work as the game log expands.
+    with log.open("rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        size = stream.tell()
+        stream.seek(max(0, size - 65536))
+        tail = stream.read().decode("utf-8", errors="replace")
+    pattern = rf"SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene={scene} ticks=(\d+) reflectionPasses=(\d+)"
+    matches = list(re.finditer(pattern, tail))
+    return tuple(map(int, matches[-1].groups())) if matches else None
+
+
+def wait_for_visual_face(result, face, scene, client, client_dir, evidence, client_log):
+    """Extend only when genuine render progress is observed; retain a hard cutoff."""
+    started = time.monotonic()
+    initial = 600 if scene == 0 else 180
+    hard_deadline = started + (780 if scene == 0 else 420)
+    deadline = started + initial
+    latest_tick = 0
+    latest_passes = 0
+    last_progress = started
+    diagnostic_captured = False
+    while time.monotonic() < min(deadline, hard_deadline) and not result.exists():
+        if client.poll() is not None:
+            raise RuntimeError(f"Client exited before {face} capture: {client_log}")
+        now = time.monotonic()
+        heartbeat = latest_visual_heartbeat(client_log, scene)
+        if heartbeat and (heartbeat[0] > latest_tick or heartbeat[1] > latest_passes):
+            latest_tick, latest_passes = heartbeat
+            last_progress = now
+            # Slow software GL must not be mistaken for a deadlock. Each
+            # fresh heartbeat grants at most 100 more seconds, within hard cap.
+            deadline = min(hard_deadline, max(deadline, now + 100))
+        if latest_tick > 0 and now - last_progress > 125:
+            break
+        if scene == 0 and not diagnostic_captured and now - started >= 180:
+            capture_client_thread_dump(client_dir, evidence)
+            diagnostic_captured = True
+        time.sleep(1)
+    if not result.exists():
+        if not diagnostic_captured:
+            capture_client_thread_dump(client_dir, evidence)
+        raise TimeoutError(
+            f"Client visual probe timed out on {face} (ticks={latest_tick}, "
+            f"passes={latest_passes}, seconds_since_heartbeat="
+            f"{time.monotonic()-last_progress:.1f}): " +
+            client_log.read_text(errors="replace")[-8000:])
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
@@ -470,9 +537,10 @@ def main():
         (evidence/"shaderpack.json").write_text(json.dumps({"name":pack.name,"sha256":hashlib.sha256(pack.read_bytes()).hexdigest()},indent=2))
     creation={"creationflags":subprocess.CREATE_NO_WINDOW} if os.name=="nt" else {"start_new_session":True}
     server=client=rcon=None
+    server_command=["-PmirrorsShaderStack=off" if item.startswith("-PmirrorsShaderStack=") else item for item in command]
+    prepare_visual_server_build(server_command,task_prefix+"classes",cwd,evidence)
     with (evidence/"server.log").open("w") as server_log,(evidence/"client.log").open("w") as client_log:
         try:
-            server_command=["-PmirrorsShaderStack=off" if item.startswith("-PmirrorsShaderStack=") else item for item in command]
             server=subprocess.Popen(server_command+[task_prefix+"runVisualServer"],cwd=cwd,stdout=server_log,stderr=subprocess.STDOUT,**creation)
             print("Starting disposable server",args.target,flush=True)
             deadline=time.monotonic()+360
@@ -521,19 +589,8 @@ def main():
                         if any(word in reply for word in ["Unknown","Incorrect","too many blocks"]):raise RuntimeError(f"Fixture failed: {text}: {reply}")
                 activate_scene(rcon,client_dir,scene,client)
                 result=client_dir/f"visual-evidence/result-{scene}.json"
-                started=time.monotonic()
-                deadline=started+(600 if scene==0 else 180)
-                diagnostic_captured=False
-                while time.monotonic()<deadline and not result.exists():
-                    if client.poll() is not None:raise RuntimeError(f"Client exited before {face} capture: {evidence/('client-interactive.log' if args.interactive_offscreen else 'client.log')}")
-                    if not diagnostic_captured and scene==0 and time.monotonic()-started>=180:
-                        capture_client_thread_dump(client_dir,evidence)
-                        diagnostic_captured=True
-                    time.sleep(1)
-                if not result.exists():
-                    if not diagnostic_captured:capture_client_thread_dump(client_dir,evidence)
-                    detail=evidence/("client-interactive.log" if args.interactive_offscreen else "client.log")
-                    raise TimeoutError(f"Client visual probe timed out on {face}: "+detail.read_text(errors="replace")[-8000:])
+                client_log_path=evidence/("client-interactive.log" if args.interactive_offscreen else "client.log")
+                wait_for_visual_face(result,face,scene,client,client_dir,evidence,client_log_path)
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
                 if args.force_stencil:assert data.get('stencilEnabled') is True,data

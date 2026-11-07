@@ -10,6 +10,37 @@ from unittest.mock import patch, call
 import fps_benchmark
 
 
+class FramePassCadenceTests(unittest.TestCase):
+    def evidence(self, scene, passes):
+        return {"scenario": scene, "samples": len(passes),
+                "frameIntervalsNs": [16_000_000] * len(passes),
+                "passesPerFrame": passes, "reflectionPasses": sum(passes)}
+
+    def test_baseline_requires_zero_per_frame(self):
+        fps_benchmark.validate_frame_pass_cadence(self.evidence(7, [0] * 40))
+        with self.assertRaisesRegex(AssertionError, "frame 19"):
+            fps_benchmark.validate_frame_pass_cadence(
+                self.evidence(7, [0] * 19 + [1] + [0] * 20))
+
+    def test_each_mirror_frame_requires_one_pass(self):
+        for scene in (8, 9, 18, 29):
+            fps_benchmark.validate_frame_pass_cadence(self.evidence(scene, [1] * 40))
+            for corrupt in ([1] * 17 + [0] + [1] * 22,
+                            [1] * 17 + [2] + [1] * 22):
+                with self.assertRaisesRegex(AssertionError, "frame 17"):
+                    fps_benchmark.validate_frame_pass_cadence(self.evidence(scene, corrupt))
+
+    def test_bad_samples_and_aggregate_cannot_pass(self):
+        data = self.evidence(8, [1] * 40)
+        data["samples"] = 39
+        with self.assertRaisesRegex(AssertionError, "Malformed"):
+            fps_benchmark.validate_frame_pass_cadence(data)
+        data = self.evidence(8, [1] * 40)
+        data["reflectionPasses"] += 1
+        with self.assertRaisesRegex(AssertionError, "total disagrees"):
+            fps_benchmark.validate_frame_pass_cadence(data)
+
+
 class OwnedGradleWrapperCleanupTests(unittest.TestCase):
     @patch.object(fps_benchmark.subprocess, "run")
     def test_lookup_scopes_exact_run_directory_name_and_gradle_wrapper(self, run):
