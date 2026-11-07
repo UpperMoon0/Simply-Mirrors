@@ -475,11 +475,11 @@ class VisualThreadDumpDiscoveryTests(unittest.TestCase):
             unrelated = root / "unrelated-game"
             unrelated.mkdir()
             for pid, cwd, cmdline in [
-                (101, client, b"/usr/lib/jvm/bin/java\\0net.minecraft.client.main.Main\\0"),
-                (102, unrelated, b"/usr/lib/jvm/bin/java\\0net.minecraft.client.main.Main\\0"),
-                (103, client, b"/usr/bin/python3\\0test_fixture.py\\0"),
-                (104, unrelated, b"/usr/lib/jvm/bin/java\\0-Dvisual.client=" +
-                    str(client.resolve()).encode() + b"\\0"),
+                (101, client, b"/usr/lib/jvm/bin/java\x00net.minecraft.client.main.Main\x00"),
+                (102, unrelated, b"/usr/lib/jvm/bin/java\x00net.minecraft.client.main.Main\x00"),
+                (103, client, b"/usr/bin/python3\x00test_fixture.py\x00"),
+                (104, unrelated, b"/usr/lib/jvm/bin/java\x00-Dvisual.client=" +
+                    str(client.resolve()).encode() + b"\x00"),
             ]:
                 entry = proc / str(pid)
                 entry.mkdir()
@@ -489,19 +489,27 @@ class VisualThreadDumpDiscoveryTests(unittest.TestCase):
             # the explicitly scoped client path still identifies it.
             entry = proc / "105"
             entry.mkdir()
-            (entry / "cmdline").write_bytes(b"/usr/bin/java\\0-Dclient=" +
-                                           str(client.resolve()).encode() + b"\\0")
+            (entry / "cmdline").write_bytes(b"/usr/bin/java\x00-Dclient=" +
+                                           str(client.resolve()).encode() + b"\x00")
             # Do not confuse an unrelated client whose argument merely
             # contains this directory as a prefix.
             entry = proc / "106"
             entry.mkdir()
             (entry / "cmdline").write_bytes(
-                b"/usr/bin/java\\0-Dclient=" + str(client.resolve()).encode() + b"-other\\0")
+                b"/usr/bin/java\x00-Dclient=" + str(client.resolve()).encode() + b"-other\x00")
             (entry / "cwd").symlink_to(unrelated, target_is_directory=True)
             self.assertEqual(
                 ["101", "104", "105"],
                 [pid for pid, _ in visual_smoke.fixture_java_processes(client, proc)]
             )
+
+    def test_literal_backslash_zero_is_not_a_proc_argument_separator(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);client=root/"client";client.mkdir()
+            entry=root/"proc"/"100";entry.mkdir(parents=True)
+            (entry/"cwd").symlink_to(client,target_is_directory=True)
+            (entry/"cmdline").write_bytes(b"/usr/bin/java"+bytes([92,48])+b"Main")
+            self.assertEqual([],visual_smoke.fixture_java_processes(client,root/"proc"))
 
     def test_missing_proc_or_process_cannot_match_unrelated_java(self):
         with tempfile.TemporaryDirectory() as temp:
