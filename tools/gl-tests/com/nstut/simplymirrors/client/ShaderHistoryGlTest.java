@@ -308,6 +308,10 @@ public final class ShaderHistoryGlTest {
         Target cleared=new Target(make(format, 4, 4, 0.50f), make(format, 4, 4, 0.50f));
         Target shadow=new Target(make(format, 8, 8, 0.3f), make(format, 8, 8, 0.6f));
         Pipeline pipeline=new Pipeline(persistent, cleared, shadow);
+        // Negative control: a dirty image must never satisfy the zero oracle.
+        boolean rejected=false;
+        try { zero(persistent.main,format); } catch(AssertionError expected) { rejected=true; }
+        if(!rejected)throw new AssertionError("Zero oracle accepted nonzero history: format="+format);
         Map<Integer,List<byte[]>> original=new LinkedHashMap<>();
         for (int texture : new int[]{persistent.main,persistent.alt,cleared.main,cleared.alt,shadow.main,shadow.alt}) original.put(texture, pixels(texture,format));
         int read=glGenFramebuffers(), draw=glGenFramebuffers(), rb=glGenRenderbuffers();
@@ -319,6 +323,8 @@ public final class ShaderHistoryGlTest {
         glDepthMask(false);
         long allocationsAfterWarmup = -1;
         for (int iteration=0; iteration<12; iteration++) {
+            boolean dither=(iteration&1)==0;
+            if(dither)glEnable(GL_DITHER);else glDisable(GL_DITHER);
             List<Integer> allocations=new ArrayList<>();
             long initialAllocations = GlHistoryBackupPool.allocations();
             ShaderRenderTargetSnapshot snapshot=ShaderRenderTargetSnapshot.capture(pipeline);
@@ -329,6 +335,7 @@ public final class ShaderHistoryGlTest {
                         + ": +" + (GlHistoryBackupPool.allocations() - allocationsAfterWarmup));
             if (iteration == 1 && GlHistoryBackupPool.reuses() == 0)
                 throw new AssertionError("No GL renderbuffers were reused");
+            if(glIsEnabled(GL_DITHER)!=dither)throw new AssertionError("Capture changed dithering state");
             // Native GL readbacks establish that both temporal identities are zeroed.
             zero(persistent.main,format); zero(persistent.alt,format); zero(shadow.main,format); zero(shadow.alt,format);
             same(cleared.main,format,original.get(cleared.main));
@@ -351,6 +358,7 @@ public final class ShaderHistoryGlTest {
                 throw new Expected();
             } catch (Expected expected) { }
             snapshot.close(); // End/unload cleanup can safely repeat.
+            if(glIsEnabled(GL_DITHER)!=dither)throw new AssertionError("Restore changed dithering state");
             if (pipeline.shadowRenderTargets.flipped[0]) throw new AssertionError("Shadow flip leaked");
             same(shadow.main,format,original.get(shadow.main)); same(shadow.alt,format,original.get(shadow.alt));
             if (!persistent.mipmapsOnMain || persistent.mipmapsOnAlt) throw new AssertionError("Sampler flags leaked");
@@ -429,11 +437,39 @@ public final class ShaderHistoryGlTest {
         if(actual.size()!=expected.size())throw new AssertionError("Mipmap levels changed");
         for(int i=0;i<actual.size();i++)if(!Arrays.equals(actual.get(i),expected.get(i)))throw new AssertionError("History image changed: format="+format+" texture="+texture+" level="+i);
     }
+    /** Compare exact readback bytes with an independently uploaded zero image.
+     * Pre-4.2 SNORM conversion cannot represent floating-point zero exactly;
+     * the oracle uses the same format without relying on framebuffer clearing.
+     */
     private static void zero(int texture,int format) {
-        boolean alpha=format!=GL_R8 && format!=GL_RGB8_SNORM && format!=GL_RGB16F && format!=GL_R11F_G11F_B10F;
-        for(byte[] level:pixels(texture,format))for(int i=0;i<level.length;i++) {
-            if (!integer(format) && !alpha && i%16>=12) continue; // Missing alpha reads as one.
-            if(level[i]!=0)throw new AssertionError("Reflected history was not cleared");
+        List<byte[]> actual=pixels(texture,format), expected=zeroImage(texture,format);
+        if(actual.size()!=expected.size())throw new AssertionError("Zero-image mipmap count changed");
+        for(int level=0;level<actual.size();level++)
+            if(!Arrays.equals(actual.get(level),expected.get(level)))
+                throw new AssertionError("Reflected history was not cleared: format="+format+" texture="+texture+" level="+level);
+    }
+    private static List<byte[]> zeroImage(int texture,int format) {
+        int old=glGetInteger(GL_TEXTURE_BINDING_2D), reference=glGenTextures();
+        try {
+            glBindTexture(GL_TEXTURE_2D,texture);
+            List<int[]> levels=new ArrayList<>();
+            for(int level=0;;level++) {
+                int width=glGetTexLevelParameteri(GL_TEXTURE_2D,level,GL_TEXTURE_WIDTH);
+                int height=glGetTexLevelParameteri(GL_TEXTURE_2D,level,GL_TEXTURE_HEIGHT);
+                if(width==0)break;
+                levels.add(new int[]{width,height});
+            }
+            glBindTexture(GL_TEXTURE_2D,reference);
+            for(int level=0;level<levels.size();level++) {
+                int width=levels.get(level)[0],height=levels.get(level)[1];
+                ByteBuffer zeros=BufferUtils.createByteBuffer(width*height*(integer(format)?1:4)*4);
+                glTexImage2D(GL_TEXTURE_2D,level,format,width,height,0,
+                        integer(format)?GL_RED_INTEGER:GL_RGBA,integer(format)?GL_INT:GL_FLOAT,zeros);
+            }
+            return pixels(reference,format);
+        } finally {
+            glBindTexture(GL_TEXTURE_2D,old);
+            glDeleteTextures(reference);
         }
     }
     private static final class Expected extends RuntimeException { }
