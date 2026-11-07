@@ -53,10 +53,8 @@ def scene_file(client_dir,scene):
     temporary = client_dir / "visual-scene.next"
     destination = client_dir / "visual-scene.txt"
     temporary.write_text(str(scene))
-    # The visual-test JVM reads visual-scene.txt each render tick.
-    # Windows does not allow replace() while that reader holds the file open.
-    # Retry the brief sharing violation without deleting the live scene file;
-    # an actual persistent access denial still fails after a bounded interval.
+    # Retry temporary Windows sharing violations from the JVM scene reader.
+    # Keep the previous scene file intact until the atomic replacement works.
     for attempt in range(12):
         try:
             temporary.replace(destination)
@@ -105,6 +103,37 @@ class Rcon:
         return reply[8:-2].decode(errors="replace")
     def command(self,text):return self.packet(2,text)
     def close(self):self.sock.close()
+
+
+class InteractiveVisualProcess:
+    """Windows child process launched into logged-in graphical session."""
+    def __init__(self, pid, handle):
+        self.pid=pid
+        self.handle=handle
+        self.returncode=None
+
+    def poll(self):
+        if self.returncode is not None: return self.returncode
+        import ctypes
+        from ctypes import wintypes
+        code=wintypes.DWORD()
+        if not ctypes.windll.kernel32.GetExitCodeProcess(
+                wintypes.HANDLE(self.handle),ctypes.byref(code)):
+            raise ctypes.WinError()
+        if code.value==259:return None
+        self.returncode=int(code.value)
+        ctypes.windll.kernel32.CloseHandle(wintypes.HANDLE(self.handle))
+        self.handle=0
+        return self.returncode
+
+    def wait(self,timeout=None):
+        deadline=None if timeout is None else time.monotonic()+timeout
+        while True:
+            outcome=self.poll()
+            if outcome is not None:return outcome
+            if deadline is not None and time.monotonic()>deadline:
+                raise subprocess.TimeoutExpired("interactive visual client",timeout)
+            time.sleep(.25)
 
 def stop(process):
     if process is None or process.poll() is not None:return
@@ -440,6 +469,8 @@ def main():
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
     parser.add_argument("--run-name",help="Isolated test directory prefix")
     parser.add_argument("--shader-pack", type=Path, help="Use an exact local shaderpack ZIP instead of the pinned default")
+    parser.add_argument("--interactive-offscreen", action="store_true", help="Run dedicated visual client on the logged-in Windows GPU session, without moving existing windows")
+    parser.add_argument("--shader-cache", type=Path, default=ROOT/"build/shader-dependencies", help="Verified shader dependency cache location")
     parser.add_argument("--enclosed", action="store_true", help="Build an indoor mirror room (issue #5 regression)")
     parser.add_argument("--check-motion", action="store_true",
                         help="Animate a reflected player swing and verify two real framebuffer captures")
@@ -453,6 +484,8 @@ def main():
                         help="Copy one optional rendering/modpack JAR into the isolated client only (repeatable)")
 
     args=parser.parse_args()
+    if args.interactive_offscreen and (os.name!="nt" or args.target!="forge-1.20.1"):
+        parser.error("--interactive-offscreen currently supports Forge 1.20.1 on Windows only")
     if args.check_motion and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
         parser.error("--check-motion requires NeoForge 1.21.1 enclosed shader validation")
     if args.check_camera_motion and (args.target!="neoforge-1.21.1" or not args.shaders):
@@ -469,7 +502,7 @@ def main():
         parser.error("--shader-pack requires --shaders")
     if args.shaders:
         from shader_stack import prepare, install_pack
-        _,pinned_pack=prepare(args.target,ROOT/"build/shader-dependencies")
+        _,pinned_pack=prepare(args.target,args.shader_cache.resolve())
         pack=args.shader_pack.resolve(strict=True) if args.shader_pack else pinned_pack
         if pack.suffix.lower() != ".zip":
             parser.error("--shader-pack must be a shaderpack ZIP")
@@ -491,7 +524,7 @@ def main():
     command=[str(cwd/"gradlew.bat")] if os.name=="nt" else ["./gradlew"]
     if t["build_root"]==".":command.append(f"-Ptarget={args.target}")
     command += ["-PvisualTest",f"-PvisualMc={t['minecraft']}",f"-PvisualLoader={t['loader']}",f"-PvisualPort={port}","--no-daemon","--console=plain","-Dorg.gradle.jvmargs=-Xmx1024m","--max-workers=2"]
-    command += [f"-PvisualRunName={run_name}",f"-PmirrorsShaderStack={ROOT/'build/shader-dependencies' if args.shaders else 'off'}"]
+    command += [f"-PvisualRunName={run_name}",f"-PmirrorsShaderStack={args.shader_cache.resolve() if args.shaders else 'off'}"]
     task_prefix=f":{args.target}:" if t["build_root"]=="." else ""
     evidence=module/f"run/{run_name}-evidence";evidence.mkdir(parents=True,exist_ok=True)
     (evidence/"extra-client-mods.json").write_text(json.dumps(extra_mods,indent=2))
@@ -537,8 +570,17 @@ def main():
                 # The fixture server and all production/runtime jars are untouched.
                 client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
                                                    " -Dsimplymirrors.visualForceStencil=true").strip()
-            client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,
-                                    stderr=subprocess.STDOUT,env=client_env,**creation)
+            if args.interactive_offscreen:
+                from fps_benchmark import new_interactive_client
+                extra=(client_env.get("JAVA_TOOL_OPTIONS","")+" -Dsimplymirrors.visualOffscreen=true").strip()
+                pid,handle=new_interactive_client(command+[task_prefix+"runVisualClient"],cwd,
+                            client_dir,evidence/"client-interactive.log",str(__import__("os").environ.get("JAVA_HOME", "")),
+                            java_tool_options=extra)
+                client=InteractiveVisualProcess(pid,handle)
+                print("SIMPLY_MIRRORS_VISUAL_ACTIVE_GPU_CLIENT pid="+str(pid),flush=True)
+            else:
+                client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,
+                                        stderr=subprocess.STDOUT,env=client_env,**creation)
             results={};failures={}
             for scene,face in enumerate(FACES):
                 if scene:
@@ -547,7 +589,8 @@ def main():
                         if any(word in reply for word in ["Unknown","Incorrect","too many blocks"]):raise RuntimeError(f"Fixture failed: {text}: {reply}")
                 activate_scene(rcon,client_dir,scene,client)
                 result=client_dir/f"visual-evidence/result-{scene}.json"
-                wait_for_visual_face(result,face,scene,client,client_dir,evidence,evidence/"client.log")
+                client_log_path=evidence/("client-interactive.log" if args.interactive_offscreen else "client.log")
+                wait_for_visual_face(result,face,scene,client,client_dir,evidence,client_log_path)
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
                 if args.force_stencil:assert data.get('stencilEnabled') is True,data
@@ -583,5 +626,8 @@ def main():
                     try:server.wait(timeout=30)
                     except subprocess.TimeoutExpired:pass
             stop(server)
+            if args.interactive_offscreen:
+                from fps_benchmark import cleanup_owned_gradle_servers
+                cleanup_owned_gradle_servers(cwd,run_name)
 
 if __name__=="__main__":main()

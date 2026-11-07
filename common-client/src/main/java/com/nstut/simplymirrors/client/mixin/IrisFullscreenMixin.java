@@ -16,12 +16,27 @@ import static org.lwjgl.opengl.GL33.*;
 public abstract class IrisFullscreenMixin {
     @Unique private int simplymirrors$frontFace;
     @Unique private boolean simplymirrors$clip;
+    @Unique private boolean simplymirrors$scissor;
     @Inject(method={"renderQuad","renderAll","renderFinalPass","renderHorizon"},at=@At("HEAD"),require=0)
     private void simplymirrors$screenWinding(CallbackInfo ci) {
-        if(MirrorRenderer.redirect!=null){simplymirrors$frontFace=glGetInteger(GL_FRONT_FACE);glFrontFace(GL_CCW);simplymirrors$clip=ShaderReflection.suspend();}
+        if(MirrorRenderer.redirect!=null){
+            // Iris can bind half/quarter-resolution size.buffer.* targets during
+            // deferred/composite/fullscreen draws. A scissor computed for the
+            // main 1:1 framebuffer is invalid there: never clip those passes.
+            simplymirrors$scissor=glIsEnabled(GL_SCISSOR_TEST);
+            glDisable(GL_SCISSOR_TEST);
+            simplymirrors$frontFace=glGetInteger(GL_FRONT_FACE);
+            glFrontFace(GL_CCW);
+            simplymirrors$clip=ShaderReflection.suspend();
+        }
     }
     @Inject(method={"renderQuad","renderAll","renderFinalPass","renderHorizon"},at=@At("RETURN"),require=0)
     private void simplymirrors$restoreWinding(CallbackInfo ci) {
-        if(MirrorRenderer.redirect!=null){glFrontFace(simplymirrors$frontFace);ShaderReflection.resume(simplymirrors$clip);}
+        if(MirrorRenderer.redirect!=null){
+            glFrontFace(simplymirrors$frontFace);
+            ShaderReflection.resume(simplymirrors$clip);
+            if(simplymirrors$scissor)glEnable(GL_SCISSOR_TEST);
+            else glDisable(GL_SCISSOR_TEST);
+        }
     }
 }

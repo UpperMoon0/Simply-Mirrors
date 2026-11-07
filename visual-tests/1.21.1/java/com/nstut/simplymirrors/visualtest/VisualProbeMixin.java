@@ -169,7 +169,7 @@ public abstract class VisualProbeMixin {
         boolean tab=false;for(CreativeModeTab t:BuiltInRegistries.CREATIVE_MODE_TAB)if(t!=null&&t.getDisplayName().getString().equals("Simply Mirrors"))tab=true;
         int error=glGetError();Path dir=mc.gameDirectory.toPath().resolve("visual-evidence");Files.createDirectories(dir);
         VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,dir.resolve("mirror-"+requested+".png"));
-        String json="{\"passes\":"+(MirrorRenderer.completedPasses-simplymirrors$startPasses)+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+",\"shaderPackActive\":"+com.nstut.simplymirrors.visualsupport.ShaderProbe.active()+",\"stencilEnabled\":"+simplymirrors$stencilReady+",\"motionCaptured\":"+(requested==0&&simplymirrors$motionPhase==2)+",\"cameraMotionCaptured\":"+(cameraTest&&simplymirrors$cameraPhase==4)+"}";
+        String json="{\"passes\":"+(MirrorRenderer.completedPasses-simplymirrors$startPasses)+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+",\"shaderPackActive\":"+com.nstut.simplymirrors.visualsupport.ShaderProbe.active()+",\"stencilEnabled\":"+simplymirrors$stencilReady+",\"motionCaptured\":"+(requested==0&&simplymirrors$motionPhase==2)+",\"cameraMotionCaptured\":"+(cameraTest&&simplymirrors$cameraPhase==4)+",\"fovDegrees\":" + mc.options.fov().get()+"}";
         Files.write(dir.resolve("result-"+requested+".json"),json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         System.out.println("SIMPLY_MIRRORS_VISUAL_RESULT "+requested+" "+json);simplymirrors$captured=true;
     }

@@ -27,7 +27,8 @@ CASES = [(7, "no-mirror"), (8, "one-mirror"), (9, "nine-coplanar-mirrors")]
 
 
 def new_interactive_client(command: list[str], work: Path, client: Path,
-                           log_path: Path, java_home: str) -> tuple[int, int]:
+                           log_path: Path, java_home: str, gpu_profile: bool = False, coverage_scissor: bool = True,
+                           java_tool_options: str | None = None) -> tuple[int, int]:
     """Create in the active user's graphical session without taking focus."""
     if os.name != "nt":
         raise RuntimeError("This on-prem-1 controller requires Windows")
@@ -64,7 +65,13 @@ def new_interactive_client(command: list[str], work: Path, client: Path,
                 'cd /d "' + str(work) + '"',
                 'set "JAVA_HOME=' + java_home + '"',
                 r'set "GRADLE_USER_HOME=D:\DevCaches\.gradle"',
-                r'set "JAVA_TOOL_OPTIONS=-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true"',
+                'set "JAVA_TOOL_OPTIONS=' + (
+                    java_tool_options if java_tool_options is not None else (
+                        "-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
+                        (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
+                        (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "")
+                    )
+                ) + '"',
                 'set "PATH=%JAVA_HOME%\\bin;%PATH%"',
                 'call ' + subprocess.list2cmdline(command) + ' > "' + str(log_path) + '" 2>&1',
                 'exit /b %errorlevel%',
@@ -228,6 +235,8 @@ def main():
     parser.add_argument("--java-home", default=r"C:\Program Files\Java\jdk-21")
     parser.add_argument("--run-name", default="fps-" + str(int(time.time())))
     parser.add_argument("--rounds", type=int, default=1, help="1-5 alternating trial rounds")
+    parser.add_argument("--profile-gpu", action="store_true", help="Enable asynchronous GPU timestamp stage profiling")
+    parser.add_argument("--disable-coverage-scissor", action="store_true", help="Control run with coverage optimization disabled")
     args = parser.parse_args()
     if not 1 <= args.rounds <= 5:
         parser.error("--rounds must be in [1, 5]")
@@ -334,7 +343,8 @@ def main():
         client_pid, client_handle = new_interactive_client(
             base + ["-PmirrorsShaderStack=" + str(args.shader_cache.resolve()),
                     ":forge-1.20.1:runVisualClient"],
-            root, client, client_log, args.java_home)
+            root, client, client_log, args.java_home, args.profile_gpu,
+            not args.disable_coverage_scissor)
         print("FPS_STAGE client launched active-session PID=" + str(client_pid), flush=True)
         # RCON accepts the teleport only after an actual client has joined.
         joined = False
@@ -440,6 +450,7 @@ def main():
             "modBranch": subprocess.check_output(["git", "rev-parse", "HEAD"],
                                                    cwd=root, text=True).strip(),
             "resolution": f"{args.width}x{args.height}",
+            "coverageScissorEnabled": not args.disable_coverage_scissor,
             "stages": comparison,
             "rounds": rounds,
             "imageChecks": checks,
