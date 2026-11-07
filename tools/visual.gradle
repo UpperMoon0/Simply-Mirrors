@@ -3,6 +3,8 @@ if (!providers.gradleProperty('visualTest').isPresent()) return
 def mc = providers.gradleProperty('visualMc').get()
 def loader = providers.gradleProperty('visualLoader').get()
 def port = providers.gradleProperty('visualPort').get()
+def visualWidth = providers.gradleProperty('visualWidth').orElse('960').get()
+def visualHeight = providers.gradleProperty('visualHeight').orElse('540').get()
 def runName = providers.gradleProperty('visualRunName').orElse('visual').get()
 if (!(runName ==~ /[a-z0-9-]+/)) throw new GradleException('Invalid visual run name')
 logger.lifecycle("Visual target: ${mc}/${loader}")
@@ -34,7 +36,7 @@ if (mc == '1.16.5' && loader == 'forge') {
             workingDirectory project.file("run/${runName}-client")
             property 'simplymirrors.visualPort', port
             jvmArgs '-Xmx1024m'
-            args '--width', '960', '--height', '540', '--mixin', 'simplymirrors.visual.mixins.json'
+            args '--width', visualWidth, '--height', visualHeight, '--mixin', 'simplymirrors.visual.mixins.json'
             mods { simply_mirrors { source sourceSets.main } }
         }
         visualServer {
@@ -54,7 +56,7 @@ if (mc == '1.16.5' && loader == 'forge') {
             systemProperty 'simplymirrors.visualTest', 'true'
             systemProperty 'simplymirrors.visualPort', port
             jvmArguments.addAll '-Xmx1024m'
-            programArguments.addAll '--width', '960', '--height', '540'
+            programArguments.addAll '--width', visualWidth, '--height', visualHeight
         }
         visualServer {
             server()
@@ -71,7 +73,7 @@ if (mc == '1.16.5' && loader == 'forge') {
             property 'simplymirrors.visualTest', 'true'
             property 'simplymirrors.visualPort', port
             vmArg '-Xmx2048m'
-            programArgs '--width', '960', '--height', '540'
+            programArgs '--width', visualWidth, '--height', visualHeight
         }
         visualServer {
             server()

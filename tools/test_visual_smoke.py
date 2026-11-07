@@ -26,6 +26,190 @@ class EnclosedRoomFixtureTests(unittest.TestCase):
                 self.assertTrue(all(cmd.startswith("setblock ") for cmd in indoor[-9:]))
 
 
+
+class WindowsSceneFileHandoffTests(unittest.TestCase):
+    @patch("visual_smoke.time.sleep")
+    def test_transient_reader_lock_retries_without_destroying_scene(self, sleeper):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            visual_smoke.scene_file(directory, 0)
+            original = Path.replace
+            calls = []
+
+            def replace(path, destination):
+                calls.append((path, destination))
+                if len(calls) == 1:
+                    self.assertEqual("0", (directory / "visual-scene.txt").read_text())
+                    raise PermissionError(13, "Windows reader sharing violation")
+                return original(path, destination)
+
+            with patch.object(Path, "replace", replace):
+                visual_smoke.scene_file(directory, 6)
+            self.assertEqual(2, len(calls))
+            self.assertEqual("6", (directory / "visual-scene.txt").read_text())
+            self.assertFalse((directory / "visual-scene.next").exists())
+            sleeper.assert_called_once_with(.05)
+
+    @patch("visual_smoke.time.sleep")
+    def test_persistent_permission_error_remains_a_failure(self, sleeper):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            visual_smoke.scene_file(directory, 0)
+            with patch.object(Path, "replace", side_effect=PermissionError(13, "Denied")):
+                with self.assertRaisesRegex(PermissionError, "Denied"):
+                    visual_smoke.scene_file(directory, 6)
+            self.assertEqual("0", (directory / "visual-scene.txt").read_text())
+            self.assertEqual(11, sleeper.call_count)
+
+
+class VisualServerPreparationTests(unittest.TestCase):
+    @patch("visual_smoke.subprocess.run")
+    def test_compile_preflight_is_a_separate_bounded_phase(self, runner):
+        runner.return_value = Mock(returncode=0)
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            visual_smoke.prepare_visual_server_build(
+                ["./gradlew", "-PvisualTest"], ":neoforge-1.21.1:classes",
+                directory, directory)
+            command = runner.call_args.args[0]
+            self.assertEqual(":neoforge-1.21.1:classes", command[-1])
+            self.assertEqual(900, runner.call_args.kwargs["timeout"])
+            self.assertTrue((directory/"server-preparation.log").exists())
+
+    @patch("visual_smoke.subprocess.run")
+    def test_failed_preflight_does_not_launch_a_server(self, runner):
+        runner.return_value = Mock(returncode=1)
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            with self.assertRaisesRegex(RuntimeError, "preparation failed"):
+                visual_smoke.prepare_visual_server_build(
+                    ["./gradlew"], "classes", directory, directory)
+            runner.assert_called_once()
+
+
+class FaceProgressDeadlineTests(unittest.TestCase):
+    def test_heartbeat_is_scoped_to_current_face(self):
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp)/"client.log"
+            log.write_text(
+                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=1 ticks=120 reflectionPasses=120\n"
+                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks=30 reflectionPasses=15\n"
+                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks=120 reflectionPasses=105\n")
+            self.assertEqual((120,105),visual_smoke.latest_visual_heartbeat(log,2))
+            self.assertEqual((120,120),visual_smoke.latest_visual_heartbeat(log,1))
+            self.assertIsNone(visual_smoke.latest_visual_heartbeat(log,3))
+
+    def test_slow_but_progressing_software_gl_may_finish_after_180s(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp);log=directory/"client.log";log.write_text("")
+            clock=[0.0]
+            def heartbeat(_log,_scene):
+                ticks = min(120,int(clock[0]//42)*30)
+                return (ticks,max(0,ticks-15)) if ticks else None
+            result=Mock()
+            result.exists.side_effect=lambda:clock[0]>=220
+            client=Mock();client.poll.return_value=None
+            with patch.object(visual_smoke.time,"monotonic",side_effect=lambda:clock[0]), \
+                 patch.object(visual_smoke.time,"sleep",side_effect=lambda n:clock.__setitem__(0,clock[0]+n)), \
+                 patch.object(visual_smoke,"latest_visual_heartbeat",side_effect=heartbeat), \
+                 patch.object(visual_smoke,"capture_client_thread_dump") as dump:
+                visual_smoke.wait_for_visual_face(result,"west",2,client,directory,directory,log)
+            self.assertGreaterEqual(clock[0],220)
+            dump.assert_not_called()
+
+    def test_no_progress_remains_fail_closed_with_diagnostic(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory=Path(temp);log=directory/"client.log";log.write_text("")
+            clock=[0.0]
+            result=Mock();result.exists.return_value=False
+            client=Mock();client.poll.return_value=None
+            with patch.object(visual_smoke.time,"monotonic",side_effect=lambda:clock[0]), \
+                 patch.object(visual_smoke.time,"sleep",side_effect=lambda n:clock.__setitem__(0,clock[0]+n)), \
+                 patch.object(visual_smoke,"latest_visual_heartbeat",return_value=None), \
+                 patch.object(visual_smoke,"capture_client_thread_dump") as dump:
+                with self.assertRaisesRegex(TimeoutError,"west"):
+                    visual_smoke.wait_for_visual_face(result,"west",2,client,directory,directory,log)
+            self.assertEqual(180,clock[0])
+            dump.assert_called_once()
+
+
+class CrossVersionHeartbeatTests(unittest.TestCase):
+    """The Python watchdog relies on this exact render-thread wire contract."""
+
+    VERSIONS = ("1.16.5", "1.20.1", "1.21.1", "26.1.2")
+
+    def test_every_supported_probe_emits_live_scene_heartbeat(self):
+        for version in self.VERSIONS:
+            with self.subTest(minecraft=version):
+                source = (visual_smoke.ROOT / "visual-tests" / version / "java" /
+                          "com/nstut/simplymirrors/visualtest/VisualProbeMixin.java").read_text()
+                marker = source.index('"SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene="+requested+')
+                reset = source.index("simplymirrors$sceneFrames=0;")
+                counter = source.index("simplymirrors$sceneFrames++;")
+                captured = source.index("if(simplymirrors$captured)return;")
+                self.assertLess(reset, counter)
+                self.assertLess(counter, marker)
+                self.assertLess(marker, captured)
+                self.assertIn("simplymirrors$sceneFrames==1 || simplymirrors$sceneFrames%30==0", source)
+                self.assertIn('" ticks="+simplymirrors$sceneFrames+', source)
+                self.assertIn('" reflectionPasses="+(MirrorRenderer.completedPasses-simplymirrors$startPasses)', source)
+
+    def test_non_120_slow_face_progress_reaches_capture(self):
+        # Model the exact heartbeat text emitted by the other MC versioned probes
+        # under llvmpipe, not a mocked heartbeat parser.
+        for version in ("1.16.5", "1.21.1", "26.1.2"):
+            with self.subTest(minecraft=version), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                log = directory / "client.log"
+                log.write_text("")
+                result = directory / "result.json"
+                clock = [0.0]
+                def sleep(seconds):
+                    clock[0] += seconds
+                    if int(clock[0]) in (45, 90, 135, 180, 225):
+                        ticks = int(clock[0] / 45) * 30
+                        with log.open("a") as output:
+                            output.write(
+                                f"SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks={ticks} "
+                                f"reflectionPasses={ticks - 10}\n")
+                    if clock[0] >= 240 and not result.exists():
+                        result.write_text("{}")
+                client = Mock()
+                client.poll.return_value = None
+                with patch.object(visual_smoke.time, "monotonic", side_effect=lambda:clock[0]), \
+                     patch.object(visual_smoke.time, "sleep", side_effect=sleep), \
+                     patch.object(visual_smoke, "capture_client_thread_dump") as diagnostic:
+                    visual_smoke.wait_for_visual_face(
+                        result, "west", 2, client, directory, directory, log)
+                self.assertGreaterEqual(clock[0], 240)
+                self.assertEqual((150, 140), visual_smoke.latest_visual_heartbeat(log, 2))
+                diagnostic.assert_not_called()
+
+    def test_non_120_stalled_face_reports_dump_and_fails(self):
+        for version in ("1.16.5", "1.21.1", "26.1.2"):
+            with self.subTest(minecraft=version), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                log = directory / "client.log"
+                log.write_text("")
+                result = directory / "missing.json"
+                clock = [0.0]
+                def sleep(seconds):
+                    clock[0] += seconds
+                    if clock[0] == 40:
+                        log.write_text(
+                            "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks=30 reflectionPasses=22\n")
+                client = Mock()
+                client.poll.return_value = None
+                with patch.object(visual_smoke.time, "monotonic", side_effect=lambda:clock[0]), \
+                     patch.object(visual_smoke.time, "sleep", side_effect=sleep), \
+                     patch.object(visual_smoke, "capture_client_thread_dump") as diagnostic:
+                    with self.assertRaisesRegex(TimeoutError, r"west .*ticks=30, passes=22"):
+                        visual_smoke.wait_for_visual_face(
+                            result, "west", 2, client, directory, directory, log)
+                self.assertLess(clock[0], 200)
+                diagnostic.assert_called_once_with(directory, directory)
+
+
 class SceneActivationTests(unittest.TestCase):
     @patch("visual_smoke.time.sleep")
     def test_scene_stays_parked_until_server_teleport_succeeds(self,sleep):
@@ -179,9 +363,9 @@ class ClientAssetPreflightTests(unittest.TestCase):
                 self.assertEqual(subprocess.STDOUT, kwargs["stderr"])
                 self.assertIs(False, kwargs["check"])
                 if len(calls) == 1:
-                    kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\\n")
+                    kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\n")
                     return Mock(returncode=1)
-                kwargs["stdout"].write("BUILD SUCCESSFUL\\n")
+                kwargs["stdout"].write("BUILD SUCCESSFUL\n")
                 return Mock(returncode=0)
             with patch("visual_smoke.subprocess.run", side_effect=run):
                 visual_smoke.prepare_visual_client_assets(
@@ -198,7 +382,7 @@ class ClientAssetPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             def run(command, **kwargs):
-                kwargs["stdout"].write("Could not find task downloadAssets\\n")
+                kwargs["stdout"].write("Could not find task downloadAssets\n")
                 return Mock(returncode=1)
             with patch("visual_smoke.subprocess.run", side_effect=run) as runner:
                 with self.assertRaisesRegex(RuntimeError, "preflight failed"):
@@ -212,7 +396,7 @@ class ClientAssetPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             def run(command, **kwargs):
-                kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\\n")
+                kwargs["stdout"].write("net.fabricmc.loom.util.download.DownloadException: Failed to download\n")
                 return Mock(returncode=1)
             with patch("visual_smoke.subprocess.run", side_effect=run) as runner:
                 with self.assertRaisesRegex(RuntimeError, "attempt 3/3"):
@@ -231,7 +415,7 @@ class ExternalModpackReproductionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);source=root/'shader-compat.jar'
             with zipfile.ZipFile(source,'w') as jar:
-                jar.writestr('META-INF/mods.toml','[[mods]]\\nmodId="shader_compat"\\n')
+                jar.writestr('META-INF/mods.toml','[[mods]]\nmodId="shader_compat"\n')
             client=root/'isolated-client'
             manifest=visual_smoke.install_extra_client_mods(client,[source])
             copy=client/'mods'/source.name

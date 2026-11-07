@@ -44,6 +44,12 @@ public abstract class VisualProbeMixin {
         if(requested==6){simplymirrors$done=true;mc.stop();return;}
         if(requested!=simplymirrors$scene){simplymirrors$scene=requested;simplymirrors$mirrorFrames=0;simplymirrors$sceneFrames=0;simplymirrors$startPasses=MirrorRenderer.completedPasses;simplymirrors$captured=false;}
         simplymirrors$sceneFrames++;
+        // Report actual render-thread progress to the bounded Python watchdog.
+        // All supported MC versions must emit this exact scene-scoped schema.
+        if(simplymirrors$sceneFrames==1 || simplymirrors$sceneFrames%30==0)
+            System.out.println("SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene="+requested+
+                    " ticks="+simplymirrors$sceneFrames+
+                    " reflectionPasses="+(MirrorRenderer.completedPasses-simplymirrors$startPasses));
         if(MirrorRenderer.completedPasses>simplymirrors$startPasses)simplymirrors$mirrorFrames++;
         int phase=simplymirrors$mirrorFrames/20;
         float yaw=VisualScene.yaw(requested)+(phase==1?20:phase==2?-20:0);
