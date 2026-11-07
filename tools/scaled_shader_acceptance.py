@@ -195,7 +195,7 @@ def run_acceptance(target: str, cache: Path, pack: Path, prefix: str, interactiv
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--target", choices=("forge-1.20.1",), default="forge-1.20.1")
+    parser.add_argument("--target", choices=("forge-1.20.1", "fabric-1.20.1", "neoforge-1.21.1"), default="forge-1.20.1")
     parser.add_argument("--shader-cache", type=Path, default=ROOT / "build/shader-dependencies")
     parser.add_argument("--run-prefix", default="scaled-coverage")
     parser.add_argument("--interactive-offscreen", action="store_true")
