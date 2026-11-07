@@ -393,7 +393,7 @@ def latest_visual_heartbeat(log, scene):
         size = stream.tell()
         stream.seek(max(0, size - 65536))
         tail = stream.read().decode("utf-8", errors="replace")
-    pattern = rf"SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene={scene} ticks=(\\d+) reflectionPasses=(\\d+)"
+    pattern = rf"SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene={scene} ticks=(\d+) reflectionPasses=(\d+)"
     matches = list(re.finditer(pattern, tail))
     return tuple(map(int, matches[-1].groups())) if matches else None
 
