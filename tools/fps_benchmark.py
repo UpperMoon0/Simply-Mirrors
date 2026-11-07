@@ -180,6 +180,25 @@ def wait_result(path: Path, client_handle: int, client_log: Path, deadline_s: in
     raise TimeoutError(f"Timed out waiting for {path}:\n{log}")
 
 
+def validate_frame_pass_cadence(result):
+    """Reject fast-but-missing reflection frames, including sparse dropouts."""
+    scene = result["scenario"]
+    if scene % 10 not in (7, 8, 9):
+        raise AssertionError(f"Unexpected FPS scene {scene}")
+    samples = result["samples"]
+    intervals = result["frameIntervalsNs"]
+    passes = result["passesPerFrame"]
+    if samples < 30 or len(intervals) != samples or len(passes) != samples:
+        raise AssertionError(f"Malformed per-frame FPS evidence: {scene}")
+    expected = 0 if scene % 10 == 7 else 1
+    for i, count in enumerate(passes):
+        if type(count) is not int or count != expected:
+            raise AssertionError(
+                f"Scene {scene} frame {i} rendered {count!r} reflection passes; expected {expected}")
+    if sum(passes) != result["reflectionPasses"]:
+        raise AssertionError(f"Reflection total disagrees with frame evidence: {scene}")
+
+
 def require_command(rcon: Rcon, command: str):
     reply = rcon.command(command)
     if any(e in reply for e in ["Unknown", "Incorrect", "too many blocks", "Too many blocks"]):
@@ -351,6 +370,7 @@ def main():
                 print(f"FPS_STAGE round={round_index} measuring {label}", flush=True)
                 result = wait_result(client / "fps-evidence" / f"scene-{number}.json",
                                      client_handle, client_log, 240)
+                validate_frame_pass_cadence(result)
                 if not result["shaderActive"] or result["windowIconified"] or result["glError"] != 0:
                     raise RuntimeError("Invalid game/shader/GL measurement " + str(result))
                 if "NVIDIA" not in result["glVendor"]:
