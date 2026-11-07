@@ -62,6 +62,77 @@ class WindowsSceneFileHandoffTests(unittest.TestCase):
             self.assertEqual(11, sleeper.call_count)
 
 
+class VisualServerPreparationTests(unittest.TestCase):
+    @patch("visual_smoke.subprocess.run")
+    def test_compile_preflight_is_a_separate_bounded_phase(self, runner):
+        runner.return_value = Mock(returncode=0)
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            visual_smoke.prepare_visual_server_build(
+                ["./gradlew", "-PvisualTest"], ":neoforge-1.21.1:classes",
+                directory, directory)
+            command = runner.call_args.args[0]
+            self.assertEqual(":neoforge-1.21.1:classes", command[-1])
+            self.assertEqual(900, runner.call_args.kwargs["timeout"])
+            self.assertTrue((directory/"server-preparation.log").exists())
+
+    @patch("visual_smoke.subprocess.run")
+    def test_failed_preflight_does_not_launch_a_server(self, runner):
+        runner.return_value = Mock(returncode=1)
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            with self.assertRaisesRegex(RuntimeError, "preparation failed"):
+                visual_smoke.prepare_visual_server_build(
+                    ["./gradlew"], "classes", directory, directory)
+            runner.assert_called_once()
+
+
+class FaceProgressDeadlineTests(unittest.TestCase):
+    def test_heartbeat_is_scoped_to_current_face(self):
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp)/"client.log"
+            log.write_text(
+                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=1 ticks=120 reflectionPasses=120\\n"
+                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks=30 reflectionPasses=15\\n"
+                "SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene=2 ticks=120 reflectionPasses=105\\n")
+            self.assertEqual((120,105),visual_smoke.latest_visual_heartbeat(log,2))
+            self.assertEqual((120,120),visual_smoke.latest_visual_heartbeat(log,1))
+            self.assertIsNone(visual_smoke.latest_visual_heartbeat(log,3))
+
+    def test_slow_but_progressing_software_gl_may_finish_after_180s(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp);log=directory/"client.log";log.write_text("")
+            clock=[0.0]
+            def heartbeat(_log,_scene):
+                ticks = min(120,int(clock[0]//42)*30)
+                return (ticks,max(0,ticks-15)) if ticks else None
+            result=Mock()
+            result.exists.side_effect=lambda:clock[0]>=220
+            client=Mock();client.poll.return_value=None
+            with patch.object(visual_smoke.time,"monotonic",side_effect=lambda:clock[0]), \\
+                 patch.object(visual_smoke.time,"sleep",side_effect=lambda n:clock.__setitem__(0,clock[0]+n)), \\
+                 patch.object(visual_smoke,"latest_visual_heartbeat",side_effect=heartbeat), \\
+                 patch.object(visual_smoke,"capture_client_thread_dump") as dump:
+                visual_smoke.wait_for_visual_face(result,"west",2,client,directory,directory,log)
+            self.assertGreaterEqual(clock[0],220)
+            dump.assert_not_called()
+
+    def test_no_progress_remains_fail_closed_with_diagnostic(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory=Path(temp);log=directory/"client.log";log.write_text("")
+            clock=[0.0]
+            result=Mock();result.exists.return_value=False
+            client=Mock();client.poll.return_value=None
+            with patch.object(visual_smoke.time,"monotonic",side_effect=lambda:clock[0]), \\
+                 patch.object(visual_smoke.time,"sleep",side_effect=lambda n:clock.__setitem__(0,clock[0]+n)), \\
+                 patch.object(visual_smoke,"latest_visual_heartbeat",return_value=None), \\
+                 patch.object(visual_smoke,"capture_client_thread_dump") as dump:
+                with self.assertRaisesRegex(TimeoutError,"west"):
+                    visual_smoke.wait_for_visual_face(result,"west",2,client,directory,directory,log)
+            self.assertEqual(180,clock[0])
+            dump.assert_called_once()
+
+
 class SceneActivationTests(unittest.TestCase):
     @patch("visual_smoke.time.sleep")
     def test_scene_stays_parked_until_server_teleport_succeeds(self,sleep):
