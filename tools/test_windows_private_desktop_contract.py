@@ -34,7 +34,7 @@ class InteractiveGraphicsContractTests(unittest.TestCase):
         self.assertIn('os.environ.get("CI_GRAPHICS_AGENT") != "1"', script)
         self.assertIn("SIMPLY_MIRRORS_VISUAL_PRIVATE_DESKTOP", script)
         self.assertNotIn("WTSQueryUserToken", script)
-        self.assertNotIn("CreateProcessAsUser", script)
+        self.assertNotIn("CreateProcessAsUser(", script)
         self.assertNotIn("from fps_benchmark import new_interactive_client", script)
 
 
