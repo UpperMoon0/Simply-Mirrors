@@ -1,6 +1,7 @@
 """Regression checks for server-authorized visual scene transitions."""
 from pathlib import Path
 import tempfile
+import os
 import subprocess
 import json
 import unittest
@@ -465,6 +466,7 @@ class ExternalModpackReproductionTests(unittest.TestCase):
 
 
 class VisualThreadDumpDiscoveryTests(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'Synthetic /proc cwd symlinks require Unix semantics')
     def test_isolated_client_cwd_matches_without_client_path_in_jvm_args(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -503,6 +505,7 @@ class VisualThreadDumpDiscoveryTests(unittest.TestCase):
                 [pid for pid, _ in visual_smoke.fixture_java_processes(client, proc)]
             )
 
+    @unittest.skipIf(os.name == 'nt', 'Synthetic /proc cwd symlinks require Unix semantics')
     def test_literal_backslash_zero_is_not_a_proc_argument_separator(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);client=root/"client";client.mkdir()
