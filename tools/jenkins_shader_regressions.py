@@ -1,6 +1,7 @@
 """Preserve the existing three Complementary regression gates under Jenkins."""
 import hashlib
 from pathlib import Path
+from ci_process_cleanup import cleanup_owned_processes
 import subprocess
 import sys
 import urllib.request
@@ -30,7 +31,11 @@ def main():
     for case in cases:
         command = ['xvfb-run', '-a', '-s', '-screen 0 1280x720x24', sys.executable,
                    'tools/visual_smoke.py', '--target', 'neoforge-1.21.1', '--shaders', '--enclosed'] + case
-        result = subprocess.run(command, cwd=ROOT, check=False)
+        try:
+            result = subprocess.run(command, cwd=ROOT, check=False)
+        finally:
+            # Each scene may fork detached Gradle/game JVMs; reclaim before the next.
+            cleanup_owned_processes()
         if result.returncode:
             failures.append(case[1])
     # This independent API contract must still run after visual failures.
