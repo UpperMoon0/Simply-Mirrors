@@ -6,7 +6,12 @@ def targets() {
 def targetCommand(String target, String command) {
     def home = target.endsWith('26.1.2') ? env.JAVA_HOME_25 : env.JAVA_HOME_21
     withEnv(["JAVA_HOME=${home}", "PATH+JDK=${home}/bin", "MIRRORS_TARGET=${target}"]) {
-        sh command
+        try {
+            sh command
+        } finally {
+            // Gradle --no-daemon can leave detached server/client JVMs behind.
+            sh 'python tools/ci_process_cleanup.py'
+        }
     }
 }
 
@@ -59,12 +64,13 @@ chmod +x gradlew forge-1.16.5/gradlew fabric-26.1.2/gradlew neoforge-26.1.2/grad
                 sh "python -m unittest discover -s tools -p 'test_*.py'"
                 sh './gradlew -Ptarget=common :common:test --no-daemon --max-workers=1 --console=plain'
             }
-            post { always { junit testResults: 'common/build/test-results/test/*.xml', allowEmptyResults: true } }
+            post { always { sh 'python tools/ci_process_cleanup.py'; junit testResults: 'common/build/test-results/test/*.xml', allowEmptyResults: true } }
         }
         stage('Native OpenGL state and pixel parity') {
             steps {
                 sh 'xvfb-run -a ./gradlew -Ptarget=common :common:shaderHistoryGlTest :common:mirrorCompositeBenchmark --no-daemon --max-workers=1 --console=plain'
             }
+            post { always { sh 'python tools/ci_process_cleanup.py' } }
         }
         stage('Eight production targets') {
             steps {
@@ -120,6 +126,7 @@ chmod +x gradlew forge-1.16.5/gradlew fabric-26.1.2/gradlew neoforge-26.1.2/grad
             steps {
                 sh 'python tools/jenkins_shader_regressions.py'
             }
+            post { always { sh 'python tools/ci_process_cleanup.py' } }
         }
     }
     post {
@@ -127,6 +134,7 @@ chmod +x gradlew forge-1.16.5/gradlew fabric-26.1.2/gradlew neoforge-26.1.2/grad
             archiveArtifacts artifacts: '**/run/*-evidence/**,**/run/*-client/visual-evidence/**,**/run/*-client/logs/**,**/run/*-client/crash-reports/**,common/build/reports/**,common/build/test-results/**,release-output/*', allowEmptyArchive: true
             script {
                 if (env.CI_SCRATCH) {
+                    sh 'python tools/ci_process_cleanup.py'
                     sh '''python3 - <<'PY'
 import os, pathlib, shutil
 path=pathlib.Path(os.environ['CI_SCRATCH']).resolve()
