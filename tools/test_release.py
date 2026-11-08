@@ -13,38 +13,8 @@ class ReleaseTests(unittest.TestCase):
         for text in ["mod_version=1.0.0\nmod_version=2.0.0", "mod_version=../bad", "mod_version=1.0.0\nBAD=1\nmod_version=2.0.0"]:
             with self.assertRaises(ValueError): release.version(text)
 
-    def test_manual_dry_run_and_non_main_never_publish(self):
-        env = {"GITHUB_REF": "refs/heads/main", "EVENT_NAME": "workflow_dispatch"}
-        self.assertEqual("false", release.plan(env)["publish"])
-        env["REQUEST_PUBLISH"] = "true"
-        self.assertEqual("true", release.plan(env)["publish"])
-        env["GITHUB_REF"] = "refs/heads/codex/test"
-        self.assertEqual("false", release.plan(env)["publish"])
 
-    @patch("release.version", return_value="1.2.3")
-    def test_push_version_bump_never_implicitly_publishes(self, version):
-        for before in ["a" * 40, "0" * 40, "", "invalid"]:
-            env = {"GITHUB_REF": "refs/heads/main", "EVENT_NAME": "push",
-                   "BEFORE_SHA": before, "REQUEST_PUBLISH": "true"}
-            self.assertEqual("false", release.plan(env)["publish"])
-        # Stable and prerelease versions use the same explicit authorization gate.
-        version.return_value = "1.2.4-beta.1"
-        self.assertEqual("false", release.plan(env)["publish"])
-        self.assertEqual("false", release.plan({
-            "GITHUB_REF": "refs/heads/main", "EVENT_NAME": "pull_request",
-            "REQUEST_PUBLISH": "true"})["publish"])
 
-    def test_release_types_and_correct_loader_dependencies(self):
-        for v, kind in [("1.0.0", "release"), ("1.0.0-dev.4", "alpha"), ("1.0.0-beta.1", "beta")]:
-            self.assertEqual(kind, release.release_type(v))
-        for info in release.TARGETS.values():
-            meta = release.metadata(info, release.version())
-            relations = meta.get("relations", {}).get("projects", [])
-            self.assertEqual(info["loader"] == "fabric", bool(relations))
-            if not relations:
-                self.assertNotIn("relations", meta)
-            self.assertIn(info["minecraft"], meta["gameVersionNames"])
-            self.assertIn(f"Java {info['java']}", meta["gameVersionNames"])
 
     @patch("release.verify")
     def test_collect_checks_all_targets_before_creating_output(self, verify):
@@ -62,34 +32,27 @@ class ReleaseTests(unittest.TestCase):
             (source / "extra-dev.jar").write_bytes(b"fixture")
             with self.assertRaises(ValueError): release.collect(source, root / "out2")
 
-    def test_missing_credentials_fail_before_network(self):
-        with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaisesRegex(ValueError, "CURSEFORGE_PROJECT_ID"):
-                release.settings()
-        with patch.dict(os.environ, {"CURSEFORGE_PROJECT_ID": "123"}, clear=True):
-            with self.assertRaisesRegex(ValueError, "CURSEFORGE_API_TOKEN"):
-                release.settings()
 
-    @patch("release.request", return_value={"id": 42})
-    @patch("release.preflight", return_value=("1751860", "fixture-token"))
-    def test_resume_preserves_accepted_uploads_and_records_missing_targets(self, preflight, request):
-        with tempfile.TemporaryDirectory() as temp:
-            source = Path(temp)
-            target = next(iter(release.TARGETS))
-            receipt = source / "curseforge-receipts.json"
-            receipt.write_text(json.dumps({"project": "1751860", "version": release.version(), "files": {target: 9237589}}))
-            for name in release.TARGETS:
-                (source / release.expected_name(name, release.version())).write_bytes(b"fixture")
-            with self.assertRaises(ValueError): release.publish(source)
-            release.publish(source, resume=True)
-            result = json.loads(receipt.read_text())
-            self.assertEqual(7, request.call_count)
-            self.assertEqual(8, len(result["files"]))
-            self.assertEqual(9237589, result["files"][target])
-            request.reset_mock()
-            result["version"] = "999.0.0"
-            receipt.write_text(json.dumps(result))
-            with self.assertRaises(ValueError): release.publish(source, resume=True)
-            request.assert_not_called()
+
+    def test_source_checkout_cannot_publish_or_preflight(self):
+        import subprocess, sys
+        for command in ('publish','preflight','plan'):
+            result=subprocess.run([sys.executable,str(release.ROOT/'tools/release.py'),command],capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('NsTut-CICD',result.stderr)
+
+    def test_release_provenance_is_bound_to_source_and_hashed(self):
+        import hashlib
+        from jenkins_collect import write_provenance
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)
+            (output/'SHA256SUMS').write_text('')
+            write_provenance(output,'a'*40,'0.1.3',release.TARGETS)
+            data=json.loads((output/'provenance.json').read_text())
+            self.assertEqual(data['source_sha'],'a'*40)
+            self.assertEqual(data['targets'],sorted(release.TARGETS))
+            self.assertEqual((output/'SHA256SUMS').read_text(),hashlib.sha256((output/'provenance.json').read_bytes()).hexdigest()+'  provenance.json\n')
+            with self.assertRaises(ValueError):
+                write_provenance(output,'main','0.1.3',release.TARGETS)
 
 if __name__ == "__main__": unittest.main()

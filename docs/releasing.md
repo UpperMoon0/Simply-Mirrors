@@ -1,21 +1,15 @@
 # Releasing Simply Mirrors
 
-The **Build and release** workflow validates version changes on `main`; publication requires a manually authorized main-branch dispatch with **publish** enabled. Reflection tests, native OpenGL state isolation, and vanilla plus shader acceptance on all eight targets must pass before publication.
+Publishing is owned by [NsTut-CICD](https://github.com/UpperMoon0/NsTut-CICD), alongside Powered Repair. The source repository has no publishing workflow or upload implementation. Its Jenkinsfile delegates to `nstutMinecraftMod(project: 'simply-mirrors')`.
 
-Configure these on **UpperMoon0/Simply-Mirrors → Settings → Secrets and variables → Actions**:
+The CurseForge project is **1751860** ([author dashboard](https://authors.curseforge.com/#/projects/1751860)). The author token comes from the shared `nstutcommonkv/curseforge-api-token` vault secret, never the mod's Actions secrets or ordinary build agents.
 
-- Repository variable `CURSEFORGE_PROJECT_ID`: `1751860`, already configured for [Simply Mirrors](https://authors.curseforge.com/#/projects/1751860).
-- Repository secret `CURSEFORGE_API_TOKEN`: a CurseForge Upload API token with access to that project, using the same secret name as Simply Speakers. Repository secrets are not inherited from other repositories.
-- Repository secrets `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`, and variable `R2_ENDPOINT`: [private temporary CI artifact storage](ci-r2-artifacts.md). These are required for both validation and release runs.
+1. Update `mod_version` and `changelog/<version>.md`, then merge the reviewed source to main.
+2. Wait for the entire Jenkins matrix to succeed: shared tests, all eight production builds, native OpenGL tests, all eight vanilla visual and Complementary shader checks, and the NeoForge regression suite. The existing graphics qualification gates remain required.
+3. In NsTut-CICD, set `simply-mirrors.request` in `jenkins/artifacts/mod-releases.json` to the exact source SHA, successful Jenkins build number, version and channel (`alpha`, `beta` or `release`). Review and merge that request. A null request disables publication; a source version bump or tag cannot authorize it.
 
-The artwork for the CurseForge project is `common-assets/src/main/resources/assets/simply_mirrors/icon.png` (512 × 512, transparent PNG).
+The central publisher requires the same exact-SHA build to have broker-verified success and R2 evidence. It validates the complete collected eight-JAR bundle, checksums, source provenance, versioned notes and CurseForge tags before uploading anything. Fabric uploads require Fabric API; Forge and NeoForge uploads do not add mod dependencies. Client/Server and Java tags are retained.
 
-To release, update `mod_version` in `gradle.properties`, add `changelog/<version>.md`, merge the reviewed change to `main`, and explicitly dispatch the workflow with **publish** enabled. Stable versions upload as release, `-beta` as beta, and `-alpha`/`-dev` as alpha. Automatic main pushes never publish.
+A GitHub draft receives all eight JARs, checksums and receipts. The draft becomes public only after CurseForge confirms all eight upload IDs. Moderation is separate from acceptance of an upload. A pending upload receipt blocks automatic retries after an uncertain response. Confirmed IDs, artifact hashes and per-version state are retained by the central host and encrypted backups.
 
-For a test run, select **Actions → Build and release → Run workflow**, leaving **publish** disabled. This builds, runs all visual tests, and uploads an eight-jar bundle with SHA-256 checksums without requiring CurseForge settings. Explicit manual publication is available on `main` with **publish** enabled, including development versions.
-
-Publication first validates every production jar, its version, assets, loader, Java level, changelog, and CurseForge game-version tags. Missing project ID/token fails clearly before a GitHub release or upload is created. GitHub releases point at the tested commit and contain all eight jars plus `SHA256SUMS`. Fabric uploads declare Fabric API as a required dependency; Forge and NeoForge builds have no additional mod dependencies.
-
-An existing GitHub release stops a rerun, preventing silent replacement or duplicate uploads. A partial CurseForge failure saves successful file IDs in the private R2 `curseforge-upload-receipts` artifact. Inspect it and the project files before a main-branch recovery dispatch with **publish** enabled and **resume_run** set to the failed release run ID. Temporary bundles and receipts expire after seven days; see the [R2 recovery and retention notes](ci-r2-artifacts.md). Do not blindly rerun uploads after a timeout. CurseForge approval is separate from upload success.
-
-API reference: [CurseForge Upload API](https://support.curseforge.com/support/solutions/articles/9000197321).
+See the [central release guide](https://github.com/UpperMoon0/NsTut-CICD/blob/main/jenkins/minecraft-mods/releases.md) for release requests and recovery. Existing GitHub releases and historical Actions/R2 receipts are preserved; they are never silently replaced or automatically imported into a new release.

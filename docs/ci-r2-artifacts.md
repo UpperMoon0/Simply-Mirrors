@@ -1,3 +1,5 @@
+> Release publication has moved to NsTut-CICD. The Actions release/recovery workflow was removed; release namespace and recovery references below describe historical artifacts only. Follow [the current release guide](releasing.md). Existing build/visual/shader fallback artifacts are unchanged.
+
 # Private CI artifacts in Cloudflare R2
 
 The private Standard bucket `nstut-ci-artifacts` stores temporary archives only.

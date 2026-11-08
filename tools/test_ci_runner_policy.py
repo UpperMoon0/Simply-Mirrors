@@ -18,7 +18,7 @@ def jobs(path: Path):
 
 class PrivateFleetCiTests(unittest.TestCase):
     def test_every_executable_job_uses_socketless_portable_linux_pool(self):
-        for workflow in ("build.yml", "visual.yml", "shaders.yml", "release.yml"):
+        for workflow in ("build.yml", "visual.yml", "shaders.yml"):
             with self.subTest(workflow=workflow):
                 source, definitions = jobs(WORKFLOWS / workflow)
                 self.assertNotIn("runs-on: ubuntu-", source)
@@ -40,9 +40,11 @@ class PrivateFleetCiTests(unittest.TestCase):
         for workflow in ("build.yml", "visual.yml", "shaders.yml"):
             source, _ = jobs(WORKFLOWS / workflow)
             self.assertIn("command -v Xvfb", source) if workflow == "visual.yml" or workflow == "shaders.yml" or workflow == "build.yml" else None
-        release, _ = jobs(WORKFLOWS / "release.yml")
-        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.publish", release)
-        self.assertIn("persist-credentials: false", release)
+        self.assertFalse((WORKFLOWS / 'release.yml').exists())
+        for workflow in WORKFLOWS.glob('*.yml'):
+            source = workflow.read_text()
+            self.assertNotIn('tools/release.py publish',source)
+            self.assertNotIn('CURSEFORGE_API_TOKEN',source)
 
 
 if __name__ == "__main__":

@@ -89,6 +89,8 @@ All targets use Complementary Reimagined r5.9.3. Exact artifacts and upstream UR
 
 ## Validation
 
+Jenkins orchestration and GitHub/CurseForge publication are centralized in [NsTut-CICD](https://github.com/UpperMoon0/NsTut-CICD). Publishing requires an explicitly reviewed exact-build request after the complete eight-target acceptance suite succeeds; see [releasing](docs/releasing.md). The source checkout only collects verified artifacts and source provenance.
+
 Shared tests cover reflection vector/matrix parity, inverse transforms, glass projection alignment, oblique wall clipping, and coplanar grouping. Every production artifact is checked for version/loader identity, Java level, block/item resources, mixin metadata, and license notices. The isolated visual workflow launches a disposable dedicated server and client, places an asymmetric red/green/blue fixture behind the player and an opaque wall behind the mirrors, then checks the captured reflection's colors, handedness, completed render passes, creative tab, and OpenGL error state. Artifacts include the capture and logs for each target. The fixture is rebuilt in all six orientations, checking side walls, floors, and ceilings independently of the saved placement direction. Each orientation also exercises angled views and must complete at least 120 reflection frames before capture.
 
 To run one target locally, install Pillow and use `python tools/visual_smoke.py --target fabric-1.20.1`. Linux CI supplies Xvfb and Mesa software rendering. The script refuses to reuse an existing test world. Test probes are compiled into a separate build directory and are rejected by the production packaging check.
