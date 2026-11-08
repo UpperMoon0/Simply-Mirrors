@@ -1,7 +1,7 @@
 """Preserve the existing three Complementary regression gates under Jenkins."""
 import hashlib
 from pathlib import Path
-from ci_process_cleanup import cleanup_owned_processes
+import os
 import subprocess
 import sys
 import urllib.request
@@ -29,13 +29,20 @@ def main():
     cases[-1] += ['--extra-client-mod', str(extra)]
     failures = []
     for case in cases:
-        command = ['xvfb-run', '-a', '-s', '-screen 0 1280x720x24', sys.executable,
-                   'tools/visual_smoke.py', '--target', 'neoforge-1.21.1', '--shaders', '--enclosed'] + case
+        command = [sys.executable, 'tools/visual_smoke.py', '--target',
+                   'neoforge-1.21.1', '--shaders', '--enclosed'] + case
+        if os.name == 'nt':
+            command.append('--interactive-offscreen')
+        else:
+            command = ['xvfb-run', '-a', '-s', '-screen 0 1280x720x24'] + command
         try:
             result = subprocess.run(command, cwd=ROOT, check=False)
         finally:
-            # Each scene may fork detached Gradle/game JVMs; reclaim before the next.
-            cleanup_owned_processes()
+            # Per-case cleanup comes from the reviewed central CI library.
+            runner = ROOT / 'minecraft-ci-portable.py'
+            if os.environ.get('CI_MINECRAFT_JOB_ID') and runner.is_file():
+                subprocess.run([sys.executable, str(runner), 'reap'],
+                               cwd=ROOT, check=True)
         if result.returncode:
             failures.append(case[1])
     # This independent API contract must still run after visual failures.
