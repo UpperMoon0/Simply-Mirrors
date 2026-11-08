@@ -359,6 +359,8 @@ def main():
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
     parser.add_argument("--run-name",help="Isolated test directory prefix")
     parser.add_argument("--shader-pack", type=Path, help="Use an exact local shaderpack ZIP instead of the pinned default")
+    parser.add_argument("--interactive-offscreen", action="store_true",
+                        help="Use the separate native Windows CI graphics desktop; never inject into another session")
     parser.add_argument("--enclosed", action="store_true", help="Build an indoor mirror room (issue #5 regression)")
     parser.add_argument("--check-motion", action="store_true",
                         help="Animate a reflected player swing and verify two real framebuffer captures")
@@ -372,6 +374,8 @@ def main():
                         help="Copy one optional rendering/modpack JAR into the isolated client only (repeatable)")
 
     args=parser.parse_args()
+    if args.interactive_offscreen and (os.name != "nt" or os.environ.get("CI_GRAPHICS_AGENT") != "1"):
+        parser.error("--interactive-offscreen requires a reviewed native Windows graphics agent")
     if args.check_motion and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
         parser.error("--check-motion requires NeoForge 1.21.1 enclosed shader validation")
     if args.check_camera_motion and (args.target!="neoforge-1.21.1" or not args.shaders):
@@ -444,6 +448,13 @@ def main():
             print("Fixture ready; starting client",args.target,flush=True)
             client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
             client_env=os.environ.copy()
+            if args.interactive_offscreen:
+                # Jenkins already runs in a restricted, isolated private desktop.
+                # Inherit that desktop directly; do not use WTS tokens or
+                # CreateProcessAsUser to access the normal user desktop.
+                print("SIMPLY_MIRRORS_VISUAL_PRIVATE_DESKTOP", flush=True)
+                client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS", "") +
+                                                  " -Dsimplymirrors.visualOffscreen=true").strip()
             if args.check_camera_motion:
                 client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
                                                    " -Dsimplymirrors.visualCheckCameraMotion=true").strip()
