@@ -484,8 +484,8 @@ def main():
                         help="Copy one optional rendering/modpack JAR into the isolated client only (repeatable)")
 
     args=parser.parse_args()
-    if args.interactive_offscreen and (os.name!="nt" or args.target!="forge-1.20.1"):
-        parser.error("--interactive-offscreen currently supports Forge 1.20.1 on Windows only")
+    if args.interactive_offscreen and os.name!="nt":
+        parser.error("--interactive-offscreen requires an interactive Windows desktop session")
     if args.check_motion and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
         parser.error("--check-motion requires NeoForge 1.21.1 enclosed shader validation")
     if args.check_camera_motion and (args.target!="neoforge-1.21.1" or not args.shaders):
