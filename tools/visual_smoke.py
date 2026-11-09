@@ -105,36 +105,6 @@ class Rcon:
     def close(self):self.sock.close()
 
 
-class InteractiveVisualProcess:
-    """Windows child process launched into logged-in graphical session."""
-    def __init__(self, pid, handle):
-        self.pid=pid
-        self.handle=handle
-        self.returncode=None
-
-    def poll(self):
-        if self.returncode is not None: return self.returncode
-        import ctypes
-        from ctypes import wintypes
-        code=wintypes.DWORD()
-        if not ctypes.windll.kernel32.GetExitCodeProcess(
-                wintypes.HANDLE(self.handle),ctypes.byref(code)):
-            raise ctypes.WinError()
-        if code.value==259:return None
-        self.returncode=int(code.value)
-        ctypes.windll.kernel32.CloseHandle(wintypes.HANDLE(self.handle))
-        self.handle=0
-        return self.returncode
-
-    def wait(self,timeout=None):
-        deadline=None if timeout is None else time.monotonic()+timeout
-        while True:
-            outcome=self.poll()
-            if outcome is not None:return outcome
-            if deadline is not None and time.monotonic()>deadline:
-                raise subprocess.TimeoutExpired("interactive visual client",timeout)
-            time.sleep(.25)
-
 def stop(process):
     if process is None or process.poll() is not None:return
     if os.name=="nt":subprocess.run(["taskkill","/PID",str(process.pid),"/T","/F"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -579,17 +549,14 @@ def main():
                 # The fixture server and all production/runtime jars are untouched.
                 client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
                                                    " -Dsimplymirrors.visualForceStencil=true").strip()
+            # The graphics worker is already a restricted interactive
+            # process in its dedicated private desktop. Inherit that exact
+            # identity, rather than brokering the logged-in user's WTS token.
+            client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,
+                                    stdout=client_log,stderr=subprocess.STDOUT,
+                                    env=client_env,**creation)
             if args.interactive_offscreen:
-                from fps_benchmark import new_interactive_client
-                extra=(client_env.get("JAVA_TOOL_OPTIONS","")+" -Dsimplymirrors.visualOffscreen=true").strip()
-                pid,handle=new_interactive_client(command+[task_prefix+"runVisualClient"],cwd,
-                            client_dir,evidence/"client-interactive.log",str(__import__("os").environ.get("JAVA_HOME", "")),
-                            java_tool_options=extra)
-                client=InteractiveVisualProcess(pid,handle)
-                print("SIMPLY_MIRRORS_VISUAL_ACTIVE_GPU_CLIENT pid="+str(pid),flush=True)
-            else:
-                client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,
-                                        stderr=subprocess.STDOUT,env=client_env,**creation)
+                print("SIMPLY_MIRRORS_VISUAL_ACTIVE_GPU_CLIENT pid="+str(client.pid),flush=True)
             results={};failures={}
             for scene,face in enumerate(FACES):
                 if scene:
@@ -598,7 +565,7 @@ def main():
                         if any(word in reply for word in ["Unknown","Incorrect","too many blocks"]):raise RuntimeError(f"Fixture failed: {text}: {reply}")
                 activate_scene(rcon,client_dir,scene,client)
                 result=client_dir/f"visual-evidence/result-{scene}.json"
-                client_log_path=evidence/("client-interactive.log" if args.interactive_offscreen else "client.log")
+                client_log_path=evidence/"client.log"
                 wait_for_visual_face(result,face,scene,client,client_dir,evidence,client_log_path)
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
