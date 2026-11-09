@@ -59,23 +59,11 @@ public final class MirrorRenderer {
                 });
         for(MirrorSurface s:selected)
             groups.computeIfAbsent(s.planeKey(),k->new ArrayList<>()).add(s);
-        if(groups.isEmpty())return;
-        boolean shadersActive=ShaderReflection.enabled();
         RenderTarget main=mc.getMainRenderTarget();int passes=0;
         try {
-            // Draw the main frame at native size. Only the reflected-world target
-            // is adaptively scaled; final mirror compositing stays full resolution.
-            int renderWidth=shadersActive?AdaptiveReflectionResolution.width(main.width):main.width;
-            int renderHeight=shadersActive?AdaptiveReflectionResolution.height(main.height):main.height;
-            // Oculus keeps references to native-sized shader history textures.
-            // Never resize the backing FBO: Iris may rebuild and delete those
-            // textures while the snapshot transaction is active. Instead use
-            // a scaled raster viewport inside a native-sized target.
             if(target==null||target.width!=main.width||target.height!=main.height) {
-                if(target!=null)target.destroyBuffers();
-                target=new TextureTarget(main.width,main.height,true,Minecraft.ON_OSX);
+                if(target!=null)target.destroyBuffers();target=new TextureTarget(main.width,main.height,true,Minecraft.ON_OSX);
             }
-            if(shadersActive)AdaptiveReflectionResolution.begin();
             for(List<MirrorSurface> surfaces:groups.values()) {
                 if(passes++>=6)break;
                 MirrorSurface surface=surfaces.get(0);
@@ -101,14 +89,26 @@ public final class MirrorRenderer {
                     // Iris final compositing leaves depth writes disabled; clears obey that mask.
                     RenderSystem.depthMask(true);
                     target.setClearColor(0.615f,0.718f,0.792f,1);target.clear(Minecraft.ON_OSX);target.bindWrite(true);
-                    if(shadersActive)glViewport(0,0,renderWidth,renderHeight);
-                    clipped=ReflectionScissor.begin(vp,eye.x,eye.y,eye.z,renderWidth,renderHeight,surfaces);
+                    clipped=ReflectionScissor.begin(vp,eye.x,eye.y,eye.z,main.width,main.height,surfaces);
                     if(shaders)ShaderReflection.begin(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected,priorFrame.reflect(surface));
                     MirrorGpuProfiler.mark(1);
                     RenderSystem.setProjectionMatrix(projection,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);glFrontFace(GL_CW);
                     // Vanilla camera-cube fitting can loop forever with an oblique near plane.
                     // Cull conservatively with perspective; retain oblique projection for drawing.
-                    mc.levelRenderer.prepareCullFrustum(pose,reflectedEye,mainProjectionMatrix);
+                    // The mirror occupies only a small portion of the frame.
+                    // Prune reflected sections outside its generously padded
+                    // screen rectangle, while leaving draw projection native.
+                    int[] coverageBounds=MirrorCoverage.scissor(vp,eye.x,eye.y,eye.z,
+                            main.width,main.height,surfaces);
+                    boolean cropAllowed=!"false".equalsIgnoreCase(
+                            System.getProperty("simplymirrors.frustumCrop","true"))
+                            && !"false".equalsIgnoreCase(
+                            System.getProperty("simplymirrors.coverageScissor","true"));
+                    Matrix4f cullingProjection=cropAllowed
+                        ?matrix(ReflectionFrustumCrop.crop(array(mainProjectionMatrix),
+                                main.width,main.height,coverageBounds))
+                        :mainProjectionMatrix;
+                    mc.levelRenderer.prepareCullFrustum(pose,reflectedEye,cullingProjection);
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
                     MirrorGpuProfiler.mark(4);
                 } finally {
@@ -120,14 +120,13 @@ public final class MirrorRenderer {
                     mc.getEntityRenderDispatcher().prepare(mc.level,camera,mc.crosshairPickEntity);
                     MirrorGpuProfiler.mark(5);
                 }
-                COMPOSITE.drawMergedBatch(target.getColorTextureId(),main.width,main.height,vp,eye.x,eye.y,eye.z,surfaces,
-                        (float)renderWidth/main.width,(float)renderHeight/main.height);
+                COMPOSITE.drawMergedBatch(target.getColorTextureId(),main.width,main.height,vp,eye.x,eye.y,eye.z,surfaces);
                 MirrorGpuProfiler.mark(6);
                 completedPasses++;
             }
         } catch(RuntimeException exception) {
             failed=true;java.util.logging.Logger.getLogger("simply_mirrors").log(java.util.logging.Level.SEVERE,"Mirror reflection disabled for this world after a rendering error",exception);
-        } finally { if(shadersActive)AdaptiveReflectionResolution.end();redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN); }
+        } finally { redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN); }
     }
     private static boolean visible(MirrorSurface s,float[] vp,Vec3 eye) {
         double[] clip=MirrorMatrices.transform(vp,s.cx-eye.x,s.cy-eye.y,s.cz-eye.z,1);
@@ -149,7 +148,7 @@ public final class MirrorRenderer {
         return surfaces;
     }
     public static void release() {
-        if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;TEMPORAL.reset();COMPOSITE.close();GlTextureSnapshot.releaseScratch();MirrorGpuProfiler.reset();AdaptiveReflectionResolution.reset();
+        if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;TEMPORAL.reset();COMPOSITE.close();GlTextureSnapshot.releaseScratch();MirrorGpuProfiler.reset();
     }
     private static float[] array(Matrix4f matrix) { return matrix.get(new float[16]); }
     private static Matrix4f matrix(float[] values) { return new Matrix4f().set(values); }
