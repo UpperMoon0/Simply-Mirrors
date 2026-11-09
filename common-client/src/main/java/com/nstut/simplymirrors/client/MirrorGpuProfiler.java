@@ -17,6 +17,8 @@ import static org.lwjgl.opengl.GL33.*;
  * Timeline: [0] reflection start, [1] shader history capture,
  * [2] Oculus shadow+prepare begin, [3] shadow+prepare end,
  * [4] world render end, [5] history restoration, [6] compositing.
+ * [7..10] optional shader pipeline stage boundaries: translucent begin/end,
+ * final begin/end. These extra samples never change game rendering.
  */
 public final class MirrorGpuProfiler {
     private static final boolean ENABLED = Boolean.getBoolean("simplymirrors.gpuProfile");
@@ -36,7 +38,7 @@ public final class MirrorGpuProfiler {
     }
 
     public static void mark(int stage) {
-        if (!ENABLED || current == null || stage < 0 || stage > 6) return;
+        if (!ENABLED || current == null || stage < 0 || stage > 10) return;
         if (current.queries[stage] != 0) return;
         int query = glGenQueries();
         current.queries[stage] = query;
@@ -50,6 +52,10 @@ public final class MirrorGpuProfiler {
 
     public static void shadowBegin() { mark(2); }
     public static void shadowEnd() { mark(3); }
+    public static void translucentBegin() { mark(7); }
+    public static void translucentEnd() { mark(8); }
+    public static void finalizeBegin() { mark(9); }
+    public static void finalizeEnd() { mark(10); }
 
     private static void poll() {
         while (!PENDING.isEmpty()) {
@@ -57,13 +63,22 @@ public final class MirrorGpuProfiler {
             if (glGetQueryObjecti(first.queries[6], GL_QUERY_RESULT_AVAILABLE) == GL_FALSE) break;
             PENDING.removeFirst();
             try {
-                long[] ticks = new long[7];
+                long[] ticks = new long[11];
                 boolean valid = true;
-                for (int i = 0; i < 7; i++) {
-                    if (first.queries[i] == 0) { valid = false; break; }
+                for (int i = 0; i < 11; i++) {
+                    if (first.queries[i] == 0) {
+                        if (i < 7) valid = false;
+                        continue;
+                    }
+                    // The last composite query is complete before the others are read.
                     ticks[i] = glGetQueryObjectui64(first.queries[i], GL_QUERY_RESULT);
-                    if (i > 0 && ticks[i] < ticks[i - 1]) valid = false;
                 }
+                for (int i = 1; i <= 6; i++) if (ticks[i] < ticks[i - 1]) valid = false;
+                boolean segments = true;
+                for (int i = 7; i <= 10; i++) if (ticks[i] == 0) segments = false;
+                if (segments && !(ticks[1] <= ticks[7] && ticks[7] <= ticks[8] &&
+                        ticks[8] <= ticks[9] && ticks[9] <= ticks[10] && ticks[10] <= ticks[4]))
+                    segments = false;
                 if (!valid) continue;
                 double[] values = new double[] {
                     ms(ticks[1]-ticks[0]), // begin snapshot
@@ -71,14 +86,19 @@ public final class MirrorGpuProfiler {
                     ms(ticks[3]-ticks[2]), // Oculus shadow+prepare
                     ms(ticks[5]-ticks[4]), // restore history
                     ms(ticks[6]-ticks[5]), // composite
-                    ms(ticks[6]-ticks[0])  // entire reflection
+                    ms(ticks[6]-ticks[0]), // entire reflection
+                    segments ? ms(ticks[7]-ticks[1]) : Double.NaN, // opaque + early
+                    segments ? ms(ticks[8]-ticks[7]) : Double.NaN, // begin translucents
+                    segments ? ms(ticks[9]-ticks[8]) : Double.NaN, // translucent work
+                    segments ? ms(ticks[10]-ticks[9]) : Double.NaN // final shader stage
                 };
                 SAMPLES.add(values);
                 processed++;
                 if (SAMPLES.size() >= 90) {
                     System.out.printf(Locale.ROOT,
-                        "SIMPLY_MIRRORS_GPU_PROFILE frames=%d gpuCaptureMs=%.3f gpuWorldMs=%.3f gpuShadowsAndPrepareMs=%.3f gpuRestoreMs=%.3f gpuCompositeMs=%.3f gpuTotalMs=%.3f%n",
-                        processed, median(0), median(1), median(2), median(3), median(4), median(5));
+                        "SIMPLY_MIRRORS_GPU_PROFILE frames=%d gpuCaptureMs=%.3f gpuWorldMs=%.3f gpuShadowsAndPrepareMs=%.3f gpuRestoreMs=%.3f gpuCompositeMs=%.3f gpuTotalMs=%.3f gpuOpaqueEarlyMs=%.3f gpuDeferredBeginMs=%.3f gpuTranslucentMs=%.3f gpuFinalizeMs=%.3f%n",
+                        processed, median(0), median(1), median(2), median(3), median(4), median(5),
+                        medianOrMissing(6), medianOrMissing(7), medianOrMissing(8), medianOrMissing(9));
                     SAMPLES.clear();
                 }
             } finally {
@@ -96,6 +116,13 @@ public final class MirrorGpuProfiler {
         Collections.sort(series);
         return series.get(series.size()/2);
     }
+    private static double medianOrMissing(int column) {
+        List<Double> series = new ArrayList<Double>();
+        for (double[] values : SAMPLES) if (!Double.isNaN(values[column])) series.add(values[column]);
+        if (series.isEmpty()) return -1.0;
+        Collections.sort(series);
+        return series.get(series.size()/2);
+    }
     private static double ms(long ns) { return ns / 1_000_000.0; }
 
     public static void reset() {
@@ -106,8 +133,8 @@ public final class MirrorGpuProfiler {
     }
 
     private static final class Frame {
-        final int[] queries = new int[7];
-        final long[] cpu = new long[7];
+        final int[] queries = new int[11];
+        final long[] cpu = new long[11];
         void release() {
             for (int query : queries) if (query != 0) glDeleteQueries(query);
         }
