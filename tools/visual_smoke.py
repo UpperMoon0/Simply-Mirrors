@@ -64,7 +64,24 @@ def scene_file(client_dir,scene):
                 raise
             time.sleep(0.05)
 
-def activate_scene(rcon,client_dir,scene,client,timeout=600):
+class VisualClientDisconnected(RuntimeError):
+    """The disposable client explicitly reached the disconnection screen."""
+
+
+def disconnected_during_login(log_path, offset=0):
+    """Inspect only this client's fresh launch output, never an older attempt."""
+    if not log_path.is_file():
+        return False
+    with log_path.open("rb") as stream:
+        size = stream.seek(0, os.SEEK_END)
+        if size <= offset:
+            return False
+        stream.seek(max(offset, size - 32768))
+        fresh = stream.read().decode("utf-8", errors="replace")
+    return "SIMPLY_MIRRORS_VISUAL_STAGE net.minecraft.client.gui.screens.DisconnectedScreen" in fresh
+
+
+def activate_scene(rcon,client_dir,scene,client,timeout=600,client_log_path=None,log_offset=0):
     # Do not let the client pose a new scene until the server has authorized its
     # position. Client-only teleports can trigger movement corrections mid-capture.
     command="tp @a "+" ".join(map(str,POSES[scene]))
@@ -76,8 +93,50 @@ def activate_scene(rcon,client_dir,scene,client,timeout=600):
             scene_file(client_dir,scene)
             return
         if "Incorrect" in reply or "Unknown" in reply:raise RuntimeError(f"Scene teleport failed: {reply}")
+        # A real Minecraft DisconnectedScreen never retries on its own. Only
+        # the initial login may be restarted; in-game visual failures remain
+        # hard failures rather than being masked by a new client.
+        if scene == 0 and client_log_path and disconnected_during_login(client_log_path, log_offset):
+            raise VisualClientDisconnected("Disposable Minecraft client disconnected before joining the server")
         time.sleep(1)
     raise TimeoutError(f"No player joined for scene {FACES[scene]}")
+
+
+def launch_initial_visual_client(rcon, client_dir, command, cwd, client_log,
+                                 client_env, creation, evidence, log_path):
+    """Retry exactly one explicit *login* disconnection, never a render failure.
+
+    Each attempt is a new test-owned child under the same restricted graphics
+    desktop. A retry still needs six fresh in-game captures to pass.
+    """
+    for attempt in range(2):
+        client_log.flush()
+        offset = log_path.stat().st_size if log_path.exists() else 0
+        client = subprocess.Popen(command, cwd=cwd, stdout=client_log,
+                                  stderr=subprocess.STDOUT, env=client_env,
+                                  **creation)
+        print("SIMPLY_MIRRORS_VISUAL_CLIENT_LAUNCH attempt="+str(attempt+1)+
+              " pid="+str(client.pid), flush=True)
+        try:
+            activate_scene(rcon,client_dir,0,client,client_log_path=log_path,
+                           log_offset=offset)
+            return client
+        except VisualClientDisconnected:
+            print("SIMPLY_MIRRORS_VISUAL_LOGIN_DISCONNECTED attempt="+str(attempt+1),
+                  flush=True)
+            # Preserve the initial failed client log, scoped to this fixture.
+            with log_path.open("rb") as source:
+                source.seek(offset)
+                excerpt = source.read()[-32768:]
+            (evidence / ("login-disconnect-attempt-"+str(attempt+1)+".log")).write_bytes(excerpt)
+            stop(client)
+            if attempt == 1:
+                raise
+            scene_file(client_dir,-1)
+        except BaseException:
+            stop(client)
+            raise
+    raise AssertionError("Unreachable initial visual client retry state")
 
 def free_port():
     with socket.socket() as sock:
@@ -552,9 +611,9 @@ def main():
             # The graphics worker is already a restricted interactive
             # process in its dedicated private desktop. Inherit that exact
             # identity, rather than brokering the logged-in user's WTS token.
-            client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,
-                                    stdout=client_log,stderr=subprocess.STDOUT,
-                                    env=client_env,**creation)
+            client=launch_initial_visual_client(
+                rcon,client_dir,command+[task_prefix+"runVisualClient"],cwd,
+                client_log,client_env,creation,evidence,evidence/"client.log")
             if args.interactive_offscreen:
                 print("SIMPLY_MIRRORS_VISUAL_ACTIVE_GPU_CLIENT pid="+str(client.pid),flush=True)
             results={};failures={}
@@ -563,7 +622,7 @@ def main():
                     for text in fixture(scene,args.enclosed):
                         reply=rcon.command(text)
                         if any(word in reply for word in ["Unknown","Incorrect","too many blocks"]):raise RuntimeError(f"Fixture failed: {text}: {reply}")
-                activate_scene(rcon,client_dir,scene,client)
+                    activate_scene(rcon,client_dir,scene,client)
                 result=client_dir/f"visual-evidence/result-{scene}.json"
                 client_log_path=evidence/"client.log"
                 wait_for_visual_face(result,face,scene,client,client_dir,evidence,client_log_path)
