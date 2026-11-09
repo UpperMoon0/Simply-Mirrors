@@ -18,7 +18,7 @@ import sys
 import time
 
 from shader_stack import prepare, install_pack
-from visual_smoke import Rcon, fixture, free_port, scene_file
+from visual_smoke import Rcon, fixture, free_port, scene_file, disconnected_during_login
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = [(7, "no-mirror"), (8, "one-mirror"), (9, "nine-coplanar-mirrors")]
@@ -161,8 +161,18 @@ def main():
     parser.add_argument("--run-name", default="fps-" + str(int(time.time())))
     parser.add_argument("--rounds", type=int, default=1, help="1-5 alternating trial rounds")
     parser.add_argument("--profile-gpu", action="store_true", help="Enable asynchronous GPU timestamp stage profiling")
+    parser.add_argument("--rcon-timeout", type=int, default=5,
+                        help="RCON response timeout in seconds for resource-contended test hosts")
+    parser.add_argument("--startup-timeout", type=int, default=600,
+                        help="Bounded server/client startup timeout in seconds (default 600)")
     parser.add_argument("--disable-coverage-scissor", action="store_true", help="Control run with coverage optimization disabled")
+    parser.add_argument("--render-distance", type=int, choices=[4, 8, 12], default=4,
+                        help="Native benchmark viewport distance; use 12 for realistic 1080p")
     args = parser.parse_args()
+    if not 5 <= args.rcon_timeout <= 120:
+        parser.error("--rcon-timeout must be in [5, 120]")
+    if not 120 <= args.startup_timeout <= 1800:
+        parser.error("--startup-timeout must be in [120, 1800]")
     if not 1 <= args.rounds <= 5:
         parser.error("--rounds must be in [1, 5]")
     if not (640 <= args.width <= 2560 and 360 <= args.height <= 1440):
@@ -186,7 +196,7 @@ def main():
         _, pack = prepare(args.target, args.shader_cache.resolve())
         install_pack(client, pack, loader="forge")
         (client / "options.txt").write_text(
-            "renderDistance:4\nmaxFps:260\nenableVsync:false\n"
+            f"renderDistance:{args.render_distance}\nmaxFps:260\nenableVsync:false\n"
             "pauseOnLostFocus:false\nfullscreen:false\n"
             "graphicsMode:0\n", encoding="utf-8")
         port = free_port()
@@ -203,8 +213,8 @@ def main():
             "force-gamemode": "true",
             "allow-flight": "true",
             "spawn-protection": 0,
-            "view-distance": 4,
-            "simulation-distance": 4,
+            "view-distance": args.render_distance,
+            "simulation-distance": args.render_distance,
             "level-name": "fps-visual-world",
             "level-type": "minecraft:flat",
             "max-players": 2,
@@ -240,12 +250,13 @@ def main():
                 cwd=root, stdout=stream, stderr=subprocess.STDOUT,
                 creationflags=subprocess.CREATE_NO_WINDOW, env=env)
         print("FPS_STAGE server starting", flush=True)
-        until = time.monotonic() + 600
+        until = time.monotonic() + args.startup_timeout
         while time.monotonic() < until:
             if server.poll() is not None:
                 raise RuntimeError("Server exited:\n" + server_log.read_text(errors="replace")[-9000:])
             try:
                 rcon = Rcon(rcon_port)
+                rcon.sock.settimeout(args.rcon_timeout)
                 break
             except (OSError, ConnectionError):
                 time.sleep(.7)
@@ -265,26 +276,49 @@ def main():
                                           "white_concrete")
             require_command(rcon, command)
         system_gpu(evidence, "before")
-        client_process = start_private_graphics_client(
-            base + ["-PmirrorsShaderStack=" + str(args.shader_cache.resolve()),
-                    ":forge-1.20.1:runVisualClient"],
-            root, client_log, args.java_home, args.profile_gpu,
-            not args.disable_coverage_scissor)
-        print("FPS_STAGE client launched private-GPU PID=" + str(client_process.pid), flush=True)
-        # RCON accepts the teleport only after an actual client has joined.
+        client_command = base + ["-PmirrorsShaderStack=" + str(args.shader_cache.resolve()),
+                                 ":forge-1.20.1:runVisualClient"]
+        # Only a fresh initial login disconnection may be retried, once.
+        # Never retry shader validation, missing reflections or a bad capture.
         joined = False
-        until = time.monotonic() + 600
-        while time.monotonic() < until:
-            if client_process.poll() is not None:
-                raise RuntimeError("Client did not connect:\n" +
-                                   client_log.read_text(errors="replace")[-8000:])
-            response = rcon.command("tp @a 0.5 65 -3.5 0 0")
-            if "Teleported" in response:
-                joined = True
+        for attempt in range(2):
+            client_process = start_private_graphics_client(
+                client_command, root, client_log, args.java_home, args.profile_gpu,
+                not args.disable_coverage_scissor)
+            print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
+                  " PID=" + str(client_process.pid), flush=True)
+            deadline = time.monotonic() + args.startup_timeout
+            disconnected = False
+            while time.monotonic() < deadline:
+                if client_process.poll() is not None:
+                    raise RuntimeError("Client exited before joining server:\n" +
+                                       client_log.read_text(errors="replace")[-8000:])
+                response = rcon.command("tp @a 0.5 65 -3.5 0 0")
+                if "Teleported" in response:
+                    joined = True
+                    break
+                if disconnected_during_login(client_log):
+                    print("FPS_STAGE login disconnected attempt=" + str(attempt + 1), flush=True)
+                    (evidence / ("login-disconnect-attempt-" + str(attempt + 1) + ".log")).write_bytes(
+                        client_log.read_bytes()[-32768:])
+                    stop_tree(client_process.pid)
+                    try:
+                        client_process.wait(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        raise RuntimeError("Benchmark-owned disconnected client did not stop")
+                    client_process = None
+                    disconnected = True
+                    break
+                time.sleep(1)
+            if joined:
                 break
-            time.sleep(1)
+            if not disconnected:
+                raise TimeoutError("Minecraft graphical client did not join the local server")
+            if attempt == 1:
+                raise RuntimeError("Both isolated Minecraft clients disconnected during initial login")
+            scene_file(client, -1)
         if not joined:
-            raise TimeoutError("Minecraft graphical client did not join the local server")
+            raise RuntimeError("No verified initial benchmark login")
         results = []
         for round_index in range(args.rounds):
             order = CASES if round_index % 2 == 0 else list(reversed(CASES))
@@ -360,6 +394,9 @@ def main():
             label: {
                 "medianAvgFps": round(statistics.median(r["averageFps"] for r in trials), 3),
                 "medianP95FrameMs": round(statistics.median(r["p95FrameMs"] for r in trials), 3),
+                "medianP99FrameMs": round(statistics.median(
+                    sorted(r["frameIntervalsNs"])[max(0, (len(r["frameIntervalsNs"]) * 99 // 100) - 1)]
+                    / 1_000_000 for r in trials), 3),
                 "fpsChangePctVsPairedBaseline": round(statistics.median(
                     rr["fpsChangePct"][label] for rr in rounds), 2),
                 "trialAvgFps": [r["averageFps"] for r in trials],
@@ -375,6 +412,7 @@ def main():
             "modBranch": subprocess.check_output(["git", "rev-parse", "HEAD"],
                                                    cwd=root, text=True).strip(),
             "resolution": f"{args.width}x{args.height}",
+            "renderDistance": args.render_distance,
             "coverageScissorEnabled": not args.disable_coverage_scissor,
             "stages": comparison,
             "rounds": rounds,
