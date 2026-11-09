@@ -74,6 +74,10 @@ public final class ShaderReflection {
         }
     }
     public static boolean reflecting() { return cameraUniforms!=null; }
+    /** Fullscreen postprocessing may be clipped only outside shadow/global passes. */
+    public static boolean canClipShaderPass() {
+        return cameraUniforms!=null && suspensions==0;
+    }
     public static void beforeUniforms() {
         if(capturedCamera==null)return;
         // A program first seen in a reflection must initialize previous-frame suppliers
