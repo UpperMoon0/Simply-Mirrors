@@ -42,7 +42,7 @@ tasks.named('compileShaderGlTestJava') {
 }
 tasks.register('shaderHistoryGlTest', JavaExec) {
     group = 'verification'
-    description = 'Checks native shader history isolation with the host's real OpenGL context.'
+    description = 'Checks native shader history isolation in a real OpenGL context.'
     dependsOn tasks.named('shaderGlTestClasses')
     classpath = sourceSets.shaderGlTest.runtimeClasspath
     mainClass = 'com.nstut.simplymirrors.client.ShaderHistoryGlTest'
