@@ -99,8 +99,8 @@ public final class MirrorRenderer {
                     // The actual projection, framebuffer, viewport and shader history remain native.
                     int[] coverageBounds=MirrorCoverage.scissor(vp,eye.x,eye.y,eye.z,
                             main.width,main.height,surfaces);
-                    boolean cropAllowed=!"false".equalsIgnoreCase(
-                            System.getProperty("simplymirrors.frustumCrop","true"))
+                    // The 1080p shader A/B showed no reproducible gain; retain only opt-in diagnostics.
+                    boolean cropAllowed=Boolean.getBoolean("simplymirrors.frustumCrop")
                             && !"false".equalsIgnoreCase(
                             System.getProperty("simplymirrors.coverageScissor","true"));
                     Matrix4f cullingProjection=cropAllowed
