@@ -164,12 +164,16 @@ def main():
     parser.add_argument("--run-name", default="fps-" + str(int(time.time())))
     parser.add_argument("--rounds", type=int, default=1, help="1-5 alternating trial rounds")
     parser.add_argument("--profile-gpu", action="store_true", help="Enable asynchronous GPU timestamp stage profiling")
+    parser.add_argument("--startup-timeout", type=int, default=600,
+                        help="Bounded server/client startup timeout in seconds (default 600)")
     parser.add_argument("--disable-coverage-scissor", action="store_true", help="Control run with coverage optimization disabled")
     parser.add_argument("--reflection-scale", choices=["auto", "0.5", "0.75", "1.0"], default="auto",
                         help="Measure adaptive resolution or a fixed control scale")
     parser.add_argument("--render-distance", type=int, choices=[4, 8, 12], default=4,
                         help="Native benchmark viewport distance; use 12 for realistic 1080p")
     args = parser.parse_args()
+    if not 120 <= args.startup_timeout <= 1800:
+        parser.error("--startup-timeout must be in [120, 1800]")
     if not 1 <= args.rounds <= 5:
         parser.error("--rounds must be in [1, 5]")
     if not (640 <= args.width <= 2560 and 360 <= args.height <= 1440):
@@ -247,7 +251,7 @@ def main():
                 cwd=root, stdout=stream, stderr=subprocess.STDOUT,
                 creationflags=subprocess.CREATE_NO_WINDOW, env=env)
         print("FPS_STAGE server starting", flush=True)
-        until = time.monotonic() + 600
+        until = time.monotonic() + args.startup_timeout
         while time.monotonic() < until:
             if server.poll() is not None:
                 raise RuntimeError("Server exited:\n" + server_log.read_text(errors="replace")[-9000:])
@@ -281,7 +285,7 @@ def main():
         print("FPS_STAGE client launched private-GPU PID=" + str(client_process.pid), flush=True)
         # RCON accepts the teleport only after an actual client has joined.
         joined = False
-        until = time.monotonic() + 600
+        until = time.monotonic() + args.startup_timeout
         while time.monotonic() < until:
             if client_process.poll() is not None:
                 raise RuntimeError("Client did not connect:\n" +
