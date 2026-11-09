@@ -64,8 +64,12 @@ public final class GlMirrorComposite implements AutoCloseable {
     }
     /** Merge adjacent unit faces into exact rectangle coverage; retain the full-resolution texture. */
     public void drawMergedBatch(int texture,int width,int height,float[] viewProjection,double eyeX,double eyeY,double eyeZ,List<MirrorSurface> surfaces) {
+        drawMergedBatch(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,surfaces,1.0f,1.0f);
+    }
+    /** Preserve native shader buffers while sampling a reduced viewport. */
+    public void drawMergedBatch(int texture,int width,int height,float[] viewProjection,double eyeX,double eyeY,double eyeZ,List<MirrorSurface> surfaces,float sampleScaleX,float sampleScaleY) {
         if(surfaces.size()<16) {
-            drawGeometry(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,surfaces,true);
+            drawGeometry(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,surfaces,true,sampleScaleX,sampleScaleY);
         } else {
             String key=surfaces.get(0).planeKey();
             CachedMesh cached=meshes.get(key);
@@ -76,10 +80,13 @@ public final class GlMirrorComposite implements AutoCloseable {
             } else {
                 meshCacheHits++;
             }
-            drawGeometry(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,cached.patches,true);
+            drawGeometry(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,cached.patches,true,sampleScaleX,sampleScaleY);
         }
     }
     private void drawGeometry(int texture,int width,int height,float[] viewProjection,double eyeX,double eyeY,double eyeZ,List<? extends MirrorGeometry> surfaces,boolean persistent) {
+        drawGeometry(texture,width,height,viewProjection,eyeX,eyeY,eyeZ,surfaces,persistent,1.0f,1.0f);
+    }
+    private void drawGeometry(int texture,int width,int height,float[] viewProjection,double eyeX,double eyeY,double eyeZ,List<? extends MirrorGeometry> surfaces,boolean persistent,float sampleScaleX,float sampleScaleY) {
         if(surfaces.isEmpty())return;
         if(program==0) initialize();
         int oldProgram=glGetInteger(GL_CURRENT_PROGRAM),oldVao=glGetInteger(GL_VERTEX_ARRAY_BINDING),oldBuffer=glGetInteger(GL_ARRAY_BUFFER_BINDING);
@@ -104,7 +111,7 @@ public final class GlMirrorComposite implements AutoCloseable {
                 }
             }
             vertices.flip();glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LEQUAL);glDepthMask(false);glDisable(GL_CULL_FACE);glDisable(GL_BLEND);
-            glUseProgram(program);glUniform1i(glGetUniformLocation(program,"Reflection"),0);glUniform2f(glGetUniformLocation(program,"Size"),width,height);
+            glUseProgram(program);glUniform1i(glGetUniformLocation(program,"Reflection"),0);glUniform2f(glGetUniformLocation(program,"Size"),width,height);glUniform2f(glGetUniformLocation(program,"SampleScale"),sampleScaleX,sampleScaleY);
             glBindTexture(GL_TEXTURE_2D,texture);glBindVertexArray(vao);glBindBuffer(GL_ARRAY_BUFFER,vbo);glBufferData(GL_ARRAY_BUFFER,vertices,GL_STREAM_DRAW);
             glDrawArrays(GL_TRIANGLES,0,Math.multiplyExact(surfaces.size(),6));
         } finally {
@@ -116,7 +123,7 @@ public final class GlMirrorComposite implements AutoCloseable {
     private static void set(int state,boolean enabled) { if(enabled)glEnable(state);else glDisable(state); }
     private void initialize() {
         int vertex=shader(GL_VERTEX_SHADER,"#version 150\nin vec4 Position;void main(){gl_Position=Position;}");
-        int fragment=shader(GL_FRAGMENT_SHADER,"#version 150\nuniform sampler2D Reflection;uniform vec2 Size;out vec4 FragColor;void main(){FragColor=texture(Reflection,gl_FragCoord.xy/Size);}");
+        int fragment=shader(GL_FRAGMENT_SHADER,"#version 150\nuniform sampler2D Reflection;uniform vec2 Size;uniform vec2 SampleScale;out vec4 FragColor;void main(){FragColor=texture(Reflection,(gl_FragCoord.xy/Size)*SampleScale);}");
         int oldVao=glGetInteger(GL_VERTEX_ARRAY_BINDING),oldBuffer=glGetInteger(GL_ARRAY_BUFFER_BINDING);
         try {
             program=glCreateProgram();glAttachShader(program,vertex);glAttachShader(program,fragment);glBindAttribLocation(program,0,"Position");glLinkProgram(program);
