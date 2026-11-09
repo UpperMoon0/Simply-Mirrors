@@ -164,6 +164,8 @@ def main():
     parser.add_argument("--run-name", default="fps-" + str(int(time.time())))
     parser.add_argument("--rounds", type=int, default=1, help="1-5 alternating trial rounds")
     parser.add_argument("--profile-gpu", action="store_true", help="Enable asynchronous GPU timestamp stage profiling")
+    parser.add_argument("--rcon-timeout", type=int, default=5,
+                        help="RCON response timeout in seconds for resource-contended test hosts")
     parser.add_argument("--startup-timeout", type=int, default=600,
                         help="Bounded server/client startup timeout in seconds (default 600)")
     parser.add_argument("--disable-coverage-scissor", action="store_true", help="Control run with coverage optimization disabled")
@@ -172,6 +174,8 @@ def main():
     parser.add_argument("--render-distance", type=int, choices=[4, 8, 12], default=4,
                         help="Native benchmark viewport distance; use 12 for realistic 1080p")
     args = parser.parse_args()
+    if not 5 <= args.rcon_timeout <= 120:
+        parser.error("--rcon-timeout must be in [5, 120]")
     if not 120 <= args.startup_timeout <= 1800:
         parser.error("--startup-timeout must be in [120, 1800]")
     if not 1 <= args.rounds <= 5:
@@ -257,6 +261,7 @@ def main():
                 raise RuntimeError("Server exited:\n" + server_log.read_text(errors="replace")[-9000:])
             try:
                 rcon = Rcon(rcon_port)
+                rcon.sock.settimeout(args.rcon_timeout)
                 break
             except (OSError, ConnectionError):
                 time.sleep(.7)
