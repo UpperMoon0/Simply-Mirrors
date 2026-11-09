@@ -24,10 +24,20 @@ ROOT = Path(__file__).resolve().parents[1]
 CASES = [(7, "no-mirror"), (8, "one-mirror"), (9, "nine-coplanar-mirrors")]
 
 
+def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = True,
+                          frustum_crop: bool = False) -> str:
+    """Build explicit shader A/B toggles; never enable experimental culling by default."""
+    return ("-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
+            (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
+            (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "") +
+            (" -Dsimplymirrors.frustumCrop=true" if frustum_crop else ""))
+
+
 def start_private_graphics_client(command: list[str], work: Path, log_path: Path,
                                   java_home: str, gpu_profile: bool = False,
                                   coverage_scissor: bool = True,
-                                  java_tool_options: str | None = None) -> subprocess.Popen:
+                                  java_tool_options: str | None = None,
+                                  frustum_crop: bool = False) -> subprocess.Popen:
     """Launch directly under the verified restricted Windows graphics worker.
 
     Never query an interactive user's WTS token or use CreateProcessAsUser.
@@ -41,9 +51,7 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
     env["JAVA_HOME"] = java_home
     env["PATH"] = str(Path(java_home) / "bin") + os.pathsep + env.get("PATH", "")
     env["JAVA_TOOL_OPTIONS"] = (java_tool_options if java_tool_options is not None else
-        "-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
-        (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
-        (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else ""))
+                                graphics_java_options(gpu_profile, coverage_scissor, frustum_crop))
     with log_path.open("wb") as stream:
         return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
                                 stderr=subprocess.STDOUT,
@@ -166,6 +174,8 @@ def main():
     parser.add_argument("--startup-timeout", type=int, default=600,
                         help="Bounded server/client startup timeout in seconds (default 600)")
     parser.add_argument("--disable-coverage-scissor", action="store_true", help="Control run with coverage optimization disabled")
+    parser.add_argument("--enable-frustum-crop", action="store_true",
+                        help="Opt in to experimental reflection-section culling; default is off")
     parser.add_argument("--render-distance", type=int, choices=[4, 8, 12], default=4,
                         help="Native benchmark viewport distance; use 12 for realistic 1080p")
     args = parser.parse_args()
@@ -284,7 +294,7 @@ def main():
         for attempt in range(2):
             client_process = start_private_graphics_client(
                 client_command, root, client_log, args.java_home, args.profile_gpu,
-                not args.disable_coverage_scissor)
+                not args.disable_coverage_scissor, frustum_crop=args.enable_frustum_crop)
             print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
                   " PID=" + str(client_process.pid), flush=True)
             deadline = time.monotonic() + args.startup_timeout
@@ -414,6 +424,7 @@ def main():
             "resolution": f"{args.width}x{args.height}",
             "renderDistance": args.render_distance,
             "coverageScissorEnabled": not args.disable_coverage_scissor,
+            "frustumCropEnabled": args.enable_frustum_crop,
             "stages": comparison,
             "rounds": rounds,
             "imageChecks": checks,
