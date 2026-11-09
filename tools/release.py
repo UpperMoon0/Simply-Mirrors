@@ -1,23 +1,17 @@
-"""Verify release artifacts and publish using the CurseForge Upload API.
+"""Collect verified release artifacts for the centralized NsTut-CICD publisher.
 
 API reference: https://support.curseforge.com/support/solutions/articles/9000197321
-No uploads occur during collect, plan, or preflight.
+This repository never performs release uploads.
 """
 from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
-import urllib.error
-import urllib.request
-import uuid
 from verify_artifact import ROOT, TARGETS, verify
 
-API = "https://minecraft.curseforge.com/api"
 
 def version(text=None):
     text = (ROOT / "gradle.properties").read_text() if text is None else text
@@ -53,96 +47,6 @@ def collect(source, output):
     (output / "SHA256SUMS").write_text("\n".join(sums) + "\n")
     print(f"Verified and collected all {len(jars)} jars for {v}")
 
-def plan(env):
-    v = version()
-    publish = False
-    # A version bump on main is not authorization to release binaries.
-    # Publishing requires an explicit workflow_dispatch request on main.
-    if env.get("GITHUB_REF") == "refs/heads/main" and env.get("EVENT_NAME") == "workflow_dispatch":
-        publish = env.get("REQUEST_PUBLISH") == "true"
-    return {"version": v, "release_type": release_type(v), "publish": str(publish).lower()}
-
-def settings():
-    project = os.environ.get("CURSEFORGE_PROJECT_ID", "")
-    token = os.environ.get("CURSEFORGE_API_TOKEN", "")
-    if not project.isdigit() or int(project) <= 0:
-        raise ValueError("Set repository variable CURSEFORGE_PROJECT_ID to Simply Mirrors' project ID")
-    if not token:
-        raise ValueError("Set repository secret CURSEFORGE_API_TOKEN")
-    return project, token
-
-def request(path, token, data=None, content_type=None):
-    headers = {"X-Api-Token": token, "User-Agent": "Simply-Mirrors-release"}
-    if content_type:
-        headers["Content-Type"] = content_type
-    req = urllib.request.Request(API + path, data=data, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=120) as response:
-            return json.load(response)
-    except urllib.error.HTTPError as error:
-        detail = error.read(4096).decode("utf-8", errors="replace").replace(token, "[redacted]")
-        raise RuntimeError(f"CurseForge request {path} failed: HTTP {error.code}: {detail}") from None
-
-def metadata(info, v):
-    loader = {"fabric": "Fabric", "forge": "Forge", "neoforge": "NeoForge"}[info["loader"]]
-    relations = [{"slug": "fabric-api", "type": "requiredDependency"}] if info["loader"] == "fabric" else []
-    result = {
-        "displayName": f"Simply Mirrors {v} - {loader} {info['minecraft']}",
-        "changelog": (ROOT / "changelog" / f"{v}.md").read_text(),
-        "changelogType": "markdown", "releaseType": release_type(v),
-        "gameVersionNames": [info["minecraft"], loader, f"Java {info['java']}", "Client", "Server"],
-    }
-    if relations:
-        result["relations"] = {"projects": relations}
-    return result
-
-def preflight(source):
-    project, token = settings()
-    v = version()
-    available = {entry["name"] for entry in request("/game/versions", token)}
-    for target, info in TARGETS.items():
-        verify(source / expected_name(target, v), info)
-        missing = set(metadata(info, v)["gameVersionNames"]) - available
-        if missing:
-            raise ValueError(f"Unrecognized CurseForge tags for {target}: {sorted(missing)}")
-    print(f"CurseForge setup and all eight artifacts/tags verified for project {project}")
-    return project, token
-
-def multipart(meta, path):
-    boundary = "SimplyMirrors" + uuid.uuid4().hex
-    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"metadata\"\r\n\r\n" + json.dumps(meta) +
-            f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{path.name}\"\r\n" +
-            "Content-Type: application/java-archive\r\n\r\n").encode()
-    return body + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode(), f"multipart/form-data; boundary={boundary}"
-
-def publish(source, resume=False):
-    project, token = preflight(source)
-    receipts = source / "curseforge-receipts.json"
-    if receipts.exists() and not resume:
-        raise ValueError("Upload receipts already exist; inspect them before resuming to avoid duplicate uploads")
-    if resume:
-        result = json.loads(receipts.read_text())
-        if (result.get("project") != project or result.get("version") != version()
-                or not isinstance(result.get("files"), dict)
-                or any(t not in TARGETS or type(i) is not int or i <= 0 for t, i in result["files"].items())):
-            raise ValueError("Receipt project, version, targets, or file IDs do not match this release")
-    else:
-        result = {"project": project, "version": version(), "files": {}}
-    receipts.write_text(json.dumps(result, indent=2) + "\n")
-    # No automatic retries: a network timeout may happen after a successful upload.
-    for target, info in TARGETS.items():
-        if target in result["files"]:
-            print(f"Keeping {target}: CurseForge file {result['files'][target]}")
-            continue
-        path = source / expected_name(target, version())
-        body, content_type = multipart(metadata(info, version()), path)
-        response = request(f"/projects/{project}/upload-file", token, body, content_type)
-        file_id = response["id"]
-        if not isinstance(file_id, int) or file_id <= 0:
-            raise ValueError(f"Unexpected upload response for {target}; inspect CurseForge before retrying")
-        result["files"][target] = file_id
-        receipts.write_text(json.dumps(result, indent=2) + "\n")
-        print(f"Uploaded {path.name}: CurseForge file {file_id}")
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -152,13 +56,7 @@ def main():
     parser.add_argument("--resume", action="store_true", help="Skip uploads recorded in inspected receipts")
     args = parser.parse_args()
     if args.command == "collect": collect(args.input, args.output)
-    elif args.command == "plan":
-        data = plan(os.environ)
-        print(json.dumps(data))
-        if os.environ.get("GITHUB_OUTPUT"):
-            with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-                output.write("".join(f"{k}={v}\n" for k, v in data.items()))
-    elif args.command == "preflight": preflight(args.input)
-    else: publish(args.input, resume=args.resume)
+    else:
+        parser.error("Publishing and recovery are owned by UpperMoon0/NsTut-CICD; use its reviewed release request")
 
 if __name__ == "__main__": main()
