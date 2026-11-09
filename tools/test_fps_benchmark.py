@@ -28,6 +28,27 @@ class NativeGraphicsSecurityTests(unittest.TestCase):
                     ["gradlew"], Path.cwd(), Path("fake.log"), "fake-java")
 
 
+
+class GraphicsOptionsTests(unittest.TestCase):
+    def test_default_never_enables_unproven_frustum_crop(self):
+        options = fps_benchmark.graphics_java_options()
+        self.assertIn("-Dsimplymirrors.fpsBenchmark=true", options)
+        self.assertNotIn("frustumCrop=true", options)
+        self.assertNotIn("coverageScissor=false", options)
+
+    def test_explicit_culling_and_control_are_independent(self):
+        options = fps_benchmark.graphics_java_options(
+            gpu_profile=True, coverage_scissor=False, frustum_crop=True)
+        self.assertIn("-Dsimplymirrors.gpuProfile=true", options)
+        self.assertIn("-Dsimplymirrors.coverageScissor=false", options)
+        self.assertIn("-Dsimplymirrors.frustumCrop=true", options)
+
+    def test_regular_control_has_no_experimental_frustum_crop(self):
+        options = fps_benchmark.graphics_java_options(coverage_scissor=False)
+        self.assertNotIn("frustumCrop=true", options)
+
+
+
 class FramePassCadenceTests(unittest.TestCase):
     def evidence(self, scene, passes):
         return {"scenario": scene, "samples": len(passes),
