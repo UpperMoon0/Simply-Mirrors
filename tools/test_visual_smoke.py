@@ -68,10 +68,10 @@ class VisualLoginRecoveryTests(unittest.TestCase):
             log_path=evidence/"client.log"
             first=Mock(pid=101)
             second=Mock(pid=102)
-            with log_path.open("ab") as stream, \\
-                 patch.object(visual_smoke.subprocess,"Popen",side_effect=[first,second]) as spawn, \\
+            with log_path.open("ab") as stream, \
+                 patch.object(visual_smoke.subprocess,"Popen",side_effect=[first,second]) as spawn, \
                  patch.object(visual_smoke,"activate_scene",
-                              side_effect=[visual_smoke.VisualClientDisconnected("temporary login failure"),None]) as activate, \\
+                              side_effect=[visual_smoke.VisualClientDisconnected("temporary login failure"),None]) as activate, \
                  patch.object(visual_smoke,"stop") as stop:
                 result=visual_smoke.launch_initial_visual_client(
                     Mock(),client_dir,["gradlew","runVisualClient"],directory,stream,
@@ -91,11 +91,11 @@ class VisualLoginRecoveryTests(unittest.TestCase):
             client_dir=directory/"client"
             client_dir.mkdir()
             log_path=evidence/"client.log"
-            with log_path.open("ab") as stream, \\
+            with log_path.open("ab") as stream, \
                  patch.object(visual_smoke.subprocess,"Popen",
-                              side_effect=[Mock(pid=101),Mock(pid=102)]) as spawn, \\
+                              side_effect=[Mock(pid=101),Mock(pid=102)]) as spawn, \
                  patch.object(visual_smoke,"activate_scene",
-                              side_effect=visual_smoke.VisualClientDisconnected("disconnected")), \\
+                              side_effect=visual_smoke.VisualClientDisconnected("disconnected")), \
                  patch.object(visual_smoke,"stop") as stop:
                 with self.assertRaises(visual_smoke.VisualClientDisconnected):
                     visual_smoke.launch_initial_visual_client(
@@ -113,9 +113,9 @@ class VisualLoginRecoveryTests(unittest.TestCase):
             client_dir=directory/"client"
             client_dir.mkdir()
             log_path=evidence/"client.log"
-            with log_path.open("ab") as stream, \\
-                 patch.object(visual_smoke.subprocess,"Popen",return_value=Mock(pid=101)) as spawn, \\
-                 patch.object(visual_smoke,"activate_scene",side_effect=RuntimeError("render failure")), \\
+            with log_path.open("ab") as stream, \
+                 patch.object(visual_smoke.subprocess,"Popen",return_value=Mock(pid=101)) as spawn, \
+                 patch.object(visual_smoke,"activate_scene",side_effect=RuntimeError("render failure")), \
                  patch.object(visual_smoke,"stop") as stop:
                 with self.assertRaisesRegex(RuntimeError,"render failure"):
                     visual_smoke.launch_initial_visual_client(
