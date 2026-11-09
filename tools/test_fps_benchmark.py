@@ -49,6 +49,49 @@ class GraphicsOptionsTests(unittest.TestCase):
 
 
 
+class MovingCameraAcceptanceTests(unittest.TestCase):
+    def test_camera_motion_flag_is_opt_in(self):
+        self.assertNotIn("fpsCameraMotion", fps_benchmark.graphics_java_options())
+        self.assertIn("-Dsimplymirrors.fpsCameraMotion=true",
+                      fps_benchmark.graphics_java_options(camera_motion=True))
+
+    def test_frozen_reflection_is_rejected(self):
+        from PIL import Image
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as directory:
+            first = Path(directory) / "a.png"
+            second = Path(directory) / "b.png"
+            Image.new("RGB", (300, 300), (18, 19, 20)).save(first)
+            Image.new("RGB", (300, 300), (18, 19, 20)).save(second)
+            with self.assertRaisesRegex(AssertionError, "remained static"):
+                fps_benchmark.validate_camera_motion(first, second)
+
+    def test_genuine_camera_frame_difference_passes(self):
+        from PIL import Image, ImageDraw
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as directory:
+            first = Path(directory) / "a.png"
+            second = Path(directory) / "b.png"
+            Image.new("RGB", (300, 300), (18, 19, 20)).save(first)
+            changed = Image.new("RGB", (300, 300), (18, 19, 20))
+            ImageDraw.Draw(changed).rectangle((110, 100, 165, 165),
+                                              fill=(225, 25, 20))
+            changed.save(second)
+            result = fps_benchmark.validate_camera_motion(first, second)
+            self.assertGreater(result["meanAbsoluteDifference"], 1.5)
+
+    def test_mismatched_camera_capture_size_is_rejected(self):
+        from PIL import Image
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as directory:
+            first = Path(directory) / "a.png"
+            second = Path(directory) / "b.png"
+            Image.new("RGB", (300, 300)).save(first)
+            Image.new("RGB", (240, 300)).save(second)
+            with self.assertRaisesRegex(AssertionError, "resolution changed"):
+                fps_benchmark.validate_camera_motion(first, second)
+
+
 class FramePassCadenceTests(unittest.TestCase):
     def evidence(self, scene, passes):
         return {"scenario": scene, "samples": len(passes),
