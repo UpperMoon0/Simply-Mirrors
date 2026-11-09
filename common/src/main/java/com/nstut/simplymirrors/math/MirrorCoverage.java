@@ -57,4 +57,33 @@ public final class MirrorCoverage {
             return null;
         return new int[]{x0,y0,w,h};
     }
+
+    /**
+     * Convert a screen-space mirror scissor to a shader target whose viewport
+     * can be half/quarter size. Keep a larger safety margin for postprocessing
+     * footprints; return null for a full/unsafe viewport.
+     */
+    public static int[] scaledScissor(int[] bounds, int nativeWidth, int nativeHeight,
+                                     int viewportX, int viewportY,
+                                     int viewportWidth, int viewportHeight) {
+        if(bounds==null || bounds.length!=4 || nativeWidth<=0 || nativeHeight<=0 ||
+                viewportWidth<=0 || viewportHeight<=0)return null;
+        long x=bounds[0], y=bounds[1], w=bounds[2], h=bounds[3];
+        if(x<0 || y<0 || w<=0 || h<=0 ||
+                x+w>nativeWidth || y+h>nativeHeight)return null;
+        int nativePad=32;
+        double left=(double)Math.max(0,x-nativePad)/nativeWidth;
+        double bottom=(double)Math.max(0,y-nativePad)/nativeHeight;
+        double right=(double)Math.min(nativeWidth,x+w+nativePad)/nativeWidth;
+        double top=(double)Math.min(nativeHeight,y+h+nativePad)/nativeHeight;
+        int x0=viewportX+(int)Math.floor(left*viewportWidth);
+        int y0=viewportY+(int)Math.floor(bottom*viewportHeight);
+        int x1=viewportX+(int)Math.ceil(right*viewportWidth);
+        int y1=viewportY+(int)Math.ceil(top*viewportHeight);
+        int width=x1-x0,height=y1-y0;
+        if(width<=0 || height<=0 ||
+                (double)width*height >= FULL_SCREEN_THRESHOLD*viewportWidth*viewportHeight)
+            return null;
+        return new int[]{x0,y0,width,height};
+    }
 }
