@@ -29,6 +29,12 @@ The late-run profiled GPU reflected-world stage was about 6.67 ms (scissor off),
 | Current PR #11 | 75.50 | 40.55 | 38.01 | 25.23 | 26.28 |
 | Experimental frustum culling | 76.04 | 40.48 | 38.60 | 25.43 | 26.61 |
 
+### Native GPU stage trace (1080p, render distance 12)
+
+The current-PR on-prem-1 client evidence (`fps-current-1080-control-20261109-evidence/client.log`) reported late-run median GPU timestamps: **capture 0.689 ms, reflected world 11.314 ms, shader-history restore 0.626 ms, composite 0.024 ms, total 12.660 ms**. Shadows and preparation are part of the 11.314 ms world interval, not an additional cost (0.422 ms subset). Reflected-world rendering accounts for approximately **89%** of the total GPU reflection stage. These are representative warmup-profile medians, not scenario-level means.
+
+**Bottleneck priority:** optimize or safely reuse the reflected-world shader pass. Shader-history copy and final compositing together account for a much smaller portion of the budget; optimizing them alone cannot recover the observed approximately half-rate FPS in the one-mirror scene. Full-quality exact rendering is still required whenever temporal reuse cannot be proven valid.
+
 **Decision:** retain PR #11's existing coverage optimization. The frustum trial is correct visually but yields no dependable benefit at 1080p: one-mirror FPS is slightly lower, nine-mirror FPS slightly higher, and both p95 values slightly worse. **Do not merge it as a claimed FPS improvement.**
 
 ## Rejected experiment
