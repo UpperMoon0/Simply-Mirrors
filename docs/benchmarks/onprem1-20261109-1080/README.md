@@ -8,7 +8,7 @@
 - VSync off, 260 FPS cap, fullscreen off, GPU verified via in-game GL vendor, zero GL errors; one test round each. Every completed run passed screenshot/reflection markers and motion/coverage checks.
 - 720p: 1280×720, render distance 4. 1080p: 1920×1080, render distance 12. The control runs used a temporary harness-only copy with the same view-distance settings; PR #11 now exposes `--render-distance 12` natively.
 - **Baseline control** is the same PR #11 renderer with `-Dsimplymirrors.coverageScissor=false`. It is *not* a complete checkout of the older pre-PR renderer.
-- **Current PR**: commit `4ac69ea`, coverage-scissor ON. **Frustum trial**: isolated experimental branch commit `8514f49`, coverage scissor ON plus padded reflection-frustum culling. The experimental branch is not merged.
+- **Measured PR control**: commit `4ac69ea`, coverage-scissor ON. **Frustum trial**: experimental commit `8514f49`, coverage scissor ON plus padded reflection-frustum culling. The trial was subsequently carried into PR #11 behind an explicit **default-OFF** switch (`-Dsimplymirrors.frustumCrop=true`); no validated 1080p gain is claimed.
 - Results were recorded sequentially, not simultaneously. These are single exploratory rounds subject to temperature, scheduling and shader startup variance, not statistically significant confidence intervals.
 
 ## 1280 × 720, render distance 4
@@ -49,6 +49,6 @@ An earlier experimental reflection-target resize failed Oculus framebuffer-histo
 python tools/fps_benchmark.py --target forge-1.20.1 --width 1920 --height 1080 --render-distance 12 --rounds 3 --profile-gpu --startup-timeout 1800 --rcon-timeout 90 --shader-cache "<local validated shader dependency cache>"
 ```
 
-For a scissor-disabled control, add `--disable-coverage-scissor`. The harness uses disposable server/client worlds and requires a private GPU session; never run its server on a production Minecraft world. Local raw screenshot/frame JSON evidence was retained in the isolated `fps-*-20261109-client/fps-evidence` runs under `D:\Minecraft\Mods\SimplyMirrorsPR11`; the large binaries are not checked into Git.
+For a scissor-disabled control, add `--disable-coverage-scissor`. For the independent experimental frustum trial, add `--enable-frustum-crop`; it is never on by default. The harness records both toggles in `summary.json`. The harness uses disposable server/client worlds and requires a private GPU session; never run its server on a production Minecraft world. Local raw screenshot/frame JSON evidence was retained in the isolated `fps-*-20261109-client/fps-evidence` runs under `D:\Minecraft\Mods\SimplyMirrorsPR11`; the large binaries are not checked into Git.
 
 Cloud-1's Jenkins build workers were not activated for any of these tests.
