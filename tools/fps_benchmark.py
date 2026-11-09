@@ -27,7 +27,8 @@ CASES = [(7, "no-mirror"), (8, "one-mirror"), (9, "nine-coplanar-mirrors")]
 def start_private_graphics_client(command: list[str], work: Path, log_path: Path,
                                   java_home: str, gpu_profile: bool = False,
                                   coverage_scissor: bool = True,
-                                  java_tool_options: str | None = None) -> subprocess.Popen:
+                                  java_tool_options: str | None = None,
+                                  reflection_scale: str = "auto") -> subprocess.Popen:
     """Launch directly under the verified restricted Windows graphics worker.
 
     Never query an interactive user's WTS token or use CreateProcessAsUser.
@@ -43,7 +44,9 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
     env["JAVA_TOOL_OPTIONS"] = (java_tool_options if java_tool_options is not None else
         "-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
         (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
-        (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else ""))
+        (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "") +
+        (" -Dsimplymirrors.reflectionScale=" + reflection_scale
+         if reflection_scale != "auto" else ""))
     with log_path.open("wb") as stream:
         return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
                                 stderr=subprocess.STDOUT,
@@ -162,6 +165,10 @@ def main():
     parser.add_argument("--rounds", type=int, default=1, help="1-5 alternating trial rounds")
     parser.add_argument("--profile-gpu", action="store_true", help="Enable asynchronous GPU timestamp stage profiling")
     parser.add_argument("--disable-coverage-scissor", action="store_true", help="Control run with coverage optimization disabled")
+    parser.add_argument("--reflection-scale", choices=["auto", "0.5", "0.75", "1.0"], default="auto",
+                        help="Measure adaptive resolution or a fixed control scale")
+    parser.add_argument("--render-distance", type=int, choices=[4, 8, 12], default=4,
+                        help="Native benchmark viewport distance; use 12 for realistic 1080p")
     args = parser.parse_args()
     if not 1 <= args.rounds <= 5:
         parser.error("--rounds must be in [1, 5]")
@@ -186,7 +193,7 @@ def main():
         _, pack = prepare(args.target, args.shader_cache.resolve())
         install_pack(client, pack, loader="forge")
         (client / "options.txt").write_text(
-            "renderDistance:4\nmaxFps:260\nenableVsync:false\n"
+            f"renderDistance:{args.render_distance}\nmaxFps:260\nenableVsync:false\n"
             "pauseOnLostFocus:false\nfullscreen:false\n"
             "graphicsMode:0\n", encoding="utf-8")
         port = free_port()
@@ -203,8 +210,8 @@ def main():
             "force-gamemode": "true",
             "allow-flight": "true",
             "spawn-protection": 0,
-            "view-distance": 4,
-            "simulation-distance": 4,
+            "view-distance": args.render_distance,
+            "simulation-distance": args.render_distance,
             "level-name": "fps-visual-world",
             "level-type": "minecraft:flat",
             "max-players": 2,
@@ -269,7 +276,8 @@ def main():
             base + ["-PmirrorsShaderStack=" + str(args.shader_cache.resolve()),
                     ":forge-1.20.1:runVisualClient"],
             root, client_log, args.java_home, args.profile_gpu,
-            not args.disable_coverage_scissor)
+            not args.disable_coverage_scissor,
+            reflection_scale=args.reflection_scale)
         print("FPS_STAGE client launched private-GPU PID=" + str(client_process.pid), flush=True)
         # RCON accepts the teleport only after an actual client has joined.
         joined = False
@@ -360,6 +368,9 @@ def main():
             label: {
                 "medianAvgFps": round(statistics.median(r["averageFps"] for r in trials), 3),
                 "medianP95FrameMs": round(statistics.median(r["p95FrameMs"] for r in trials), 3),
+                "medianP99FrameMs": round(statistics.median(
+                    sorted(r["frameIntervalsNs"])[max(0, (len(r["frameIntervalsNs"]) * 99 // 100) - 1)]
+                    / 1_000_000 for r in trials), 3),
                 "fpsChangePctVsPairedBaseline": round(statistics.median(
                     rr["fpsChangePct"][label] for rr in rounds), 2),
                 "trialAvgFps": [r["averageFps"] for r in trials],
@@ -375,6 +386,8 @@ def main():
             "modBranch": subprocess.check_output(["git", "rev-parse", "HEAD"],
                                                    cwd=root, text=True).strip(),
             "resolution": f"{args.width}x{args.height}",
+            "renderDistance": args.render_distance,
+            "reflectionScale": args.reflection_scale,
             "coverageScissorEnabled": not args.disable_coverage_scissor,
             "stages": comparison,
             "rounds": rounds,
