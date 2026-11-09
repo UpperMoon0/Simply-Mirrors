@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Real-GPU Minecraft FPS comparison: pinned Complementary + Oculus/Embeddium.
 
-Run only from a disposable checkout. The Windows service starts the game in
-the logged-in user's graphical session and immediately moves its window off
-screen. Never launches in a service-only Session 0 OpenGL context.
+Run only from a disposable checkout on the reviewed native interactive
+graphics worker. Inherit its restricted private desktop; never broker a
+normal user's token or launch in service-only Session 0.
 """
 from __future__ import annotations
 import argparse
-import ctypes
-from ctypes import wintypes
 import hashlib
 import json
 import os
@@ -26,103 +24,30 @@ ROOT = Path(__file__).resolve().parents[1]
 CASES = [(7, "no-mirror"), (8, "one-mirror"), (9, "nine-coplanar-mirrors")]
 
 
-def new_interactive_client(command: list[str], work: Path, client: Path,
-                           log_path: Path, java_home: str, gpu_profile: bool = False, coverage_scissor: bool = True,
-                           java_tool_options: str | None = None) -> tuple[int, int]:
-    """Create in the active user's graphical session without taking focus."""
-    if os.name != "nt":
-        raise RuntimeError("This on-prem-1 controller requires Windows")
-    class Session(ctypes.Structure):
-        _fields_ = [("id", wintypes.DWORD), ("station", wintypes.LPWSTR),
-                    ("state", ctypes.c_int)]
-    sessions = ctypes.POINTER(Session)()
-    count = wintypes.DWORD()
-    wts = ctypes.windll.wtsapi32
-    if not wts.WTSEnumerateSessionsW(None, 0, 1, ctypes.byref(sessions),
-                                     ctypes.byref(count)):
-        raise ctypes.WinError()
-    try:
-        active = [sessions[i].id for i in range(count.value)
-                  if sessions[i].state == 0]
-    finally:
-        wts.WTSFreeMemory(sessions)
-    if not active:
-        raise RuntimeError("No active Windows desktop session; refusing Session-0 OpenGL")
-    console = ctypes.windll.kernel32.WTSGetActiveConsoleSessionId()
-    session_id = console if console in active else active[0]
-    token = wintypes.HANDLE()
-    if not wts.WTSQueryUserToken(session_id, ctypes.byref(token)):
-        raise ctypes.WinError()
-    block = ctypes.c_void_p()
-    userenv = ctypes.windll.userenv
-    try:
-        if not userenv.CreateEnvironmentBlock(ctypes.byref(block), token, False):
-            raise ctypes.WinError()
-        try:
-            launcher = client / "fps-launch-session.cmd"
-            lines = [
-                "@echo off",
-                'cd /d "' + str(work) + '"',
-                'set "JAVA_HOME=' + java_home + '"',
-                r'set "GRADLE_USER_HOME=D:\DevCaches\.gradle"',
-                'set "JAVA_TOOL_OPTIONS=' + (
-                    java_tool_options if java_tool_options is not None else (
-                        "-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
-                        (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
-                        (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "")
-                    )
-                ) + '"',
-                'set "PATH=%JAVA_HOME%\\bin;%PATH%"',
-                'call ' + subprocess.list2cmdline(command) + ' > "' + str(log_path) + '" 2>&1',
-                'exit /b %errorlevel%',
-            ]
-            launcher.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
-            class Startup(ctypes.Structure):
-                _fields_ = [("cb", wintypes.DWORD), ("reserved", wintypes.LPWSTR),
-                            ("desktop", wintypes.LPWSTR), ("title", wintypes.LPWSTR),
-                            ("x", wintypes.DWORD), ("y", wintypes.DWORD),
-                            ("dx", wintypes.DWORD), ("dy", wintypes.DWORD),
-                            ("charsx", wintypes.DWORD), ("charsy", wintypes.DWORD),
-                            ("fill", wintypes.DWORD), ("flags", wintypes.DWORD),
-                            ("show", wintypes.WORD), ("cbReserved2", wintypes.WORD),
-                            ("reserved2", ctypes.POINTER(ctypes.c_byte)),
-                            ("stdin", wintypes.HANDLE), ("stdout", wintypes.HANDLE),
-                            ("stderr", wintypes.HANDLE)]
-            class Process(ctypes.Structure):
-                _fields_ = [("handle", wintypes.HANDLE),
-                            ("thread", wintypes.HANDLE),
-                            ("pid", wintypes.DWORD),
-                            ("tid", wintypes.DWORD)]
-            startup = Startup()
-            startup.cb = ctypes.sizeof(startup)
-            startup.desktop = r"winsta0\default"
-            startup.flags = 1  # STARTF_USESHOWWINDOW
-            startup.show = 0   # SW_HIDE for the launcher console
-            proc = Process()
-            exe = os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe")
-            arg = ctypes.create_unicode_buffer(
-                '"' + exe + '" /d /s /c ""' + str(launcher) + '""')
-            # NEW_PROCESS_GROUP + UNICODE_ENVIRONMENT + CREATE_NO_WINDOW (console only).
-            flags = 0x200 | 0x400 | 0x08000000
-            if not ctypes.windll.advapi32.CreateProcessAsUserW(
-                    token, exe, arg, None, None, False, flags,
-                    block, str(work), ctypes.byref(startup),
-                    ctypes.byref(proc)):
-                raise ctypes.WinError()
-            ctypes.windll.kernel32.CloseHandle(proc.thread)
-            return int(proc.pid), int(proc.handle)
-        finally:
-            userenv.DestroyEnvironmentBlock(block)
-    finally:
-        ctypes.windll.kernel32.CloseHandle(token)
+def start_private_graphics_client(command: list[str], work: Path, log_path: Path,
+                                  java_home: str, gpu_profile: bool = False,
+                                  coverage_scissor: bool = True,
+                                  java_tool_options: str | None = None) -> subprocess.Popen:
+    """Launch directly under the verified restricted Windows graphics worker.
 
-
-def poll(handle: int) -> int | None:
-    code = wintypes.DWORD()
-    if not ctypes.windll.kernel32.GetExitCodeProcess(
-            wintypes.HANDLE(handle), ctypes.byref(code)):
-        raise ctypes.WinError()
-    return None if code.value == 259 else code.value
+    Never query an interactive user's WTS token or use CreateProcessAsUser.
+    The Jenkins graphics worker already owns its private desktop.
+    """
+    if os.name != "nt" or os.environ.get("CI_GRAPHICS_AGENT") != "1":
+        raise RuntimeError("Real GPU benchmark requires the reviewed native Windows graphics agent")
+    if not Path(java_home, "bin", "java.exe").is_file():
+        raise RuntimeError("Verified Java home is missing")
+    env = os.environ.copy()
+    env["JAVA_HOME"] = java_home
+    env["PATH"] = str(Path(java_home) / "bin") + os.pathsep + env.get("PATH", "")
+    env["JAVA_TOOL_OPTIONS"] = (java_tool_options if java_tool_options is not None else
+        "-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
+        (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
+        (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else ""))
+    with log_path.open("wb") as stream:
+        return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
+                                stderr=subprocess.STDOUT,
+                                creationflags=subprocess.CREATE_NO_WINDOW)
 
 
 def stop_tree(pid: int):
@@ -173,12 +98,12 @@ def cleanup_owned_gradle_servers(work: Path, run_name: str):
         raise RuntimeError("Benchmark-owned server wrappers leaked: " + str(remaining))
 
 
-def wait_result(path: Path, client_handle: int, client_log: Path, deadline_s: int):
+def wait_result(path: Path, client_process: subprocess.Popen, client_log: Path, deadline_s: int):
     until = time.monotonic() + deadline_s
     while time.monotonic() < until:
         if path.is_file():
             return json.loads(path.read_text(encoding="utf-8"))
-        exit_code = poll(client_handle)
+        exit_code = client_process.poll()
         if exit_code is not None:
             log = client_log.read_text(errors="replace")[-7000:] if client_log.exists() else ""
             raise RuntimeError(f"Client exited {exit_code} before {path.name}:\n{log}")
@@ -254,7 +179,7 @@ def main():
     if not (root / "gradlew.bat").is_file():
         raise RuntimeError("Run from an isolated Simply Mirrors checkout")
     server = None
-    client_pid = client_handle = None
+    client_process = None
     rcon = None
     success = False
     try:
@@ -340,17 +265,17 @@ def main():
                                           "white_concrete")
             require_command(rcon, command)
         system_gpu(evidence, "before")
-        client_pid, client_handle = new_interactive_client(
+        client_process = start_private_graphics_client(
             base + ["-PmirrorsShaderStack=" + str(args.shader_cache.resolve()),
                     ":forge-1.20.1:runVisualClient"],
-            root, client, client_log, args.java_home, args.profile_gpu,
+            root, client_log, args.java_home, args.profile_gpu,
             not args.disable_coverage_scissor)
-        print("FPS_STAGE client launched active-session PID=" + str(client_pid), flush=True)
+        print("FPS_STAGE client launched private-GPU PID=" + str(client_process.pid), flush=True)
         # RCON accepts the teleport only after an actual client has joined.
         joined = False
         until = time.monotonic() + 600
         while time.monotonic() < until:
-            if poll(client_handle) is not None:
+            if client_process.poll() is not None:
                 raise RuntimeError("Client did not connect:\n" +
                                    client_log.read_text(errors="replace")[-8000:])
             response = rcon.command("tp @a 0.5 65 -3.5 0 0")
@@ -379,7 +304,7 @@ def main():
                 scene_file(client, number)
                 print(f"FPS_STAGE round={round_index} measuring {label}", flush=True)
                 result = wait_result(client / "fps-evidence" / f"scene-{number}.json",
-                                     client_handle, client_log, 240)
+                                     client_process, client_log, 240)
                 validate_frame_pass_cadence(result)
                 if not result["shaderActive"] or result["windowIconified"] or result["glError"] != 0:
                     raise RuntimeError("Invalid game/shader/GL measurement " + str(result))
@@ -394,9 +319,9 @@ def main():
                       flush=True)
         scene_file(client, 6)
         until = time.monotonic() + 90
-        while time.monotonic() < until and poll(client_handle) is None:
+        while time.monotonic() < until and client_process.poll() is None:
             time.sleep(.5)
-        if poll(client_handle) != 0:
+        if client_process.poll() != 0:
             raise RuntimeError("Client did not exit cleanly after measurement")
         # A/B comparisons use same-round baselines, not a single cold first trial.
         # Validate the actual framebuffer contents, not just completed render passes.
@@ -478,10 +403,12 @@ def main():
                 server.wait(timeout=35)
             except subprocess.TimeoutExpired:
                 server.kill()
-        if client_handle:
-            if poll(client_handle) is None:
-                stop_tree(client_pid)
-            ctypes.windll.kernel32.CloseHandle(wintypes.HANDLE(client_handle))
+        if client_process is not None and client_process.poll() is None:
+            stop_tree(client_process.pid)
+            try:
+                client_process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError("Benchmark-owned client process did not stop")
         if not success:
             system_gpu(evidence, "failed")
         cleanup_owned_gradle_servers(root, args.run_name)
