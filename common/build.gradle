@@ -49,6 +49,17 @@ tasks.register('shaderHistoryGlTest', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
 }
 
+
+tasks.register('shaderHistoryCopyImageGlTest', JavaExec) {
+    group = 'verification'
+    description = 'Checks opt-in GL 4.3 exact-format image copies, including GL 3.3 fallback.'
+    dependsOn tasks.named('shaderGlTestClasses')
+    classpath = sourceSets.shaderGlTest.runtimeClasspath
+    mainClass = 'com.nstut.simplymirrors.client.ShaderHistoryGlTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+    jvmArgs '-Dsimplymirrors.historyCopyImage=true'
+}
+
 // Manual, isolated Mesa compositor baseline vs batch comparison; no Minecraft process.
 tasks.register('mirrorCompositeBenchmark', JavaExec) {
     group = 'verification'
