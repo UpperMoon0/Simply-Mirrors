@@ -25,19 +25,21 @@ CASES = [(7, "no-mirror"), (8, "one-mirror"), (9, "nine-coplanar-mirrors")]
 
 
 def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = True,
-                          frustum_crop: bool = False) -> str:
+                          frustum_crop: bool = False, camera_motion: bool = False) -> str:
     """Build explicit shader A/B toggles; never enable experimental culling by default."""
     return ("-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
             (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
             (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "") +
-            (" -Dsimplymirrors.frustumCrop=true" if frustum_crop else ""))
+            (" -Dsimplymirrors.frustumCrop=true" if frustum_crop else "") +
+            (" -Dsimplymirrors.fpsCameraMotion=true" if camera_motion else ""))
 
 
 def start_private_graphics_client(command: list[str], work: Path, log_path: Path,
                                   java_home: str, gpu_profile: bool = False,
                                   coverage_scissor: bool = True,
                                   java_tool_options: str | None = None,
-                                  frustum_crop: bool = False) -> subprocess.Popen:
+                                  frustum_crop: bool = False,
+                                  camera_motion: bool = False) -> subprocess.Popen:
     """Launch directly under the verified restricted Windows graphics worker.
 
     Never query an interactive user's WTS token or use CreateProcessAsUser.
@@ -51,7 +53,8 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
     env["JAVA_HOME"] = java_home
     env["PATH"] = str(Path(java_home) / "bin") + os.pathsep + env.get("PATH", "")
     env["JAVA_TOOL_OPTIONS"] = (java_tool_options if java_tool_options is not None else
-                                graphics_java_options(gpu_profile, coverage_scissor, frustum_crop))
+                                graphics_java_options(gpu_profile, coverage_scissor,
+                                                      frustum_crop, camera_motion))
     with log_path.open("wb") as stream:
         return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
                                 stderr=subprocess.STDOUT,
@@ -159,6 +162,24 @@ def system_gpu(evidence: Path, stage: str):
                                                 encoding="utf-8")
 
 
+
+def validate_camera_motion(first: Path, second: Path) -> dict:
+    """Reject frozen reflections; both actual GPU captures precede FPS sampling."""
+    from PIL import Image, ImageChops, ImageStat
+    with Image.open(first) as early, Image.open(second) as late:
+        a, b = early.convert("RGB"), late.convert("RGB")
+    if a.size != b.size:
+        raise AssertionError("Dynamic reflection capture resolution changed")
+    w, h = a.size
+    region = (int(w * .30), int(h * .22), int(w * .70), int(h * .72))
+    delta = ImageChops.difference(a.crop(region), b.crop(region))
+    average = sum(ImageStat.Stat(delta).mean) / 3
+    if average <= 1.5:
+        raise AssertionError(
+            f"Moving-camera reflection remained static: mean pixel difference {average:.3f}")
+    return {"meanAbsoluteDifference": round(average, 3), "region": list(region)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", choices=["forge-1.20.1"], default="forge-1.20.1")
@@ -176,6 +197,8 @@ def main():
     parser.add_argument("--disable-coverage-scissor", action="store_true", help="Control run with coverage optimization disabled")
     parser.add_argument("--enable-frustum-crop", action="store_true",
                         help="Opt in to experimental reflection-section culling; default is off")
+    parser.add_argument("--moving-camera", action="store_true",
+                        help="Deterministic camera pan/translation, with two warmup image checks per mirror scene")
     parser.add_argument("--render-distance", type=int, choices=[4, 8, 12], default=4,
                         help="Native benchmark viewport distance; use 12 for realistic 1080p")
     args = parser.parse_args()
@@ -294,7 +317,8 @@ def main():
         for attempt in range(2):
             client_process = start_private_graphics_client(
                 client_command, root, client_log, args.java_home, args.profile_gpu,
-                not args.disable_coverage_scissor, frustum_crop=args.enable_frustum_crop)
+                not args.disable_coverage_scissor, frustum_crop=args.enable_frustum_crop,
+                camera_motion=args.moving_camera)
             print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
                   " PID=" + str(client_process.pid), flush=True)
             deadline = time.monotonic() + args.startup_timeout
@@ -390,6 +414,14 @@ def main():
                     raise AssertionError("One mirror did not change enough actual framebuffer pixels: " + str(changed))
             checks[str(round_index)] = {"singleMirrorChangedPixels": changed,
                                         "nineMirrorColorMarkers": nine_colors}
+        if args.moving_camera:
+            for round_index in range(args.rounds):
+                checks[str(round_index)]["cameraMotion"] = {
+                    label: validate_camera_motion(
+                        client / "fps-evidence" / f"scene-{round_index*10+kind}-motion-a.png",
+                        client / "fps-evidence" / f"scene-{round_index*10+kind}-motion-b.png")
+                    for kind, label in CASES if kind != 7
+                }
         rounds = []
         by_label = {label: [] for _,label in CASES}
         for round_index in range(args.rounds):
@@ -425,6 +457,7 @@ def main():
             "renderDistance": args.render_distance,
             "coverageScissorEnabled": not args.disable_coverage_scissor,
             "frustumCropEnabled": args.enable_frustum_crop,
+            "movingCameraEnabled": args.moving_camera,
             "stages": comparison,
             "rounds": rounds,
             "imageChecks": checks,
