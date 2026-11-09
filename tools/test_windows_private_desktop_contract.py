@@ -36,6 +36,10 @@ class InteractiveGraphicsContractTests(unittest.TestCase):
         self.assertNotIn("WTSQueryUserToken", script)
         self.assertNotIn("CreateProcessAsUser(", script)
         self.assertNotIn("from fps_benchmark import new_interactive_client", script)
+        self.assertNotIn("InteractiveVisualProcess", script)
+        self.assertIn('client=subprocess.Popen(command+[task_prefix+"runVisualClient"]', script)
+        self.assertIn('client_log_path=evidence/"client.log"', script)
+        self.assertIn('SIMPLY_MIRRORS_VISUAL_ACTIVE_GPU_CLIENT pid=', script)
 
 
 if __name__ == "__main__":
