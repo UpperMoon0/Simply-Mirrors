@@ -28,6 +28,103 @@ class EnclosedRoomFixtureTests(unittest.TestCase):
 
 
 
+class VisualLoginRecoveryTests(unittest.TestCase):
+    def test_disconnect_signal_is_scoped_to_current_client_launch(self):
+        with tempfile.TemporaryDirectory() as temp:
+            log=Path(temp)/"client.log"
+            log.write_text(
+                "SIMPLY_MIRRORS_VISUAL_STAGE net.minecraft.client.gui.screens.DisconnectedScreen\\n")
+            offset=log.stat().st_size
+            self.assertTrue(visual_smoke.disconnected_during_login(log,0))
+            self.assertFalse(visual_smoke.disconnected_during_login(log,offset))
+            with log.open("a") as stream:
+                stream.write("SIMPLY_MIRRORS_VISUAL_STAGE net.minecraft.client.gui.screens.ConnectScreen\\n")
+            self.assertFalse(visual_smoke.disconnected_during_login(log,offset))
+            with log.open("a") as stream:
+                stream.write("SIMPLY_MIRRORS_VISUAL_STAGE net.minecraft.client.gui.screens.DisconnectedScreen\\n")
+            self.assertTrue(visual_smoke.disconnected_during_login(log,offset))
+
+    def test_explicit_disconnect_is_raised_before_ten_minute_timeout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory=Path(temp)
+            log=directory/"client.log"
+            log.write_text("SIMPLY_MIRRORS_VISUAL_STAGE net.minecraft.client.gui.screens.DisconnectedScreen\\n")
+            rcon=Mock()
+            rcon.command.return_value="No player was found"
+            child=Mock()
+            child.poll.return_value=None
+            with self.assertRaisesRegex(visual_smoke.VisualClientDisconnected,"disconnected"):
+                visual_smoke.activate_scene(rcon,directory,0,child,
+                                            client_log_path=log,log_offset=0)
+            rcon.command.assert_called_once()
+
+    def test_one_login_retry_still_requires_server_authorized_teleport(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory=Path(temp)
+            evidence=directory/"evidence"
+            evidence.mkdir()
+            client_dir=directory/"client"
+            client_dir.mkdir()
+            log_path=evidence/"client.log"
+            first=Mock(pid=101)
+            second=Mock(pid=102)
+            with log_path.open("ab") as stream, \\
+                 patch.object(visual_smoke.subprocess,"Popen",side_effect=[first,second]) as spawn, \\
+                 patch.object(visual_smoke,"activate_scene",
+                              side_effect=[visual_smoke.VisualClientDisconnected("temporary login failure"),None]) as activate, \\
+                 patch.object(visual_smoke,"stop") as stop:
+                result=visual_smoke.launch_initial_visual_client(
+                    Mock(),client_dir,["gradlew","runVisualClient"],directory,stream,
+                    {},{},evidence,log_path)
+            self.assertIs(result,second)
+            self.assertEqual(2,spawn.call_count)
+            self.assertEqual(2,activate.call_count)
+            stop.assert_called_once_with(first)
+            self.assertEqual("-1",(client_dir/"visual-scene.txt").read_text())
+            self.assertTrue((evidence/"login-disconnect-attempt-1.log").exists())
+
+    def test_two_explicit_disconnects_fail_closed_no_third_launch(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory=Path(temp)
+            evidence=directory/"evidence"
+            evidence.mkdir()
+            client_dir=directory/"client"
+            client_dir.mkdir()
+            log_path=evidence/"client.log"
+            with log_path.open("ab") as stream, \\
+                 patch.object(visual_smoke.subprocess,"Popen",
+                              side_effect=[Mock(pid=101),Mock(pid=102)]) as spawn, \\
+                 patch.object(visual_smoke,"activate_scene",
+                              side_effect=visual_smoke.VisualClientDisconnected("disconnected")), \\
+                 patch.object(visual_smoke,"stop") as stop:
+                with self.assertRaises(visual_smoke.VisualClientDisconnected):
+                    visual_smoke.launch_initial_visual_client(
+                        Mock(),client_dir,["gradlew","runVisualClient"],directory,
+                        stream,{}, {},evidence,log_path)
+            self.assertEqual(2,spawn.call_count)
+            self.assertEqual(2,stop.call_count)
+            self.assertTrue((evidence/"login-disconnect-attempt-2.log").exists())
+
+    def test_arbitrary_client_failure_does_not_trigger_retry(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory=Path(temp)
+            evidence=directory/"evidence"
+            evidence.mkdir()
+            client_dir=directory/"client"
+            client_dir.mkdir()
+            log_path=evidence/"client.log"
+            with log_path.open("ab") as stream, \\
+                 patch.object(visual_smoke.subprocess,"Popen",return_value=Mock(pid=101)) as spawn, \\
+                 patch.object(visual_smoke,"activate_scene",side_effect=RuntimeError("render failure")), \\
+                 patch.object(visual_smoke,"stop") as stop:
+                with self.assertRaisesRegex(RuntimeError,"render failure"):
+                    visual_smoke.launch_initial_visual_client(
+                        Mock(),client_dir,["gradlew","runVisualClient"],directory,
+                        stream,{}, {},evidence,log_path)
+            spawn.assert_called_once()
+            stop.assert_called_once()
+
+
 class WindowsSceneFileHandoffTests(unittest.TestCase):
     @patch("visual_smoke.time.sleep")
     def test_transient_reader_lock_retries_without_destroying_scene(self, sleeper):
