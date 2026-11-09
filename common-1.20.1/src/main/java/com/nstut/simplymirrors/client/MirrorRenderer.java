@@ -95,7 +95,19 @@ public final class MirrorRenderer {
                     RenderSystem.setProjectionMatrix(projection,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);glFrontFace(GL_CW);
                     // Vanilla camera-cube fitting can loop forever with an oblique near plane.
                     // Cull conservatively with perspective; retain oblique projection for drawing.
-                    mc.levelRenderer.prepareCullFrustum(pose,reflectedEye,mainProjectionMatrix);
+                    // Only reflected section culling uses a padded mirror footprint.
+                    // The actual projection, framebuffer, viewport and shader history remain native.
+                    int[] coverageBounds=MirrorCoverage.scissor(vp,eye.x,eye.y,eye.z,
+                            main.width,main.height,surfaces);
+                    boolean cropAllowed=!"false".equalsIgnoreCase(
+                            System.getProperty("simplymirrors.frustumCrop","true"))
+                            && !"false".equalsIgnoreCase(
+                            System.getProperty("simplymirrors.coverageScissor","true"));
+                    Matrix4f cullingProjection=cropAllowed
+                        ?matrix(ReflectionFrustumCrop.crop(array(mainProjectionMatrix),
+                                main.width,main.height,coverageBounds))
+                        :mainProjectionMatrix;
+                    mc.levelRenderer.prepareCullFrustum(pose,reflectedEye,cullingProjection);
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
                     MirrorGpuProfiler.mark(4);
                 } finally {
