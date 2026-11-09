@@ -60,17 +60,18 @@ public final class MirrorRenderer {
         for(MirrorSurface s:selected)
             groups.computeIfAbsent(s.planeKey(),k->new ArrayList<>()).add(s);
         if(groups.isEmpty())return;
+        boolean shadersActive=ShaderReflection.enabled();
         RenderTarget main=mc.getMainRenderTarget();int passes=0;
         try {
             // Draw the main frame at native size. Only the reflected-world target
             // is adaptively scaled; final mirror compositing stays full resolution.
-            int renderWidth=AdaptiveReflectionResolution.width(main.width);
-            int renderHeight=AdaptiveReflectionResolution.height(main.height);
+            int renderWidth=shadersActive?AdaptiveReflectionResolution.width(main.width):main.width;
+            int renderHeight=shadersActive?AdaptiveReflectionResolution.height(main.height):main.height;
             if(target==null||target.width!=renderWidth||target.height!=renderHeight) {
                 if(target!=null)target.destroyBuffers();
                 target=new TextureTarget(renderWidth,renderHeight,true,Minecraft.ON_OSX);
             }
-            AdaptiveReflectionResolution.begin();
+            if(shadersActive)AdaptiveReflectionResolution.begin();
             for(List<MirrorSurface> surfaces:groups.values()) {
                 if(passes++>=6)break;
                 MirrorSurface surface=surfaces.get(0);
@@ -120,7 +121,7 @@ public final class MirrorRenderer {
             }
         } catch(RuntimeException exception) {
             failed=true;java.util.logging.Logger.getLogger("simply_mirrors").log(java.util.logging.Level.SEVERE,"Mirror reflection disabled for this world after a rendering error",exception);
-        } finally { AdaptiveReflectionResolution.end();redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN); }
+        } finally { if(shadersActive)AdaptiveReflectionResolution.end();redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN); }
     }
     private static boolean visible(MirrorSurface s,float[] vp,Vec3 eye) {
         double[] clip=MirrorMatrices.transform(vp,s.cx-eye.x,s.cy-eye.y,s.cz-eye.z,1);
