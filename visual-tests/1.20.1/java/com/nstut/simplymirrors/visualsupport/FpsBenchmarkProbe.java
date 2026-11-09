@@ -29,6 +29,7 @@ public final class FpsBenchmarkProbe {
     private static long entered, lastFrame, lastPasses;
     private static boolean finished;
     private static boolean relocated;
+    private static boolean motionFirst, motionSecond;
 
     private FpsBenchmarkProbe() { }
 
@@ -65,23 +66,49 @@ public final class FpsBenchmarkProbe {
             finished = false;
             durations.clear();
             reflectionPasses.clear();
+            motionFirst = motionSecond = false;
             System.out.println("SIMPLY_MIRRORS_FPS_STAGE scenario=" + scene);
         }
 
-        // All stages share the same fixed camera, world time, and view.
+        // Optional deterministic camera sweep stresses history and disocclusion.
+        // The same sweep is applied to the no-mirror paired baseline.
+        // Static fixtures remain the default for historical comparability.
+        boolean moving = Boolean.getBoolean("simplymirrors.fpsCameraMotion");
         double[] eye = VisualScene.eye(0);
-        double x = eye[0], y = eye[1] - 1.62, z = eye[2];
+        double phase = (now - entered) * (2.0 * Math.PI / 6_000_000_000.0);
+        double x = eye[0] + (moving ? 0.15 * Math.sin(phase) : 0);
+        double y = eye[1] - 1.62;
+        double z = eye[2] + (moving ? 0.05 * Math.cos(phase) : 0);
+        float yaw = moving ? (float)(4.0 * Math.sin(phase)) : 0f;
+        float pitch = moving ? (float)(1.25 * Math.cos(phase)) : 0f;
         mc.player.getAbilities().flying = true;
         mc.player.setPos(x, y, z);
         mc.player.xo = x;
         mc.player.yo = y;
         mc.player.zo = z;
-        mc.player.setYRot(0);
-        mc.player.setXRot(0);
-        mc.player.yRotO = 0;
-        mc.player.xRotO = 0;
-        mc.player.yBodyRot = 0;
-        mc.player.yHeadRot = 0;
+        mc.player.setYRot(yaw);
+        mc.player.setXRot(pitch);
+        mc.player.yRotO = yaw;
+        mc.player.xRotO = pitch;
+        mc.player.yBodyRot = yaw;
+        mc.player.yHeadRot = yaw;
+
+        // Capture at opposing sweep phases entirely inside warmup, so the
+        // slow readback never contaminates measured frame intervals.
+        if (moving && kind != 7 && (!motionFirst || !motionSecond)) {
+            long elapsed = now - entered;
+            if ((!motionFirst && elapsed >= 2_000_000_000L) ||
+                    (motionFirst && !motionSecond && elapsed >= 4_000_000_000L)) {
+                Path evidence = home.resolve("fps-evidence");
+                Files.createDirectories(evidence);
+                String name = "scene-" + scene + (motionFirst ? "-motion-b.png" : "-motion-a.png");
+                VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),
+                        mc.getMainRenderTarget().width, mc.getMainRenderTarget().height,
+                        evidence.resolve(name));
+                if (motionFirst) motionSecond = true;
+                else motionFirst = true;
+            }
+        }
 
         long passes = MirrorRenderer.completedPasses;
         if (lastFrame != 0 && now - entered >= WARMUP_NS && !finished) {
@@ -101,6 +128,9 @@ public final class FpsBenchmarkProbe {
         String vendor = glGetString(GL_VENDOR);
         int width = mc.getMainRenderTarget().width;
         int height = mc.getMainRenderTarget().height;
+        if (Boolean.getBoolean("simplymirrors.fpsCameraMotion") && kind != 7 &&
+                (!motionFirst || !motionSecond))
+            throw new IllegalStateException("Missing opposing-phase camera motion captures");
         if (durations.size() < 30) throw new IllegalStateException("Too few real frames: " + durations.size());
         if (!shader) throw new IllegalStateException("Complementary shader pack was not active");
         if (iconified != GLFW.GLFW_FALSE) throw new IllegalStateException("Benchmark window was minimized");
