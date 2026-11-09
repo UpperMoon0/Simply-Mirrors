@@ -10,6 +10,24 @@ from unittest.mock import patch, call
 import fps_benchmark
 
 
+class NativeGraphicsSecurityTests(unittest.TestCase):
+    def test_benchmark_never_uses_user_session_token_broker(self):
+        text=(Path(__file__).parent / "fps_benchmark.py").read_text(encoding="utf-8")
+        self.assertIn("start_private_graphics_client(", text)
+        self.assertIn('os.environ.get("CI_GRAPHICS_AGENT") != "1"', text)
+        self.assertIn("subprocess.Popen(command", text)
+        for unsafe in ("WTSQueryUserToken(", "CreateProcessAsUserW(", 'winsta0\\\\default',
+                       "def new_interactive_client("):
+            self.assertNotIn(unsafe, text)
+
+    def test_benchmark_fails_closed_without_native_graphics_agent(self):
+        from unittest.mock import patch
+        with patch.dict(fps_benchmark.os.environ, {"CI_GRAPHICS_AGENT": "0"}):
+            with self.assertRaisesRegex(RuntimeError, "reviewed native Windows graphics agent"):
+                fps_benchmark.start_private_graphics_client(
+                    ["gradlew"], Path.cwd(), Path("fake.log"), "fake-java")
+
+
 class FramePassCadenceTests(unittest.TestCase):
     def evidence(self, scene, passes):
         return {"scenario": scene, "samples": len(passes),
