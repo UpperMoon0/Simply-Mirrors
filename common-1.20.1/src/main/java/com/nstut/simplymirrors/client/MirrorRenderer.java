@@ -67,9 +67,13 @@ public final class MirrorRenderer {
             // is adaptively scaled; final mirror compositing stays full resolution.
             int renderWidth=shadersActive?AdaptiveReflectionResolution.width(main.width):main.width;
             int renderHeight=shadersActive?AdaptiveReflectionResolution.height(main.height):main.height;
-            if(target==null||target.width!=renderWidth||target.height!=renderHeight) {
+            // Oculus keeps references to native-sized shader history textures.
+            // Never resize the backing FBO: Iris may rebuild and delete those
+            // textures while the snapshot transaction is active. Instead use
+            // a scaled raster viewport inside a native-sized target.
+            if(target==null||target.width!=main.width||target.height!=main.height) {
                 if(target!=null)target.destroyBuffers();
-                target=new TextureTarget(renderWidth,renderHeight,true,Minecraft.ON_OSX);
+                target=new TextureTarget(main.width,main.height,true,Minecraft.ON_OSX);
             }
             if(shadersActive)AdaptiveReflectionResolution.begin();
             for(List<MirrorSurface> surfaces:groups.values()) {
@@ -97,6 +101,7 @@ public final class MirrorRenderer {
                     // Iris final compositing leaves depth writes disabled; clears obey that mask.
                     RenderSystem.depthMask(true);
                     target.setClearColor(0.615f,0.718f,0.792f,1);target.clear(Minecraft.ON_OSX);target.bindWrite(true);
+                    if(shadersActive)glViewport(0,0,renderWidth,renderHeight);
                     clipped=ReflectionScissor.begin(vp,eye.x,eye.y,eye.z,renderWidth,renderHeight,surfaces);
                     if(shaders)ShaderReflection.begin(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected,priorFrame.reflect(surface));
                     MirrorGpuProfiler.mark(1);
@@ -115,7 +120,8 @@ public final class MirrorRenderer {
                     mc.getEntityRenderDispatcher().prepare(mc.level,camera,mc.crosshairPickEntity);
                     MirrorGpuProfiler.mark(5);
                 }
-                COMPOSITE.drawMergedBatch(target.getColorTextureId(),main.width,main.height,vp,eye.x,eye.y,eye.z,surfaces);
+                COMPOSITE.drawMergedBatch(target.getColorTextureId(),main.width,main.height,vp,eye.x,eye.y,eye.z,surfaces,
+                        (float)renderWidth/main.width,(float)renderHeight/main.height);
                 MirrorGpuProfiler.mark(6);
                 completedPasses++;
             }
