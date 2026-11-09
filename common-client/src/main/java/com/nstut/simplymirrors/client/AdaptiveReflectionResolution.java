@@ -1,6 +1,7 @@
 package com.nstut.simplymirrors.client;
 
 import java.util.ArrayDeque;
+import com.nstut.simplymirrors.math.ReflectionBudget;
 import static org.lwjgl.opengl.GL33.*;
 
 /**
@@ -97,14 +98,7 @@ public final class AdaptiveReflectionResolution {
 
     private static void observe(double milliseconds) {
         averageMs = averageMs < 0 ? milliseconds : averageMs * 0.92 + milliseconds * 0.08;
-        if(++observations % 32 == 0) scale = nextScale(scale, averageMs, BUDGET_MS);
-    }
-
-    /** Pure bounded step function so thresholds and hysteresis are regression tested. */
-    static double nextScale(double current, double gpuMillis, double budgetMillis) {
-        if(gpuMillis > budgetMillis * 1.2) return Math.max(MIN_SCALE, current - 0.25);
-        if(gpuMillis < budgetMillis * 0.55) return Math.min(MAX_SCALE, current + 0.25);
-        return current;
+        if(++observations % 32 == 0) scale = ReflectionBudget.nextScale(scale, averageMs, BUDGET_MS);
     }
 
     private static void release(int[] pair) {
