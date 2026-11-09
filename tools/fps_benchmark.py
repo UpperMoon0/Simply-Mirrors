@@ -28,7 +28,9 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                   java_home: str, gpu_profile: bool = False,
                                   coverage_scissor: bool = True,
                                   java_tool_options: str | None = None,
-                                  reflection_scale: str = "auto") -> subprocess.Popen:
+                                  reflection_scale: str = "auto",
+                                  shader_pass_scissor: bool = False,
+                                  disable_frustum_crop: bool = False) -> subprocess.Popen:
     """Launch directly under the verified restricted Windows graphics worker.
 
     Never query an interactive user's WTS token or use CreateProcessAsUser.
@@ -46,7 +48,9 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
         (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
         (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "") +
         (" -Dsimplymirrors.reflectionScale=" + reflection_scale
-         if reflection_scale != "auto" else ""))
+         if reflection_scale != "auto" else "") +
+        (" -Dsimplymirrors.shaderPassScissor=true" if shader_pass_scissor else "") +
+        (" -Dsimplymirrors.frustumCrop=false" if disable_frustum_crop else ""))
     with log_path.open("wb") as stream:
         return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
                                 stderr=subprocess.STDOUT,
@@ -171,6 +175,10 @@ def main():
     parser.add_argument("--disable-coverage-scissor", action="store_true", help="Control run with coverage optimization disabled")
     parser.add_argument("--reflection-scale", choices=["auto", "0.5", "0.75", "1.0"], default="auto",
                         help="Measure adaptive resolution or a fixed control scale")
+    parser.add_argument("--shader-pass-scissor", action="store_true",
+                        help="Experimental scaled fullscreen-quad clipping, OFF by default")
+    parser.add_argument("--disable-frustum-crop", action="store_true",
+                        help="Disable the experimental reflected-world frustum crop")
     parser.add_argument("--render-distance", type=int, choices=[4, 8, 12], default=4,
                         help="Native benchmark viewport distance; use 12 for realistic 1080p")
     args = parser.parse_args()
@@ -289,7 +297,9 @@ def main():
         for attempt in range(2):
             client_process = start_private_graphics_client(
                 client_command, root, client_log, args.java_home, args.profile_gpu,
-                not args.disable_coverage_scissor, reflection_scale=args.reflection_scale)
+                not args.disable_coverage_scissor, reflection_scale=args.reflection_scale,
+                shader_pass_scissor=args.shader_pass_scissor,
+                disable_frustum_crop=args.disable_frustum_crop)
             print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
                   " PID=" + str(client_process.pid), flush=True)
             deadline = time.monotonic() + args.startup_timeout
@@ -419,6 +429,8 @@ def main():
             "resolution": f"{args.width}x{args.height}",
             "renderDistance": args.render_distance,
             "reflectionScale": args.reflection_scale,
+            "shaderPassScissor": args.shader_pass_scissor,
+            "frustumCropEnabled": not args.disable_frustum_crop,
             "coverageScissorEnabled": not args.disable_coverage_scissor,
             "stages": comparison,
             "rounds": rounds,
