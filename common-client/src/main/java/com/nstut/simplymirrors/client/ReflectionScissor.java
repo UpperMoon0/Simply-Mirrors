@@ -26,14 +26,19 @@ public final class ReflectionScissor implements AutoCloseable {
     private final boolean active;
     private final boolean oldEnabled;
     private final int oldX, oldY, oldWidth, oldHeight;
-    private static int clipped, skipped;
+    private final int x,y,width,height,nativeWidth,nativeHeight;
+    private static ReflectionScissor current;
+    private static int clipped, skipped,shaderPassClipped;
 
     private ReflectionScissor() {
         active=false;oldEnabled=false;oldX=oldY=oldWidth=oldHeight=0;
+        x=y=width=height=nativeWidth=nativeHeight=0;
     }
 
-    private ReflectionScissor(int x, int y, int width, int height) {
+    private ReflectionScissor(int x, int y, int width, int height, int nativeWidth, int nativeHeight) {
         active=true;
+        this.x=x;this.y=y;this.width=width;this.height=height;
+        this.nativeWidth=nativeWidth;this.nativeHeight=nativeHeight;
         oldEnabled=glIsEnabled(GL_SCISSOR_TEST);
         IntBuffer previous=BufferUtils.createIntBuffer(4);
         glGetIntegerv(GL_SCISSOR_BOX, previous);
@@ -57,7 +62,10 @@ public final class ReflectionScissor implements AutoCloseable {
             System.out.println("SIMPLY_MIRRORS_COVERAGE_SCISSOR clipped="+clipped+
                 " fallback="+skipped+" rect="+bounds[0]+","+bounds[1]+","+bounds[2]+","+bounds[3]+
                 " full="+width+"x"+height);
-        return new ReflectionScissor(bounds[0],bounds[1],bounds[2],bounds[3]);
+        ReflectionScissor scope=new ReflectionScissor(
+                bounds[0],bounds[1],bounds[2],bounds[3],width,height);
+        current=scope;
+        return scope;
     }
 
     /** Pure projection bounds are unit-tested in the common math module. */
@@ -66,8 +74,30 @@ public final class ReflectionScissor implements AutoCloseable {
         return MirrorCoverage.scissor(vp,eyeX,eyeY,eyeZ,width,height,faces);
     }
 
+    /**
+     * Used only by an opt-in GPU experiment. Never assume a shader buffer
+     * has native dimensions; clip against its *current* GL viewport instead.
+     */
+    public static int[] currentShaderViewportBounds() {
+        ReflectionScissor scope=current;
+        if(scope==null || !Boolean.getBoolean("simplymirrors.shaderPassScissor"))
+            return null;
+        IntBuffer viewport=BufferUtils.createIntBuffer(4);
+        glGetIntegerv(GL_VIEWPORT,viewport);
+        int[] bounds=MirrorCoverage.scaledScissor(
+                new int[]{scope.x,scope.y,scope.width,scope.height},
+                scope.nativeWidth,scope.nativeHeight,
+                viewport.get(0),viewport.get(1),viewport.get(2),viewport.get(3));
+        if(bounds!=null && Boolean.getBoolean("simplymirrors.gpuProfile") &&
+                ++shaderPassClipped%500==0)
+            System.out.println("SIMPLY_MIRRORS_SHADER_PASS_SCISSOR clipped="+shaderPassClipped+
+                    " rect="+bounds[0]+","+bounds[1]+","+bounds[2]+","+bounds[3]+
+                    " viewport="+viewport.get(2)+"x"+viewport.get(3));
+        return bounds;
+    }
     @Override public void close() {
         if(!active)return;
+        if(current==this)current=null;
         glScissor(oldX,oldY,oldWidth,oldHeight);
         if(oldEnabled)glEnable(GL_SCISSOR_TEST);
         else glDisable(GL_SCISSOR_TEST);
