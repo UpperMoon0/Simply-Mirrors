@@ -37,6 +37,7 @@ public abstract class IrisShadowMixin {
     @Inject(method="beginTranslucents",at=@At("HEAD"),require=0)
     private void simplymirrors$deferredFullTarget(CallbackInfo ci) {
         if(MirrorRenderer.redirect!=null) {
+            MirrorGpuProfiler.translucentBegin();
             simplymirrors$deferredScissor=glIsEnabled(GL_SCISSOR_TEST);
             glDisable(GL_SCISSOR_TEST);
         }
@@ -44,6 +45,7 @@ public abstract class IrisShadowMixin {
     @Inject(method="beginTranslucents",at=@At("RETURN"),require=0)
     private void simplymirrors$deferredDone(CallbackInfo ci) {
         if(MirrorRenderer.redirect!=null) {
+            MirrorGpuProfiler.translucentEnd();
             if(simplymirrors$deferredScissor)glEnable(GL_SCISSOR_TEST);
             else glDisable(GL_SCISSOR_TEST);
         }
@@ -51,6 +53,7 @@ public abstract class IrisShadowMixin {
     @Inject(method="finalizeLevelRendering",at=@At("HEAD"),require=0)
     private void simplymirrors$finalFullTarget(CallbackInfo ci) {
         if(MirrorRenderer.redirect!=null) {
+            MirrorGpuProfiler.finalizeBegin();
             simplymirrors$finalScissor=glIsEnabled(GL_SCISSOR_TEST);
             glDisable(GL_SCISSOR_TEST);
         }
@@ -58,6 +61,7 @@ public abstract class IrisShadowMixin {
     @Inject(method="finalizeLevelRendering",at=@At("RETURN"),require=0)
     private void simplymirrors$finalDone(CallbackInfo ci) {
         if(MirrorRenderer.redirect!=null) {
+            MirrorGpuProfiler.finalizeEnd();
             if(simplymirrors$finalScissor)glEnable(GL_SCISSOR_TEST);
             else glDisable(GL_SCISSOR_TEST);
         }
