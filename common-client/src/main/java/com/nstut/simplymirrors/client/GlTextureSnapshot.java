@@ -12,6 +12,12 @@ final class GlTextureSnapshot implements AutoCloseable {
     private final List<Texture> textures = new ArrayList<>();
     private int textureFramebuffer, backupFramebuffer;
     private boolean closed;
+    // Opt-in GPU transfer experiment. Identical image formats/storage are verified
+    // by GlHistoryBackupPool; never activate this on GL 3.3-only devices.
+    private static final boolean COPY_IMAGE = Boolean.getBoolean("simplymirrors.historyCopyImage");
+    private static boolean canCopyImage() {
+        return COPY_IMAGE && org.lwjgl.opengl.GL.getCapabilities().OpenGL43;
+    }
 
     /** Reclaim persistent GL scratch when the world/renderer is released. */
     static void releaseScratch() { GlHistoryBackupPool.clear(); }
@@ -49,10 +55,12 @@ final class GlTextureSnapshot implements AutoCloseable {
             int backup = GlHistoryBackupPool.acquire(format, w, h);
             Image image = new Image(texture, level, w, h, type, format, backup);
             images.add(image); // Own the lease before any operation can fail.
-            glBindRenderbuffer(GL_RENDERBUFFER, image.backup);
-            attachTexture(GL_READ_FRAMEBUFFER, image);
-            attachBackup(GL_DRAW_FRAMEBUFFER, image);
-            copy(image);
+            if (!canCopyImage()) {
+                glBindRenderbuffer(GL_RENDERBUFFER, image.backup);
+                attachTexture(GL_READ_FRAMEBUFFER, image);
+                attachBackup(GL_DRAW_FRAMEBUFFER, image);
+            }
+            copy(image, true);
             image.saved = true;
         }
     }
@@ -74,9 +82,23 @@ final class GlTextureSnapshot implements AutoCloseable {
             throw new IllegalStateException("Cannot isolate shader history framebuffer");
     }
 
-    private static void copy(Image image) {
-        glBlitFramebuffer(0, 0, image.width, image.height, 0, 0, image.width, image.height,
-                GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    private static void copy(Image image, boolean saving) {
+        if (canCopyImage()) {
+            // Same exact internal format and mip dimensions; direct image copy
+            // avoids temporary read/draw FBO attachment and completeness churn.
+            // The native GL 3.3 framebuffer blit remains the default fallback.
+            org.lwjgl.opengl.GL43.glCopyImageSubData(
+                    saving ? image.texture : image.backup,
+                    saving ? GL_TEXTURE_2D : GL_RENDERBUFFER,
+                    saving ? image.level : 0, 0, 0, 0,
+                    saving ? image.backup : image.texture,
+                    saving ? GL_RENDERBUFFER : GL_TEXTURE_2D,
+                    saving ? 0 : image.level, 0, 0, 0,
+                    image.width, image.height, 1);
+        } else {
+            glBlitFramebuffer(0, 0, image.width, image.height, 0, 0, image.width, image.height,
+                    GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        }
     }
 
     private void clear(Image image) {
@@ -95,9 +117,11 @@ final class GlTextureSnapshot implements AutoCloseable {
                 for (Image image : images) {
                     if (!image.saved) continue;
                     try {
-                        attachBackup(GL_READ_FRAMEBUFFER, image);
-                        attachTexture(GL_DRAW_FRAMEBUFFER, image);
-                        copy(image);
+                        if (!canCopyImage()) {
+                            attachBackup(GL_READ_FRAMEBUFFER, image);
+                            attachTexture(GL_DRAW_FRAMEBUFFER, image);
+                        }
+                        copy(image, false);
                     } catch (RuntimeException | Error problem) {
                         if (failure == null) failure = problem; else failure.addSuppressed(problem);
                     }
