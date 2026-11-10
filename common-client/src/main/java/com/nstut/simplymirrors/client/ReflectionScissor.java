@@ -82,7 +82,7 @@ public final class ReflectionScissor implements AutoCloseable {
                 0,0,frameWidth,frameHeight,SHADER_CROP_PAD)!=null) ||
             (SHADER_TAIL_CROP &&
             ShaderViewportCrop.rectangle(x,y,width,height,frameWidth,frameHeight,
-                0,0,frameWidth,frameHeight,24)!=null);
+                0,0,frameWidth,frameHeight,48)!=null);
         mirrorFrameBuffer=OUTPUT_SCISSOR?glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING):0;
         mirrorColorTexture=OUTPUT_SCISSOR && mirrorFrameBuffer>0 &&
             glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
