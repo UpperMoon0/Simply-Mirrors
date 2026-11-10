@@ -71,9 +71,16 @@ public final class ReflectionScissor implements AutoCloseable {
     // the viewport; reject those mirror groups once per reflection pass.
     public static boolean postProcessCropPossible() {
         ReflectionScissor scope=current;
-        return (SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP ||
-                SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP) && inFinalStage &&
-               scope!=null && scope.active && scope.cropWorthwhile;
+        if (scope==null || !scope.active || !scope.cropWorthwhile) return false;
+        // Oculus runs the SSR-producing "composite" program BEFORE the
+        // finalizeLevelRendering callback. The previous candidate incorrectly
+        // gated it on inFinalStage and could never clip a single fragment.
+        if (SHADER_EARLY_COMPOSITE_CROP &&
+                ShaderEarlyCompositeCrop.isEligible(
+                    PROGRAM_NAMES.get(glGetInteger(GL_CURRENT_PROGRAM))))
+            return true;
+        return inFinalStage && (SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP ||
+                SHADER_FINAL_ORIGIN_CROP);
     }
     public static void setFinalStage(boolean finalStage) { inFinalStage=finalStage; }
     private static long outputQuadChecks, outputQuadClipped, outputAliasFboClipped, outputTextureMatches;
