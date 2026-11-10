@@ -48,11 +48,17 @@ public final class ReflectionScissor implements AutoCloseable {
     private static final java.util.Map<Integer,String> PROGRAM_NAMES =
         new java.util.HashMap<Integer,String>();
     public static void registerShaderProgram(int program, String name) {
-        if ((SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP) && program > 0 && name != null)
+        if ((SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP ||
+                Boolean.getBoolean("simplymirrors.gpuProfile")) && program > 0 && name != null)
             PROGRAM_NAMES.put(program, name);
     }
     public static void unregisterShaderProgram(int program) {
         PROGRAM_NAMES.remove(program);
+    }
+    /** Label for the current Oculus program; consumed only by sparse opt-in GPU timing. */
+    public static String currentShaderProgramLabel() {
+        if (!Boolean.getBoolean("simplymirrors.gpuProfile")) return null;
+        return PROGRAM_NAMES.get(glGetInteger(GL_CURRENT_PROGRAM));
     }
     private static final int SHADER_CROP_PAD =
         Math.max(256,Math.min(1024,Integer.getInteger("simplymirrors.shaderCropPad",512)));
