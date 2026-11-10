@@ -113,7 +113,7 @@ class NativeStageTelemetryTests(TestCase):
                   "gpuCaptureMs=0.200 gpuWorldMs=4.000 gpuRestoreMs=0.250 "
                   "gpuFinalizeMs=2.400 cpuCaptureMs=1.000 cpuWorldMs=6.000 "
                   "cpuRestoreMs=0.700 cpuFinalizeMs=2.500")
-        got = profile_medians(line_a + "\\n" + line_b)
+        got = profile_medians(line_a + "\n" + line_b)
         self.assertAlmostEqual(0.3, got["gpuCaptureMs"])
         self.assertAlmostEqual(4.5, got["gpuWorldMs"])
         self.assertAlmostEqual(0.3, got["gpuRestoreMs"])
