@@ -82,7 +82,7 @@ def run_variant(label: str, index: int, stamp: str) -> tuple[dict, Path, Path]:
     if label == "trial":
         logs = client_log.read_text(encoding="utf-8", errors="replace")
         counts = [int(x) for x in re.findall(
-            r"SIMPLY_MIRRORS_SHADER_CROP[^\\n]*quadsClipped=(\\d+)", logs)]
+            r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*quadsClipped=(\d+)", logs)]
         if not counts or max(counts) <= 0:
             raise AssertionError("Experimental shader-tail crop never clipped a named pass")
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_RUN", label, index,
@@ -112,8 +112,12 @@ def accept() -> dict:
             images[label] = compare_capture(
                 control_images / f"scene-{scene}.png",
                 trial_images / f"scene-{scene}.png", scene)
+        neutral = round(100 * (trial["stages"]["no-mirror"]["medianAvgFps"] /
+                              control["stages"]["no-mirror"]["medianAvgFps"] - 1), 3)
+        if abs(neutral) > 4.5:
+            raise AssertionError(f"Native A/B neutral scene drifted by {neutral}%")
         all_pairs.append({"pair": index, "fpsChangePct": deltas,
-                          "pixelComparisons": images,
+                          "pixelComparisons": images, "neutralFpsDeltaPct": neutral,
                           "control": {k: v["medianAvgFps"] for k, v in control["stages"].items()},
                           "trial": {k: v["medianAvgFps"] for k, v in trial["stages"].items()}})
         print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_PAIR", json.dumps(all_pairs[-1]), flush=True)
@@ -122,7 +126,7 @@ def accept() -> dict:
     result = {"pairs": all_pairs,
               "medianOneMirrorImprovementPct": round(one, 3),
               "medianNineMirrorImprovementPct": round(nine, 3)}
-    path = ROOT / TARGET / "run" / f"fps-tail-{stamp}-acceptance.json"
+    path = ROOT / TARGET / "run" / f"fps-tail-{stamp}-acceptance-evidence" / "summary.json"\n    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     # Require meaningful repeatable improvement; one lucky run is not proof.
     if one < 3.0 or nine < -2.0:
