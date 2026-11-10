@@ -181,15 +181,14 @@ def accept() -> dict:
             control, control_images, _ = by_label["control"]
             trial, trial_images, _ = by_label["trial"]
             deltas = {}
-            images = {}
             for scene, label in SCENES:
                 baseline_fps = control["stages"][label]["medianAvgFps"]
                 candidate_fps = trial["stages"][label]["medianAvgFps"]
                 deltas[label] = round(100 * (candidate_fps / baseline_fps - 1), 3)
-                images[label] = compare_capture(
-                    control_images / f"scene-{scene}.png",
-                    trial_images / f"scene-{scene}.png", scene)
             try:
+                # Verify environmental comparability BEFORE drawing conclusions
+                # about pixel parity. A contended FPS run may capture different
+                # camera/temporal states and mimic broken shader output.
                 neutral = assert_stable_pair(control, trial, all_pairs)
             except UnstableBenchmarkError as unstable:
                 print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_UNSTABLE", json.dumps({
@@ -200,6 +199,13 @@ def accept() -> dict:
                 if attempt:
                     raise
                 continue
+            # Image failures on comparable runs remain hard failures and are
+            # NEVER retried as environmental noise.
+            images = {}
+            for scene, label in SCENES:
+                images[label] = compare_capture(
+                    control_images / f"scene-{scene}.png",
+                    trial_images / f"scene-{scene}.png", scene)
             all_pairs.append({
                 "pair": index, "attempt": attempt,
                 "fpsChangePct": deltas, "pixelComparisons": images,
