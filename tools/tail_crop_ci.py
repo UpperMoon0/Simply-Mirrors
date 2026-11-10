@@ -23,6 +23,38 @@ RUNS = ROOT / TARGET / "run"
 SCENES = ((8, "one-mirror"), (9, "nine-coplanar-mirrors"))
 
 
+class UnstableBenchmarkError(AssertionError):
+    """Environmental drift invalidates a pair; it is not performance evidence."""
+
+
+def fps_values(summary: dict) -> dict:
+    return {name: stage["medianAvgFps"] for name, stage in summary["stages"].items()}
+
+
+def assert_stable_pair(control: dict, trial: dict, accepted: list[dict]) -> float:
+    """Reject noise that could manufacture an apparent mirror optimization gain.
+
+    Compare every scene with the first accepted pair, not just the no-mirror
+    stage: one contended nine-mirror control once halved its measured FPS.
+    Image quality and the no-mirror 4.5% gate are unchanged.
+    """
+    control_fps, trial_fps = fps_values(control), fps_values(trial)
+    neutral = 100 * (trial_fps["no-mirror"] / control_fps["no-mirror"] - 1)
+    if abs(neutral) > 4.5:
+        raise UnstableBenchmarkError(f"No-mirror A/B drift {neutral:.3f}% exceeds 4.5%")
+    if accepted:
+        reference = accepted[0]
+        for variant, current in (("control", control_fps), ("trial", trial_fps)):
+            for scene in ("no-mirror", "one-mirror", "nine-coplanar-mirrors"):
+                original = reference[variant][scene]
+                drift = 100 * (current[scene] / original - 1)
+                if abs(drift) > 8.0:
+                    raise UnstableBenchmarkError(
+                        f"{variant} {scene} drift {drift:.3f}% exceeds 8% "
+                        "against the first accepted pair")
+    return round(neutral, 3)
+
+
 def compare_capture(control: Path, trial: Path, scene: int) -> dict:
     """Pixel and local-window quality; calibrated against actual 512/256 captures."""
     with Image.open(control) as source, Image.open(trial) as candidate:
@@ -55,8 +87,10 @@ def compare_capture(control: Path, trial: Path, scene: int) -> dict:
             "peak32RgbError": round(max_tile, 4), "roi": list(bounds)}
 
 
-def run_variant(label: str, index: int, stamp: str) -> tuple[dict, Path, Path]:
-    name = f"fps-tail-{stamp}-{label}-{index}"
+def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[dict, Path, Path]:
+    # Use a fresh directory for every retry, preserving failed-run evidence.
+    suffix = f"-retry{attempt}" if attempt else ""
+    name = f"fps-tail-{stamp}-{label}-{index}{suffix}"
     command = [
         sys.executable, "tools/fps_benchmark.py", "--target", TARGET,
         "--width", "1920", "--height", "1080", "--render-distance", "12",
@@ -97,30 +131,44 @@ def accept() -> dict:
     stamp = uuid.uuid4().hex[:8]
     all_pairs = []
     for index in range(3):
-        by_label = {}
-        # Reversed middle pair bounds one-way warmup/temperature bias.
-        for label in (("control", "trial") if index != 1 else ("trial", "control")):
-            by_label[label] = run_variant(label, index, stamp)
-        control, control_images, _ = by_label["control"]
-        trial, trial_images, _ = by_label["trial"]
-        deltas = {}
-        images = {}
-        for scene, label in SCENES:
-            baseline_fps = control["stages"][label]["medianAvgFps"]
-            candidate_fps = trial["stages"][label]["medianAvgFps"]
-            deltas[label] = round(100 * (candidate_fps / baseline_fps - 1), 3)
-            images[label] = compare_capture(
-                control_images / f"scene-{scene}.png",
-                trial_images / f"scene-{scene}.png", scene)
-        neutral = round(100 * (trial["stages"]["no-mirror"]["medianAvgFps"] /
-                              control["stages"]["no-mirror"]["medianAvgFps"] - 1), 3)
-        if abs(neutral) > 4.5:
-            raise AssertionError(f"Native A/B neutral scene drifted by {neutral}%")
-        all_pairs.append({"pair": index, "fpsChangePct": deltas,
-                          "pixelComparisons": images, "neutralFpsDeltaPct": neutral,
-                          "control": {k: v["medianAvgFps"] for k, v in control["stages"].items()},
-                          "trial": {k: v["medianAvgFps"] for k, v in trial["stages"].items()}})
-        print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_PAIR", json.dumps(all_pairs[-1]), flush=True)
+        # Retry a complete A/B pair once after environmental drift only.
+        # A failed image, shader or GL check is never retried or accepted.
+        for attempt in range(2):
+            by_label = {}
+            order = ("control", "trial") if index != 1 else ("trial", "control")
+            for label in order:
+                by_label[label] = run_variant(label, index, stamp, attempt)
+            control, control_images, _ = by_label["control"]
+            trial, trial_images, _ = by_label["trial"]
+            deltas = {}
+            images = {}
+            for scene, label in SCENES:
+                baseline_fps = control["stages"][label]["medianAvgFps"]
+                candidate_fps = trial["stages"][label]["medianAvgFps"]
+                deltas[label] = round(100 * (candidate_fps / baseline_fps - 1), 3)
+                images[label] = compare_capture(
+                    control_images / f"scene-{scene}.png",
+                    trial_images / f"scene-{scene}.png", scene)
+            try:
+                neutral = assert_stable_pair(control, trial, all_pairs)
+            except UnstableBenchmarkError as unstable:
+                print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_UNSTABLE", json.dumps({
+                    "pair": index, "attempt": attempt, "reason": str(unstable),
+                    "control": fps_values(control), "trial": fps_values(trial),
+                    "retry": attempt == 0,
+                }), flush=True)
+                if attempt:
+                    raise
+                continue
+            all_pairs.append({
+                "pair": index, "attempt": attempt,
+                "fpsChangePct": deltas, "pixelComparisons": images,
+                "neutralFpsDeltaPct": neutral,
+                "control": fps_values(control), "trial": fps_values(trial),
+            })
+            print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_PAIR",
+                  json.dumps(all_pairs[-1]), flush=True)
+            break
     one = statistics.median(p["fpsChangePct"]["one-mirror"] for p in all_pairs)
     nine = statistics.median(p["fpsChangePct"]["nine-coplanar-mirrors"] for p in all_pairs)
     result = {"pairs": all_pairs,
