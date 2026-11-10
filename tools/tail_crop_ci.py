@@ -100,7 +100,9 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
         "--run-name", name,
     ]
     if label == "trial":
-        command.extend(("--shader-tail-crop", "--shader-final-crop"))
+        # Keep the final shader fully rasterized: native image A/B rejected the
+        # origin-preserving final crop (peak 32px RGB error 7.642 > 5.0).
+        command.append("--shader-tail-crop")
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_START", label, index, name, flush=True)
     result = subprocess.run(command, cwd=ROOT, check=False)
     if result.returncode:
@@ -108,7 +110,7 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
     summary_file = RUNS / f"{name}-evidence" / "summary.json"
     summary = json.loads(summary_file.read_text(encoding="utf-8"))
     if (summary.get("shaderTailCropEnabled") != (label == "trial") or
-        summary.get("shaderFinalCropEnabled") != (label == "trial") or
+        summary.get("shaderFinalCropEnabled") is not False or
         summary.get("resolution") != "1920x1080" or
         summary.get("renderDistance") != 12 or
         not summary.get("movingCameraEnabled")):
@@ -120,10 +122,6 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
             r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*quadsClipped=(\d+)", logs)]
         if not counts or max(counts) <= 0:
             raise AssertionError("Experimental shader-tail crop never clipped a named pass")
-        final_clips = [int(x) for x in re.findall(
-            r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*finalQuadsClipped=(\d+)", logs)]
-        if not final_clips or max(final_clips) <= 0:
-            raise AssertionError("Experimental origin-preserving final shader never clipped a pass")
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_RUN", label, index,
           json.dumps({k: v["medianAvgFps"] for k, v in summary["stages"].items()}),
           flush=True)
