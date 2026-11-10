@@ -1,4 +1,4 @@
-"""Single-use native acceptance for experimental origin-preserving final cropping.
+"""Single-use native acceptance for experimental early composite SSR cropping.
 
 Only launch from the reviewed graphics Jenkins agent. Benchmark all pairs on its
 same private GPU, sequentially, without touching the player's Minecraft client.
@@ -119,10 +119,10 @@ def benchmark_command(label: str, name: str) -> list[str]:
         "--run-name", name,
     ]
     # Hold the previously accepted +5.209% shader-tail + direct-history
-    # optimization CONSTANT in both arms. Only the new final-origin crop varies.
+    # optimization CONSTANT in both arms. Only the early composite crop varies.
     command.extend(("--shader-tail-crop", "--history-copy-image"))
     if label == "trial":
-        command.append("--shader-final-origin-crop")
+        command.append("--shader-early-composite-crop")
     return command
 
 
@@ -139,7 +139,8 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
     summary = json.loads(summary_file.read_text(encoding="utf-8"))
     if (summary.get("shaderTailCropEnabled") is not True or
         summary.get("historyCopyImageEnabled") is not True or
-        summary.get("shaderFinalOriginCropEnabled") != (label == "trial") or
+        summary.get("shaderFinalOriginCropEnabled") is not False or
+        summary.get("shaderEarlyCompositeCropEnabled") != (label == "trial") or
         summary.get("resolution") != "1920x1080" or
         summary.get("renderDistance") != 12 or
         not summary.get("movingCameraEnabled")):
@@ -155,10 +156,10 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
     if label == "trial":
         counts = [int(x) for x in re.findall(
             r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*quadsClipped=(\d+)", logs)]
-        final_counts = [int(x) for x in re.findall(
-            r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*finalOriginQuadsClipped=(\d+)", logs)]
-        if not counts or max(counts) <= 0 or not final_counts or max(final_counts) <= 0:
-            raise AssertionError("Experimental final-origin crop never clipped a named final pass")
+        early_counts = [int(x) for x in re.findall(
+            r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*earlyCompositeQuadsClipped=(\d+)", logs)]
+        if not counts or max(counts) <= 0 or not early_counts or max(early_counts) <= 0:
+            raise AssertionError("Experimental composite SSR crop never clipped its named pass")
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_RUN", label, index,
           json.dumps({k: v["medianAvgFps"] for k, v in summary["stages"].items()}),
           flush=True)
@@ -228,9 +229,9 @@ def accept() -> dict:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     # Require meaningful repeatable improvement; one lucky run is not proof.
-    if one < 3.0 or nine < -2.0:
+    if one < 10.0 or nine < -2.0:
         raise AssertionError(f"Insufficient native FPS improvement: {result}")
-    print("SIMPLY_MIRRORS_FINAL_ORIGIN_ACCEPTANCE_PASS", json.dumps(result), flush=True)
+    print("SIMPLY_MIRRORS_EARLY_COMPOSITE_ACCEPTANCE_PASS", json.dumps(result), flush=True)
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_PASS", json.dumps(result), flush=True)
     return result
 
