@@ -10,6 +10,8 @@
     "IrisDepthTargetMixin",
     "ReflectionCullingMixin",
     "IrisFullscreenMixin",
+    "IrisProgramLabelMixin",
+    "IrisProgramDisposeMixin",
     "IrisTransformMixin",
     "IrisUniformMixin",
     "IrisFrameMixin",
