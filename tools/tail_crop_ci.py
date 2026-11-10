@@ -34,7 +34,7 @@ def profile_medians(logs: str) -> dict[str, float]:
         if "SIMPLY_MIRRORS_GPU_PROFILE frames=" not in line:
             continue
         for field in PROFILE_FIELDS:
-            match = re.search(r"\\b" + field + r"=(-?\\d+(?:\\.\\d+)?)\\b", line)
+            match = re.search(r"\b" + field + r"=(-?\d+(?:\.\d+)?)\b", line)
             if match:
                 value = float(match.group(1))
                 if 0 <= value < 1000:
