@@ -52,6 +52,7 @@ class GraphicsOptionsTests(unittest.TestCase):
         self.assertNotIn("reflectionOutputScissor=true", options)
         self.assertNotIn("historyCopyImage=true", options)
         self.assertNotIn("shaderPostProcessCrop=true", options)
+        self.assertNotIn("shaderTailCrop=true", options)
 
     def test_explicit_gpu_ab_options_set_both_flags(self):
         options = fps_benchmark.graphics_java_options(
@@ -60,6 +61,8 @@ class GraphicsOptionsTests(unittest.TestCase):
         self.assertIn("-Dsimplymirrors.historyCopyImage=true", options)
         self.assertIn("-Dsimplymirrors.shaderPostProcessCrop=true",
                       fps_benchmark.graphics_java_options(postprocess_scissor=True))
+        self.assertIn("-Dsimplymirrors.shaderTailCrop=true",
+                      fps_benchmark.graphics_java_options(shader_tail_crop=True))
 
 
 
