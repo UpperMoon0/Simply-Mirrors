@@ -6,6 +6,7 @@ import com.nstut.simplymirrors.math.ReflectionOutputGuard;
 import com.nstut.simplymirrors.math.ShaderViewportCrop;
 import com.nstut.simplymirrors.math.ShaderTailCrop;
 import com.nstut.simplymirrors.math.ShaderFinalOriginCrop;
+import com.nstut.simplymirrors.math.ShaderEarlyCompositeCrop;
 import org.lwjgl.BufferUtils;
 import java.nio.IntBuffer;
 import java.util.List;
@@ -40,11 +41,14 @@ public final class ReflectionScissor implements AutoCloseable {
     // origin-fragment SSBO clear. Keep that fragment INSIDE the scissor.
     private static final boolean SHADER_FINAL_ORIGIN_CROP =
         Boolean.getBoolean("simplymirrors.shaderFinalOriginCrop");
+    // Separate opt-in experiment for the expensive composite SSR producer.
+    private static final boolean SHADER_EARLY_COMPOSITE_CROP =
+        Boolean.getBoolean("simplymirrors.shaderEarlyCompositeCrop");
     // These shader IDs are GL-context scoped and removed on program destruction.
     private static final java.util.Map<Integer,String> PROGRAM_NAMES =
         new java.util.HashMap<Integer,String>();
     public static void registerShaderProgram(int program, String name) {
-        if ((SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP) && program > 0 && name != null)
+        if ((SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP) && program > 0 && name != null)
             PROGRAM_NAMES.put(program, name);
     }
     public static void unregisterShaderProgram(int program) {
@@ -55,12 +59,13 @@ public final class ReflectionScissor implements AutoCloseable {
     private static boolean inFinalStage;
     private static long shaderQuadChecks, shaderQuadsClipped;
     private static long finalOriginQuadsClipped, finalOriginPixelsSaved;
+    private static long earlyCompositeQuadsClipped, earlyCompositePixelsSaved;
     // Expensive GL framebuffer queries have no value when coverage nearly fills
     // the viewport; reject those mirror groups once per reflection pass.
     public static boolean postProcessCropPossible() {
         ReflectionScissor scope=current;
         return (SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP ||
-                SHADER_FINAL_ORIGIN_CROP) && inFinalStage &&
+                SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP) && inFinalStage &&
                scope!=null && scope.active && scope.cropWorthwhile;
     }
     public static void setFinalStage(boolean finalStage) { inFinalStage=finalStage; }
@@ -92,7 +97,10 @@ public final class ReflectionScissor implements AutoCloseable {
                 0,0,frameWidth,frameHeight,48)!=null) ||
             (SHADER_FINAL_ORIGIN_CROP &&
             ShaderFinalOriginCrop.rectangle(x,y,width,height,frameWidth,frameHeight,
-                0,0,frameWidth,frameHeight,96)!=null);
+                0,0,frameWidth,frameHeight,96)!=null) ||
+            (SHADER_EARLY_COMPOSITE_CROP &&
+            ShaderEarlyCompositeCrop.rectangle("composite",x,y,width,height,
+                frameWidth,frameHeight,0,0,frameWidth,frameHeight)!=null);
         mirrorFrameBuffer=OUTPUT_SCISSOR?glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING):0;
         mirrorColorTexture=OUTPUT_SCISSOR && mirrorFrameBuffer>0 &&
             glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
@@ -182,11 +190,16 @@ public final class ReflectionScissor implements AutoCloseable {
         int padding=SHADER_CROP_PAD;
         String program=null;
         boolean finalOrigin=false;
-        if(SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP) {
-            // Only known, explicitly opted-in programs may reduce draw area.
+        boolean earlyComposite=false;
+        if(SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP ||
+                SHADER_EARLY_COMPOSITE_CROP) {
+            // Only exact recognized programs may reduce work; all other
+            // shader programs retain full-frame native rendering.
             program=PROGRAM_NAMES.get(glGetInteger(GL_CURRENT_PROGRAM));
             finalOrigin=SHADER_FINAL_ORIGIN_CROP && ShaderFinalOriginCrop.isPinnedFinal(program);
-            if(!finalOrigin) {
+            earlyComposite=SHADER_EARLY_COMPOSITE_CROP &&
+                    ShaderEarlyCompositeCrop.isEligible(program);
+            if(!finalOrigin && !earlyComposite) {
                 if(!SHADER_TAIL_CROP)return false;
                 padding=ShaderTailCrop.paddingForProgram(program);
                 if(padding<0)return false;
@@ -204,6 +217,10 @@ public final class ReflectionScissor implements AutoCloseable {
             ? ShaderFinalOriginCrop.rectangle(scope.x,scope.y,scope.width,scope.height,
                   scope.frameWidth,scope.frameHeight,viewport.get(0),viewport.get(1),
                   viewport.get(2),viewport.get(3),96)
+            : earlyComposite
+            ? ShaderEarlyCompositeCrop.rectangle(program,scope.x,scope.y,scope.width,
+                  scope.height,scope.frameWidth,scope.frameHeight,
+                  viewport.get(0),viewport.get(1),viewport.get(2),viewport.get(3))
             : ShaderViewportCrop.rectangle(scope.x,scope.y,scope.width,scope.height,
                   scope.frameWidth,scope.frameHeight,viewport.get(0),viewport.get(1),
                   viewport.get(2),viewport.get(3),padding);
@@ -214,6 +231,11 @@ public final class ReflectionScissor implements AutoCloseable {
         if(finalOrigin) {
             finalOriginQuadsClipped++;
             finalOriginPixelsSaved += (long)viewport.get(2)*viewport.get(3)
+                    - (long)box[2]*box[3];
+        }
+        if(earlyComposite) {
+            earlyCompositeQuadsClipped++;
+            earlyCompositePixelsSaved += (long)viewport.get(2)*viewport.get(3)
                     - (long)box[2]*box[3];
         }
         return true;
@@ -228,13 +250,16 @@ public final class ReflectionScissor implements AutoCloseable {
             System.out.println("SIMPLY_MIRRORS_OUTPUT_SCISSOR quadsChecked="+
                 outputQuadChecks+" textureMatches="+outputTextureMatches+
                 " outputQuadsClipped="+outputQuadClipped+" aliasedFboClips="+outputAliasFboClipped);
-        if((SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP)
+        if((SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP ||
+                SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP)
                 && Boolean.getBoolean("simplymirrors.gpuProfile") &&
            clipped>0 && clipped%180==0)
             System.out.println("SIMPLY_MIRRORS_SHADER_CROP quadsChecked="+
                 shaderQuadChecks+" quadsClipped="+shaderQuadsClipped+
                 " finalOriginQuadsClipped="+finalOriginQuadsClipped+
-                " finalOriginPixelsSaved="+finalOriginPixelsSaved);
+                " finalOriginPixelsSaved="+finalOriginPixelsSaved+
+                " earlyCompositeQuadsClipped="+earlyCompositeQuadsClipped+
+                " earlyCompositePixelsSaved="+earlyCompositePixelsSaved);
         glScissor(oldX,oldY,oldWidth,oldHeight);
         if(oldEnabled)glEnable(GL_SCISSOR_TEST);
         else glDisable(GL_SCISSOR_TEST);
