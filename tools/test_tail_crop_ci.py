@@ -146,12 +146,12 @@ class BenchmarkFailureClassificationTests(TestCase):
             ("no-mirror", 70.0), ("one-mirror", 40.0),
             ("nine-coplanar-mirrors", 36.0))}
         fake = ({"stages": stages}, Path("not-read-images"), Path("not-read-summary"))
-        with patch.object(tail_crop_ci.os, "name", "nt"), \\
-             patch.dict(os.environ, {"CI_GRAPHICS_AGENT": "1"}), \\
-             patch.object(tail_crop_ci, "run_variant", return_value=fake), \\
-             patch.object(tail_crop_ci, "assert_stable_pair",
-                          side_effect=UnstableBenchmarkError("GPU contended")), \\
-             patch.object(tail_crop_ci, "compare_capture") as comparison:
+        with (patch.object(tail_crop_ci.os, "name", "nt"),
+              patch.dict(os.environ, {"CI_GRAPHICS_AGENT": "1"}),
+              patch.object(tail_crop_ci, "run_variant", return_value=fake),
+              patch.object(tail_crop_ci, "assert_stable_pair",
+                           side_effect=UnstableBenchmarkError("GPU contended")),
+              patch.object(tail_crop_ci, "compare_capture") as comparison):
             with self.assertRaises(UnstableBenchmarkError):
                 tail_crop_ci.accept()
             # Both attempts were rejected before opening any captured images.
