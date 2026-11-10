@@ -90,15 +90,23 @@ public final class MirrorGpuProfiler {
                     segments ? ms(ticks[7]-ticks[1]) : Double.NaN, // opaque + early
                     segments ? ms(ticks[8]-ticks[7]) : Double.NaN, // begin translucents
                     segments ? ms(ticks[9]-ticks[8]) : Double.NaN, // translucent work
-                    segments ? ms(ticks[10]-ticks[9]) : Double.NaN // final shader stage
+                    segments ? ms(ticks[10]-ticks[9]) : Double.NaN, // final shader stage
+                    ms(first.cpu[1]-first.cpu[0]), // CPU history capture and setup
+                    ms(first.cpu[4]-first.cpu[1]), // CPU reflected world rendering
+                    ms(first.cpu[5]-first.cpu[4]), // CPU history restore and rebind
+                    ms(first.cpu[6]-first.cpu[5]), // CPU mirror composite
+                    ms(first.cpu[6]-first.cpu[0]), // CPU total reflection overhead
+                    segments ? ms(first.cpu[10]-first.cpu[9]) : Double.NaN // CPU final shader
                 };
                 SAMPLES.add(values);
                 processed++;
                 if (SAMPLES.size() >= 90) {
                     System.out.printf(Locale.ROOT,
-                        "SIMPLY_MIRRORS_GPU_PROFILE frames=%d gpuCaptureMs=%.3f gpuWorldMs=%.3f gpuShadowsAndPrepareMs=%.3f gpuRestoreMs=%.3f gpuCompositeMs=%.3f gpuTotalMs=%.3f gpuOpaqueEarlyMs=%.3f gpuDeferredBeginMs=%.3f gpuTranslucentMs=%.3f gpuFinalizeMs=%.3f%n",
+                        "SIMPLY_MIRRORS_GPU_PROFILE frames=%d gpuCaptureMs=%.3f gpuWorldMs=%.3f gpuShadowsAndPrepareMs=%.3f gpuRestoreMs=%.3f gpuCompositeMs=%.3f gpuTotalMs=%.3f gpuOpaqueEarlyMs=%.3f gpuDeferredBeginMs=%.3f gpuTranslucentMs=%.3f gpuFinalizeMs=%.3f cpuCaptureMs=%.3f cpuWorldMs=%.3f cpuRestoreMs=%.3f cpuCompositeMs=%.3f cpuTotalMs=%.3f cpuFinalizeMs=%.3f%n",
                         processed, median(0), median(1), median(2), median(3), median(4), median(5),
-                        medianOrMissing(6), medianOrMissing(7), medianOrMissing(8), medianOrMissing(9));
+                        medianOrMissing(6), medianOrMissing(7), medianOrMissing(8), medianOrMissing(9),
+                        median(10), median(11), median(12), median(13), median(14),
+                        medianOrMissing(15));
                     SAMPLES.clear();
                 }
             } finally {
