@@ -102,7 +102,11 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
     if label == "trial":
         # Keep the final shader fully rasterized: native image A/B rejected the
         # origin-preserving final crop (peak 32px RGB error 7.642 > 5.0).
-        command.append("--shader-tail-crop")
+        # Direct GPU image copies avoid per-mip FBO blits and attachment
+        # churn while preserving the exact history pixels. The flag is
+        # experimental and has an OpenGL 4.3 runtime capability fallback.
+        # Its effect must be measured, not assumed.
+        command.extend(("--shader-tail-crop", "--history-copy-image"))
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_START", label, index, name, flush=True)
     result = subprocess.run(command, cwd=ROOT, check=False)
     if result.returncode:
@@ -110,6 +114,7 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
     summary_file = RUNS / f"{name}-evidence" / "summary.json"
     summary = json.loads(summary_file.read_text(encoding="utf-8"))
     if (summary.get("shaderTailCropEnabled") != (label == "trial") or
+        summary.get("historyCopyImageEnabled") != (label == "trial") or
         summary.get("resolution") != "1920x1080" or
         summary.get("renderDistance") != 12 or
         not summary.get("movingCameraEnabled")):
