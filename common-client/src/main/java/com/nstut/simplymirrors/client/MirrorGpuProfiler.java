@@ -32,6 +32,7 @@ public final class MirrorGpuProfiler {
     public static void begin() {
         if (!ENABLED) return;
         poll();
+        ShaderPassGpuTiming.beginFrame();
         if (current != null) current.release();
         current = new Frame();
         mark(0);
@@ -45,6 +46,7 @@ public final class MirrorGpuProfiler {
         glQueryCounter(query, GL_TIMESTAMP);
         current.cpu[stage] = System.nanoTime();
         if (stage == 6) {
+            ShaderPassGpuTiming.endFrame();
             PENDING.addLast(current);
             current = null;
         }
@@ -138,6 +140,7 @@ public final class MirrorGpuProfiler {
         if (current != null) { current.release(); current = null; }
         while (!PENDING.isEmpty()) PENDING.removeFirst().release();
         SAMPLES.clear();
+        ShaderPassGpuTiming.reset();
     }
 
     private static final class Frame {
