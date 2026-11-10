@@ -5,7 +5,7 @@ from unittest import TestCase
 
 from PIL import Image, ImageDraw
 
-from tail_crop_ci import compare_capture, assert_stable_pair, UnstableBenchmarkError
+from tail_crop_ci import compare_capture, assert_stable_pair, UnstableBenchmarkError, benchmark_command
 
 
 class TailCropImageAcceptanceTests(TestCase):
@@ -82,3 +82,22 @@ class TailCropEnvironmentStabilityTests(TestCase):
         control = self.summary(75.8, 40.2, 38.8)
         trial = self.summary(76.0, 42.2, 39.7)
         self.assertAlmostEqual(0.264, assert_stable_pair(control, trial, [reference]))
+
+
+class NativeCopyImageOptimizationTests(TestCase):
+    def test_trial_preserves_1080p_camera_and_enables_both_opt_in_paths(self):
+        args = benchmark_command("trial", "tail-benchmark-trial")
+        self.assertIn("--shader-tail-crop", args)
+        self.assertIn("--history-copy-image", args)
+        self.assertIn("--moving-camera", args)
+        self.assertIn("--profile-gpu", args)
+        self.assertEqual("1920", args[args.index("--width") + 1])
+        self.assertEqual("1080", args[args.index("--height") + 1])
+        self.assertNotIn("--shader-final-crop", args)
+
+    def test_control_runs_both_optimizations_disabled(self):
+        args = benchmark_command("control", "tail-benchmark-control")
+        self.assertNotIn("--shader-tail-crop", args)
+        self.assertNotIn("--history-copy-image", args)
+        self.assertNotIn("--shader-final-crop", args)
+        self.assertIn("--moving-camera", args)
