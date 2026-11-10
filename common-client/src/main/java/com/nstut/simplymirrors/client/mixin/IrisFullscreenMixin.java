@@ -2,6 +2,7 @@ package com.nstut.simplymirrors.client.mixin;
 import com.nstut.simplymirrors.client.MirrorRenderer;
 import com.nstut.simplymirrors.client.ShaderReflection;
 import com.nstut.simplymirrors.client.ReflectionScissor;
+import com.nstut.simplymirrors.client.ShaderPassGpuTiming;
 import org.lwjgl.BufferUtils;
 import java.nio.IntBuffer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -23,7 +24,10 @@ public abstract class IrisFullscreenMixin {
     @Unique private boolean simplymirrors$outputClipped;
     @Unique private final int[] simplymirrors$scissorBox = new int[4];
     @Inject(method="renderQuad",at=@At("HEAD"),require=0)
-    private void simplymirrors$screenQuad(CallbackInfo ci) { simplymirrors$screenWinding(true); }
+    private void simplymirrors$screenQuad(CallbackInfo ci) {
+        simplymirrors$screenWinding(true);
+        if (MirrorRenderer.redirect != null) ShaderPassGpuTiming.beginQuad();
+    }
     @Inject(method={"renderAll","renderFinalPass","renderHorizon"},at=@At("HEAD"),require=0)
     private void simplymirrors$screenOther(CallbackInfo ci) { simplymirrors$screenWinding(false); }
     @Unique private void simplymirrors$screenWinding(boolean outputEligible) {
@@ -50,6 +54,9 @@ public abstract class IrisFullscreenMixin {
     @Inject(method={"renderQuad","renderAll","renderFinalPass","renderHorizon"},at=@At("RETURN"),require=0)
     private void simplymirrors$restoreWinding(CallbackInfo ci) {
         if(MirrorRenderer.redirect!=null){
+            // HEAD/RETURN pairs also run for outer renderAll; that is a no-op
+            // unless the sampled inner renderQuad created an active timer.
+            ShaderPassGpuTiming.endQuad();
             glFrontFace(simplymirrors$frontFace);
             ShaderReflection.resume(simplymirrors$clip);
             if(simplymirrors$outputClipped) glScissor(simplymirrors$scissorBox[0],
