@@ -60,6 +60,13 @@ public final class ReflectionScissor implements AutoCloseable {
     private static long shaderQuadChecks, shaderQuadsClipped;
     private static long finalOriginQuadsClipped, finalOriginPixelsSaved;
     private static long earlyCompositeQuadsClipped, earlyCompositePixelsSaved;
+    // Diagnostic only, limited to four messages per client and GPU profiler flag.
+    private static int earlyCompositeDiagnostics;
+    private static void earlyCompositeDenied(String reason) {
+        if (Boolean.getBoolean("simplymirrors.gpuProfile") &&
+                earlyCompositeDiagnostics++ < 4)
+            System.out.println("SIMPLY_MIRRORS_EARLY_COMPOSITE_DENIED " + reason);
+    }
     // Expensive GL framebuffer queries have no value when coverage nearly fills
     // the viewport; reject those mirror groups once per reflection pass.
     public static boolean postProcessCropPossible() {
@@ -207,10 +214,18 @@ public final class ReflectionScissor implements AutoCloseable {
         }
         shaderQuadChecks++;
         int fbo=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
-        if(fbo==0 || glGetInteger(GL_DRAW_BUFFER)!=GL_COLOR_ATTACHMENT0 ||
-           glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,
-              GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE)!=GL_TEXTURE)
+        if(fbo==0) {
+            if(earlyComposite)earlyCompositeDenied("fbo=0");
             return false;
+        }
+        int drawBuffer=glGetInteger(GL_DRAW_BUFFER);
+        int attachment=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                GL_COLOR_ATTACHMENT0,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+        if(drawBuffer!=GL_COLOR_ATTACHMENT0 || attachment!=GL_TEXTURE) {
+            if(earlyComposite)earlyCompositeDenied("fbo="+fbo+
+                    " drawBuffer="+drawBuffer+" color0Type="+attachment);
+            return false;
+        }
         IntBuffer viewport=BufferUtils.createIntBuffer(4);
         glGetIntegerv(GL_VIEWPORT,viewport);
         int[] box=finalOrigin
@@ -224,7 +239,14 @@ public final class ReflectionScissor implements AutoCloseable {
             : ShaderViewportCrop.rectangle(scope.x,scope.y,scope.width,scope.height,
                   scope.frameWidth,scope.frameHeight,viewport.get(0),viewport.get(1),
                   viewport.get(2),viewport.get(3),padding);
-        if(box==null)return false;
+        if(box==null) {
+            if(earlyComposite)earlyCompositeDenied(
+                    "geometry viewport="+viewport.get(0)+","+viewport.get(1)+","+
+                    viewport.get(2)+","+viewport.get(3)+
+                    " native="+scope.frameWidth+"x"+scope.frameHeight+
+                    " mirror="+scope.x+","+scope.y+","+scope.width+","+scope.height);
+            return false;
+        }
         glScissor(box[0],box[1],box[2],box[3]);
         glEnable(GL_SCISSOR_TEST);
         shaderQuadsClipped++;
