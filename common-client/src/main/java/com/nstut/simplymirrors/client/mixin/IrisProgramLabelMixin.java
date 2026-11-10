@@ -2,6 +2,7 @@ package com.nstut.simplymirrors.client.mixin;
 
 import com.google.common.collect.ImmutableSet;
 import com.nstut.simplymirrors.client.ReflectionScissor;
+import com.nstut.simplymirrors.client.ShaderProgramLabel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
@@ -17,17 +18,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Pseudo
 @Mixin(targets = "net.irisshaders.iris.gl.program.ProgramBuilder", remap = false)
-public abstract class IrisProgramLabelMixin {
+public abstract class IrisProgramLabelMixin implements ShaderProgramLabel {
     @Shadow @Final private int program;
     @Unique private String simplymirrors$shaderName;
+    @Override public void simplymirrors$setProgramLabel(String name) {
+        simplymirrors$shaderName = name;
+    }
 
     @Inject(method = "begin", at = @At("RETURN"), require = 0)
     private static void simplymirrors$labelBuilder(String name, String vertex,
             String geometry, String fragment, ImmutableSet<Integer> reserved,
             CallbackInfoReturnable<Object> callback) {
         Object result = callback.getReturnValue();
-        if (result instanceof IrisProgramLabelMixin)
-            ((IrisProgramLabelMixin) result).simplymirrors$shaderName = name;
+        if (result instanceof ShaderProgramLabel)
+            ((ShaderProgramLabel) result).simplymirrors$setProgramLabel(name);
     }
 
     @Inject(method = "build", at = @At("RETURN"), require = 0)
