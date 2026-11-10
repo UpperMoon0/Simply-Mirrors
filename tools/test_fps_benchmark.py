@@ -54,6 +54,9 @@ class GraphicsOptionsTests(unittest.TestCase):
         self.assertNotIn("shaderPostProcessCrop=true", options)
         self.assertNotIn("shaderTailCrop=true", options)
         self.assertNotIn("shaderEarlyCompositeCrop=true", options)
+        self.assertNotIn("shaderFinalDualCrop=true", options)
+        self.assertIn("-Dsimplymirrors.fpsExpectedWidth=1920", options)
+        self.assertIn("-Dsimplymirrors.fpsExpectedHeight=1080", options)
 
     def test_explicit_gpu_ab_options_set_both_flags(self):
         options = fps_benchmark.graphics_java_options(
@@ -66,6 +69,8 @@ class GraphicsOptionsTests(unittest.TestCase):
                       fps_benchmark.graphics_java_options(shader_tail_crop=True))
         self.assertIn("-Dsimplymirrors.shaderEarlyCompositeCrop=true",
                       fps_benchmark.graphics_java_options(shader_early_composite_crop=True))
+        self.assertIn("-Dsimplymirrors.shaderFinalDualCrop=true",
+                      fps_benchmark.graphics_java_options(shader_final_dual_crop=True))
 
 
 
@@ -110,6 +115,21 @@ class MovingCameraAcceptanceTests(unittest.TestCase):
             Image.new("RGB", (240, 300)).save(second)
             with self.assertRaisesRegex(AssertionError, "resolution changed"):
                 fps_benchmark.validate_camera_motion(first, second)
+
+
+class ActualFramebufferResolutionTests(unittest.TestCase):
+    def test_exact_requested_resolution_passes(self):
+        fps_benchmark.validate_native_resolution(
+            {"resolution": "1920x1080"}, 1920, 1080)
+
+    def test_decorated_window_mismatch_fails_closed(self):
+        with self.assertRaisesRegex(AssertionError, "1920x1061"):
+            fps_benchmark.validate_native_resolution(
+                {"resolution": "1920x1061"}, 1920, 1080)
+
+    def test_missing_resolution_fails_closed(self):
+        with self.assertRaises(AssertionError):
+            fps_benchmark.validate_native_resolution({}, 1920, 1080)
 
 
 class FramePassCadenceTests(unittest.TestCase):

@@ -1,4 +1,4 @@
-"""Single-use native acceptance for experimental early composite SSR cropping.
+"""Strict native acceptance for two-region final shader crop with origin SSBO replay.
 
 Only launch from the reviewed graphics Jenkins agent. Benchmark all pairs on its
 same private GPU, sequentially, without touching the player's Minecraft client.
@@ -84,8 +84,8 @@ def compare_capture(control: Path, trial: Path, scene: int) -> dict:
             raise AssertionError("Experimental mirror resolution changed")
         a, b = source.convert("RGB"), candidate.convert("RGB")
     w, h = a.size
-    if w < 1280 or h < 720:
-        raise AssertionError("Not an accepted native 1080p capture")
+    if (w, h) != (1920, 1080):
+        raise AssertionError(f"Not an exact native 1920x1080 capture: {w}x{h}")
     bounds = ((int(.30*w), int(.20*h), int(.70*w), int(.80*h))
               if scene == 8 else
               (int(.20*w), int(.10*h), int(.80*w), int(.90*h)))
@@ -119,10 +119,10 @@ def benchmark_command(label: str, name: str) -> list[str]:
         "--run-name", name,
     ]
     # Hold the previously accepted +5.209% shader-tail + direct-history
-    # optimization CONSTANT in both arms. Only the early composite crop varies.
+    # optimization CONSTANT in both arms. Only the final two-region crop varies.
     command.extend(("--shader-tail-crop", "--history-copy-image"))
     if label == "trial":
-        command.append("--shader-early-composite-crop")
+        command.append("--shader-final-dual-crop")
     return command
 
 
@@ -140,7 +140,8 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
     if (summary.get("shaderTailCropEnabled") is not True or
         summary.get("historyCopyImageEnabled") is not True or
         summary.get("shaderFinalOriginCropEnabled") is not False or
-        summary.get("shaderEarlyCompositeCropEnabled") != (label == "trial") or
+        summary.get("shaderEarlyCompositeCropEnabled") is not False or
+        summary.get("shaderFinalDualCropEnabled") != (label == "trial") or
         summary.get("resolution") != "1920x1080" or
         summary.get("renderDistance") != 12 or
         not summary.get("movingCameraEnabled")):
@@ -156,10 +157,17 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
     if label == "trial":
         counts = [int(x) for x in re.findall(
             r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*quadsClipped=(\d+)", logs)]
-        early_counts = [int(x) for x in re.findall(
-            r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*earlyCompositeQuadsClipped=(\d+)", logs)]
-        if not counts or max(counts) <= 0 or not early_counts or max(early_counts) <= 0:
-            raise AssertionError("Experimental composite SSR crop never clipped its named pass")
+        dual_counts = [int(x) for x in re.findall(
+            r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*finalDualQuadsClipped=(\d+)", logs)]
+        origin_counts = [int(x) for x in re.findall(
+            r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*finalDualOriginDraws=(\d+)", logs)]
+        pixels_saved = [int(x) for x in re.findall(
+            r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*finalDualPixelsSaved=(\d+)", logs)]
+        if (not counts or max(counts) <= 0 or not dual_counts or
+                max(dual_counts) <= 0 or not origin_counts or
+                max(origin_counts) < max(dual_counts) or not pixels_saved or
+                max(pixels_saved) <= 0):
+            raise AssertionError("Experimental final dual crop has no verified origin replay or saved pixels")
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_RUN", label, index,
           json.dumps({k: v["medianAvgFps"] for k, v in summary["stages"].items()}),
           flush=True)
@@ -231,7 +239,7 @@ def accept() -> dict:
     # Require meaningful repeatable improvement; one lucky run is not proof.
     if one < 10.0 or nine < -2.0:
         raise AssertionError(f"Insufficient native FPS improvement: {result}")
-    print("SIMPLY_MIRRORS_EARLY_COMPOSITE_ACCEPTANCE_PASS", json.dumps(result), flush=True)
+    print("SIMPLY_MIRRORS_FINAL_DUAL_ACCEPTANCE_PASS", json.dumps(result), flush=True)
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_PASS", json.dumps(result), flush=True)
     return result
 

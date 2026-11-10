@@ -37,7 +37,18 @@ public final class FpsBenchmarkProbe {
         // Keep the benchmark on the current GPU without obscuring the user's screen.
         // The GLFW window remains non-minimized, and actual shader passes still run.
         if (!relocated && Boolean.getBoolean("simplymirrors.fpsOffscreen")) {
-            GLFW.glfwSetWindowPos(mc.getWindow().getWindow(), -15000, -15000);
+            long handle = mc.getWindow().getWindow();
+            // The --width/--height launch flags create a decorated Windows
+            // outer window, not necessarily a same-size framebuffer (a 1080
+            // request previously produced 1061 pixels). Use only this
+            // disposable private test window, never the player's client.
+            int nativeWidth = Integer.getInteger("simplymirrors.fpsExpectedWidth", 0);
+            int nativeHeight = Integer.getInteger("simplymirrors.fpsExpectedHeight", 0);
+            if (nativeWidth > 0 && nativeHeight > 0) {
+                GLFW.glfwSetWindowAttrib(handle, GLFW.GLFW_DECORATED, GLFW.GLFW_FALSE);
+                GLFW.glfwSetWindowSize(handle, nativeWidth, nativeHeight);
+            }
+            GLFW.glfwSetWindowPos(handle, -15000, -15000);
             relocated = true;
         }
         mc.options.enableVsync().set(false);

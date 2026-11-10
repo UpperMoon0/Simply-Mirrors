@@ -57,6 +57,9 @@ public abstract class IrisFullscreenMixin {
                 simplymirrors$scissorBox[3]);
             if(simplymirrors$scissor)glEnable(GL_SCISSOR_TEST);
             else glDisable(GL_SCISSOR_TEST);
+            // Experimental final crop MUST replay the framebuffer-origin
+            // fragment; otherwise shader storage buffers are left corrupted.
+            ReflectionScissor.requireFinalOriginPixelDraw();
         }
     }
 }

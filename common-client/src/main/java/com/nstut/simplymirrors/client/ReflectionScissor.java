@@ -7,6 +7,7 @@ import com.nstut.simplymirrors.math.ShaderViewportCrop;
 import com.nstut.simplymirrors.math.ShaderTailCrop;
 import com.nstut.simplymirrors.math.ShaderFinalOriginCrop;
 import com.nstut.simplymirrors.math.ShaderEarlyCompositeCrop;
+import com.nstut.simplymirrors.math.ShaderFinalDualCrop;
 import org.lwjgl.BufferUtils;
 import java.nio.IntBuffer;
 import java.util.List;
@@ -44,11 +45,15 @@ public final class ReflectionScissor implements AutoCloseable {
     // Separate opt-in experiment for the expensive composite SSR producer.
     private static final boolean SHADER_EARLY_COMPOSITE_CROP =
         Boolean.getBoolean("simplymirrors.shaderEarlyCompositeCrop");
+    // The pinned final pass updates a global SSBO at pixel (0,0). Draw that
+    // one pixel separately, never crop global state updates.
+    private static final boolean SHADER_FINAL_DUAL_CROP =
+        Boolean.getBoolean("simplymirrors.shaderFinalDualCrop");
     // These shader IDs are GL-context scoped and removed on program destruction.
     private static final java.util.Map<Integer,String> PROGRAM_NAMES =
         new java.util.HashMap<Integer,String>();
     public static void registerShaderProgram(int program, String name) {
-        if ((SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP) && program > 0 && name != null)
+        if ((SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP || SHADER_FINAL_DUAL_CROP) && program > 0 && name != null)
             PROGRAM_NAMES.put(program, name);
     }
     public static void unregisterShaderProgram(int program) {
@@ -60,6 +65,15 @@ public final class ReflectionScissor implements AutoCloseable {
     private static long shaderQuadChecks, shaderQuadsClipped;
     private static long finalOriginQuadsClipped, finalOriginPixelsSaved;
     private static long earlyCompositeQuadsClipped, earlyCompositePixelsSaved;
+    private static long finalDualQuadsClipped, finalDualPixelsSaved, finalDualOriginDraws;
+    private static int finalDualDiagnostics;
+    private static void finalDualDenied(String reason) {
+        if (Boolean.getBoolean("simplymirrors.gpuProfile") &&
+                finalDualDiagnostics++ < 4)
+            System.out.println("SIMPLY_MIRRORS_FINAL_DUAL_DENIED "+reason);
+    }
+    private static boolean finalDualPending;
+    private static int finalDualPendingProgram, finalDualPendingFbo;
     // Diagnostic only, limited to four messages per client and GPU profiler flag.
     private static int earlyCompositeDiagnostics;
     private static void earlyCompositeDenied(String reason) {
@@ -80,7 +94,7 @@ public final class ReflectionScissor implements AutoCloseable {
                     PROGRAM_NAMES.get(glGetInteger(GL_CURRENT_PROGRAM))))
             return true;
         return inFinalStage && (SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP ||
-                SHADER_FINAL_ORIGIN_CROP);
+                SHADER_FINAL_ORIGIN_CROP || SHADER_FINAL_DUAL_CROP);
     }
     public static void setFinalStage(boolean finalStage) { inFinalStage=finalStage; }
     private static long outputQuadChecks, outputQuadClipped, outputAliasFboClipped, outputTextureMatches;
@@ -114,6 +128,9 @@ public final class ReflectionScissor implements AutoCloseable {
                 0,0,frameWidth,frameHeight,96)!=null) ||
             (SHADER_EARLY_COMPOSITE_CROP &&
             ShaderEarlyCompositeCrop.rectangle("composite",x,y,width,height,
+                frameWidth,frameHeight,0,0,frameWidth,frameHeight)!=null) ||
+            (SHADER_FINAL_DUAL_CROP &&
+            ShaderFinalDualCrop.rectangle("final",x,y,width,height,
                 frameWidth,frameHeight,0,0,frameWidth,frameHeight)!=null);
         mirrorFrameBuffer=OUTPUT_SCISSOR?glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING):0;
         mirrorColorTexture=OUTPUT_SCISSOR && mirrorFrameBuffer>0 &&
@@ -204,16 +221,18 @@ public final class ReflectionScissor implements AutoCloseable {
         int padding=SHADER_CROP_PAD;
         String program=null;
         boolean finalOrigin=false;
+        boolean finalDual=false;
         boolean earlyComposite=false;
         if(SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP ||
-                SHADER_EARLY_COMPOSITE_CROP) {
+                SHADER_EARLY_COMPOSITE_CROP || SHADER_FINAL_DUAL_CROP) {
             // Only exact recognized programs may reduce work; all other
             // shader programs retain full-frame native rendering.
             program=PROGRAM_NAMES.get(glGetInteger(GL_CURRENT_PROGRAM));
             finalOrigin=SHADER_FINAL_ORIGIN_CROP && ShaderFinalOriginCrop.isPinnedFinal(program);
+            finalDual=SHADER_FINAL_DUAL_CROP && ShaderFinalOriginCrop.isPinnedFinal(program);
             earlyComposite=SHADER_EARLY_COMPOSITE_CROP &&
                     ShaderEarlyCompositeCrop.isEligible(program);
-            if(!finalOrigin && !earlyComposite) {
+            if(!finalOrigin && !finalDual && !earlyComposite) {
                 if(!SHADER_TAIL_CROP)return false;
                 padding=ShaderTailCrop.paddingForProgram(program);
                 if(padding<0)return false;
@@ -223,6 +242,7 @@ public final class ReflectionScissor implements AutoCloseable {
         int fbo=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
         if(fbo==0) {
             if(earlyComposite)earlyCompositeDenied("fbo=0");
+            if(finalDual)finalDualDenied("fbo=0");
             return false;
         }
         int drawBuffer=glGetInteger(GL_DRAW_BUFFER);
@@ -231,11 +251,27 @@ public final class ReflectionScissor implements AutoCloseable {
         if(drawBuffer!=GL_COLOR_ATTACHMENT0 || attachment!=GL_TEXTURE) {
             if(earlyComposite)earlyCompositeDenied("fbo="+fbo+
                     " drawBuffer="+drawBuffer+" color0Type="+attachment);
+            if(finalDual)finalDualDenied("fbo="+fbo+
+                    " drawBuffer="+drawBuffer+" color0Type="+attachment);
             return false;
         }
         IntBuffer viewport=BufferUtils.createIntBuffer(4);
         glGetIntegerv(GL_VIEWPORT,viewport);
-        int[] box=finalOrigin
+        // Verify final writes to the reflection output and not an unrelated
+        // intermediate target. That FBO may be an Iris alias of the mirror's
+        // main color texture, so compare attachment identity, not FBO names.
+        if (finalDual && glGetFramebufferAttachmentParameteri(
+                GL_DRAW_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,
+                GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME) !=
+                MirrorRenderer.redirect.getColorTextureId()) {
+            finalDualDenied("final output not attached to mirror texture");
+            return false;
+        }
+        int[] box=finalDual
+            ? ShaderFinalDualCrop.rectangle(program,scope.x,scope.y,
+                  scope.width,scope.height,scope.frameWidth,scope.frameHeight,
+                  viewport.get(0),viewport.get(1),viewport.get(2),viewport.get(3))
+            : finalOrigin
             ? ShaderFinalOriginCrop.rectangle(scope.x,scope.y,scope.width,scope.height,
                   scope.frameWidth,scope.frameHeight,viewport.get(0),viewport.get(1),
                   viewport.get(2),viewport.get(3),96)
@@ -247,6 +283,7 @@ public final class ReflectionScissor implements AutoCloseable {
                   scope.frameWidth,scope.frameHeight,viewport.get(0),viewport.get(1),
                   viewport.get(2),viewport.get(3),padding);
         if(box==null) {
+            if(finalDual)finalDualDenied("unsupported or too-large final crop");
             if(earlyComposite)earlyCompositeDenied(
                     "geometry viewport="+viewport.get(0)+","+viewport.get(1)+","+
                     viewport.get(2)+","+viewport.get(3)+
@@ -257,6 +294,16 @@ public final class ReflectionScissor implements AutoCloseable {
         glScissor(box[0],box[1],box[2],box[3]);
         glEnable(GL_SCISSOR_TEST);
         shaderQuadsClipped++;
+        if(finalDual) {
+            if (finalDualPending) throw new IllegalStateException(
+                    "Final shader origin draw was not consumed by the previous quad");
+            finalDualPendingProgram=glGetInteger(GL_CURRENT_PROGRAM);
+            finalDualPendingFbo=fbo;
+            finalDualPending=true;
+            finalDualQuadsClipped++;
+            finalDualPixelsSaved += (long)viewport.get(2)*viewport.get(3)
+                    - (long)box[2]*box[3] - 1;
+        }
         if(finalOrigin) {
             finalOriginQuadsClipped++;
             finalOriginPixelsSaved += (long)viewport.get(2)*viewport.get(3)
@@ -270,6 +317,39 @@ public final class ReflectionScissor implements AutoCloseable {
         return true;
     }
 
+    /**
+     * Called from the pinned Iris/Oculus 1.20.1 fullscreen quad after its
+     * first cropped draw but before polygon-mode restoration. The same shader,
+     * VAO, framebuffer and fullscreen quad draw exactly one extra fragment.
+     */
+    public static void drawFinalOriginPixel(Runnable draw) {
+        if (!finalDualPending) return;
+        if (glGetInteger(GL_CURRENT_PROGRAM)!=finalDualPendingProgram ||
+                glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)!=finalDualPendingFbo ||
+                !glIsEnabled(GL_SCISSOR_TEST))
+            throw new IllegalStateException("Final shader origin replay lost GL state");
+        IntBuffer bounds=BufferUtils.createIntBuffer(4);
+        glGetIntegerv(GL_SCISSOR_BOX,bounds);
+        try {
+            glScissor(0,0,1,1);
+            draw.run();
+            finalDualOriginDraws++;
+        } finally {
+            glScissor(bounds.get(0),bounds.get(1),bounds.get(2),bounds.get(3));
+            finalDualPending=false;
+            finalDualPendingProgram=finalDualPendingFbo=0;
+        }
+    }
+
+    /** Fail loudly in the test client if the mandatory 1x1 origin draw did not execute. */
+    public static void requireFinalOriginPixelDraw() {
+        if (finalDualPending) {
+            finalDualPending=false;
+            finalDualPendingProgram=finalDualPendingFbo=0;
+            throw new IllegalStateException("Final shader scissor skipped the mandatory origin fragment");
+        }
+    }
+
     @Override public void close() {
         if(!active)return;
         if(current==this) current=null;
@@ -280,7 +360,8 @@ public final class ReflectionScissor implements AutoCloseable {
                 outputQuadChecks+" textureMatches="+outputTextureMatches+
                 " outputQuadsClipped="+outputQuadClipped+" aliasedFboClips="+outputAliasFboClipped);
         if((SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP ||
-                SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP)
+                SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP ||
+                SHADER_FINAL_DUAL_CROP)
                 && Boolean.getBoolean("simplymirrors.gpuProfile") &&
            clipped>0 && clipped%180==0)
             System.out.println("SIMPLY_MIRRORS_SHADER_CROP quadsChecked="+
@@ -288,9 +369,15 @@ public final class ReflectionScissor implements AutoCloseable {
                 " finalOriginQuadsClipped="+finalOriginQuadsClipped+
                 " finalOriginPixelsSaved="+finalOriginPixelsSaved+
                 " earlyCompositeQuadsClipped="+earlyCompositeQuadsClipped+
-                " earlyCompositePixelsSaved="+earlyCompositePixelsSaved);
+                " earlyCompositePixelsSaved="+earlyCompositePixelsSaved+
+                " finalDualQuadsClipped="+finalDualQuadsClipped+
+                " finalDualOriginDraws="+finalDualOriginDraws+
+                " finalDualPixelsSaved="+finalDualPixelsSaved);
         glScissor(oldX,oldY,oldWidth,oldHeight);
         if(oldEnabled)glEnable(GL_SCISSOR_TEST);
         else glDisable(GL_SCISSOR_TEST);
+        // Keep failure handling after GL state cleanup. In normal operation
+        // the quad return hook consumed and verified this mandatory fragment.
+        requireFinalOriginPixelDraw();
     }
 }

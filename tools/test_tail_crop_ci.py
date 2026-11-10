@@ -30,6 +30,14 @@ class TailCropImageAcceptanceTests(TestCase):
             with self.assertRaisesRegex(AssertionError, "damages scene"):
                 compare_capture(a, b, 8)
 
+    def test_both_identical_but_undersized_captures_fail_exact_1080p(self):
+        with TemporaryDirectory() as directory:
+            a, b = Path(directory) / "a.png", Path(directory) / "b.png"
+            Image.new("RGB", (1920, 1061)).save(a)
+            Image.new("RGB", (1920, 1061)).save(b)
+            with self.assertRaisesRegex(AssertionError, "exact native"):
+                compare_capture(a, b, 8)
+
     def test_capture_dimensions_must_match(self):
         with TemporaryDirectory() as directory:
             a, b = Path(directory) / "a.png", Path(directory) / "b.png"
@@ -85,22 +93,24 @@ class TailCropEnvironmentStabilityTests(TestCase):
 
 
 class NativeCopyImageOptimizationTests(TestCase):
-    def test_trial_preserves_1080p_camera_and_enables_early_composite_experiment(self):
+    def test_trial_preserves_1080p_camera_and_enables_final_dual_experiment(self):
         args = benchmark_command("trial", "tail-benchmark-trial")
         self.assertIn("--shader-tail-crop", args)
         self.assertIn("--history-copy-image", args)
-        self.assertIn("--shader-early-composite-crop", args)
+        self.assertIn("--shader-final-dual-crop", args)
+        self.assertNotIn("--shader-early-composite-crop", args)
         self.assertIn("--moving-camera", args)
         self.assertIn("--profile-gpu", args)
         self.assertEqual("1920", args[args.index("--width") + 1])
         self.assertEqual("1080", args[args.index("--height") + 1])
         self.assertNotIn("--shader-final-origin-crop", args)
 
-    def test_control_retains_accepted_gpu_baseline_without_early_composite_crop(self):
+    def test_control_retains_accepted_gpu_baseline_without_final_dual_crop(self):
         args = benchmark_command("control", "tail-benchmark-control")
         self.assertIn("--shader-tail-crop", args)
         self.assertIn("--history-copy-image", args)
         self.assertNotIn("--shader-early-composite-crop", args)
+        self.assertNotIn("--shader-final-dual-crop", args)
         self.assertNotIn("--shader-final-origin-crop", args)
         self.assertIn("--moving-camera", args)
 
