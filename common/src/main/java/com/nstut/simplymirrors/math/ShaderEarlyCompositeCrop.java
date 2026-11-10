@@ -1,15 +1,16 @@
 package com.nstut.simplymirrors.math;
 
 /**
- * Opt-in, pinned-shader experiment for the early screen-space reflection pass.
+ * Opt-in, pinned-shader experiment for the SSR-producing "composite" pass.
  *
- * Complementary Reimagined r5.9.3's "composite" pass writes colortex7 SSR
- * results. Its inputs include full-frame textures and temporal history; those
- * sources MUST remain complete. This only restricts its output fragments to
- * the mirror region with a conservative 384-pixel producer halo.
+ * Complementary Reimagined r5.9.3 uses REFLECTION_RES=0.5 by default:
+ * colortex7 has a 1/2-scale viewport even though the mirror's final image
+ * remains native-resolution. Map a conservatively padded native mirror
+ * rectangle into exactly that existing viewport; never resize an image,
+ * change shader options, or crop an unrecognized program or scale.
  *
- * No guarantee is made for arbitrary packs or shader settings. This may only
- * ship after native full-resolution pixel parity and repeatable FPS acceptance.
+ * Input textures and temporal history remain complete. Native GPU
+ * frame-by-frame parity is mandatory before this experiment can ship.
  */
 public final class ShaderEarlyCompositeCrop {
     private static final int PADDING = 384;
@@ -25,11 +26,24 @@ public final class ShaderEarlyCompositeCrop {
                                   int viewportX, int viewportY,
                                   int viewportWidth, int viewportHeight) {
         if (!isEligible(program) || nativeWidth <= 0 || nativeHeight <= 0 ||
+                nativeWidth > 32768 || nativeHeight > 32768 ||
                 viewportX != 0 || viewportY != 0 ||
-                viewportWidth != nativeWidth || viewportHeight != nativeHeight ||
                 x < 0 || y < 0 || width <= 0 || height <= 0 ||
                 (long)x + width > nativeWidth || (long)y + height > nativeHeight)
             return null;
+
+        // The pinned pack supports REFLECTION_RES=0.5 or 1.0. Iris truncates
+        // odd native dimensions in its half-size viewport (e.g. 1061 -> 530).
+        // Other scales, offsets and mixed dimensions fail closed.
+        boolean nativeScale = viewportWidth == nativeWidth &&
+                              viewportHeight == nativeHeight;
+        boolean halfScale = (long)viewportWidth * 2 >= nativeWidth - 1L &&
+                            (long)viewportWidth * 2 <= nativeWidth &&
+                            (long)viewportHeight * 2 >= nativeHeight - 1L &&
+                            (long)viewportHeight * 2 <= nativeHeight;
+        if (!nativeScale && !halfScale)
+            return null;
+
         return ShaderViewportCrop.rectangle(x, y, width, height,
                 nativeWidth, nativeHeight, viewportX, viewportY,
                 viewportWidth, viewportHeight, PADDING);
