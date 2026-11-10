@@ -30,4 +30,25 @@ public class ShaderTailCropTest {
             last = pad;
         }
     }
+
+    @Test public void finalPassCropRetainsOriginFragmentAndRejectsWideOrInvalidBoxes() {
+        int[] crop = ShaderViewportCrop.rectangle(700, 260, 420, 360,
+                1920, 1080, 0, 0, 1920, 1080, 32);
+        assertNotNull(crop);
+        int[] expanded = ShaderTailCrop.includeOrigin(crop, 1920, 1080);
+        assertNotNull(expanded);
+        assertEquals(0, expanded[0]);
+        assertEquals(0, expanded[1]);
+        assertEquals(crop[0] + crop[2], expanded[2]);
+        assertEquals(crop[1] + crop[3], expanded[3]);
+        assertTrue(expanded[2] <= 1920 && expanded[3] <= 1080);
+
+        // Never fake a win by clipping a nearly full-screen final draw.
+        assertNull(ShaderTailCrop.includeOrigin(new int[]{0, 0, 1920, 1000}, 1920, 1080));
+        assertNull(ShaderTailCrop.includeOrigin(new int[]{-1, 4, 16, 16}, 1920, 1080));
+        assertNull(ShaderTailCrop.includeOrigin(new int[]{1600, 100, 500, 200}, 1920, 1080));
+        assertNull(ShaderTailCrop.includeOrigin(new int[]{0, 0, 0, 1}, 1920, 1080));
+        assertNull(ShaderTailCrop.includeOrigin(null, 1920, 1080));
+    }
+
 }
