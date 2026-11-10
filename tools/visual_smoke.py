@@ -493,6 +493,18 @@ def wait_for_visual_face(result, face, scene, client, client_dir, evidence, clie
             client_log.read_text(errors="replace")[-8000:])
 
 
+def should_profile_gpu(target: str, shaders: bool, interactive_offscreen: bool,
+                       reviewed_graphics_agent: bool) -> bool:
+    # Diagnostic only: do not enable probes in regular clients or Session 0.
+    return (target == "forge-1.20.1" and shaders and
+            interactive_offscreen and reviewed_graphics_agent)
+
+
+def gpu_profile_lines(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines()
+            if line.startswith("SIMPLY_MIRRORS_GPU_PROFILE frames=")]
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
@@ -597,6 +609,10 @@ def main():
                 print("SIMPLY_MIRRORS_VISUAL_PRIVATE_DESKTOP", flush=True)
                 client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS", "") +
                                                   " -Dsimplymirrors.visualOffscreen=true").strip()
+            if should_profile_gpu(args.target, args.shaders, args.interactive_offscreen,
+                                  os.environ.get("CI_GRAPHICS_AGENT") == "1"):
+                client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
+                                                   " -Dsimplymirrors.gpuProfile=true").strip()
             if args.check_camera_motion:
                 client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
                                                    " -Dsimplymirrors.visualCheckCameraMotion=true").strip()
@@ -646,6 +662,13 @@ def main():
                 results[face]=data
                 print("Failed reflective face" if face in failures else "Verified reflective face",args.target,face,json.dumps(data),flush=True)
             finish_capture(client_dir,evidence,results,failures,client)
+            if should_profile_gpu(args.target, args.shaders, args.interactive_offscreen,
+                                  os.environ.get("CI_GRAPHICS_AGENT") == "1"):
+                profile = gpu_profile_lines((evidence/"client.log").read_text(errors="replace"))
+                if not profile:
+                    raise AssertionError("Native shader GPU stage profiler emitted no samples")
+                for line in profile[-6:]:
+                    print(line, flush=True)
             print("SIMPLY_MIRRORS_VISUAL_PASS",args.target,json.dumps(results),flush=True)
         except BaseException as error:
             (evidence/"failure.txt").write_text(f"{type(error).__name__}: {error}\n")
