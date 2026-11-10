@@ -21,6 +21,27 @@ ROOT = Path(__file__).resolve().parents[1]
 TARGET = "forge-1.20.1"
 RUNS = ROOT / TARGET / "run"
 SCENES = ((8, "one-mirror"), (9, "nine-coplanar-mirrors"))
+# Median stage timings are aggregated across both mirror scenes, not a
+# scene-specific profiler. CPU timings reveal driver/API overhead that GPU
+# timestamps alone omit.
+PROFILE_FIELDS = ("gpuCaptureMs", "gpuWorldMs", "gpuRestoreMs", "gpuFinalizeMs",
+                  "cpuCaptureMs", "cpuWorldMs", "cpuRestoreMs", "cpuFinalizeMs")
+
+
+def profile_medians(logs: str) -> dict[str, float]:
+    measurements = {field: [] for field in PROFILE_FIELDS}
+    for line in logs.splitlines():
+        if "SIMPLY_MIRRORS_GPU_PROFILE frames=" not in line:
+            continue
+        for field in PROFILE_FIELDS:
+            match = re.search(r"\\b" + field + r"=(-?\\d+(?:\\.\\d+)?)\\b", line)
+            if match:
+                value = float(match.group(1))
+                if 0 <= value < 1000:
+                    measurements[field].append(value)
+    return {key: round(statistics.median(values), 3)
+            for key, values in measurements.items() if values}
+
 
 
 class UnstableBenchmarkError(AssertionError):
@@ -125,8 +146,14 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
         not summary.get("movingCameraEnabled")):
         raise AssertionError(f"Unexpected native benchmark settings: {summary_file}")
     client_log = RUNS / f"{name}-evidence" / "client.log"
+    logs = client_log.read_text(encoding="utf-8", errors="replace")
+    summary["gpuProfilerMedians"] = profile_medians(logs)
+    # Fail closed: a supposed native GPU acceptance without timestamp
+    # evidence cannot prove which optimization actually saved time.
+    if not {"gpuCaptureMs", "gpuWorldMs", "gpuRestoreMs", "gpuFinalizeMs"}.issubset(
+            summary["gpuProfilerMedians"]):
+        raise AssertionError("Native GPU stage profiler did not report usable timing")
     if label == "trial":
-        logs = client_log.read_text(encoding="utf-8", errors="replace")
         counts = [int(x) for x in re.findall(
             r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*quadsClipped=(\d+)", logs)]
         if not counts or max(counts) <= 0:
@@ -177,6 +204,10 @@ def accept() -> dict:
                 "fpsChangePct": deltas, "pixelComparisons": images,
                 "neutralFpsDeltaPct": neutral,
                 "control": fps_values(control), "trial": fps_values(trial),
+                "stagesMs": {
+                    "control": control["gpuProfilerMedians"],
+                    "trial": trial["gpuProfilerMedians"],
+                },
             })
             print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_PAIR",
                   json.dumps(all_pairs[-1]), flush=True)
