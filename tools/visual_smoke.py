@@ -511,26 +511,11 @@ def gpu_profile_lines(text: str) -> list[str]:
 
 
 def main():
-    # Do not hold the graphics mutex while launching the separate native A/B
-    # process; fps_benchmark acquires the same mutex for each exclusive run.
+    # The native GPU FPS experiment is a separate centrally reviewed Jenkins
+    # tier. Never couple six benchmark client launches to a routine shader
+    # visual smoke test: that caused repeated work on every PR commit.
     with exclusive_graphics_lane():
-        result = run_visual()
-    # Temporary explicit test-only marker on the experiment branch. The main
-    # mod, unrelated platforms, and regular shader visuals never run this
-    # expensive acceptance. Only the reviewed on-prem-1 graphics agent may run.
-    marker = ROOT / "tools" / ".tail-crop-gpu-experiment"
-    argv = sys.argv[1:]
-    if (marker.is_file() and os.name == "nt" and
-        os.environ.get("CI_GRAPHICS_AGENT") == "1" and
-        "--interactive-offscreen" in argv and "--shaders" in argv and
-        "--target" in argv and
-        argv.index("--target") + 1 < len(argv) and
-        argv[argv.index("--target") + 1] == "forge-1.20.1"):
-        print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_CI_REQUIRED", flush=True)
-        subprocess.run([sys.executable, str(ROOT / "tools" / "tail_crop_ci.py")],
-                       cwd=ROOT, check=True)
-    return result
-
+        return run_visual()
 
 def run_visual():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
