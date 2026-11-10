@@ -183,15 +183,3 @@ class OwnedGradleWrapperCleanupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class FinalShaderCropOptionTests(unittest.TestCase):
-    def test_final_crop_default_off_and_separate_from_tail(self):
-        normal = fps_benchmark.graphics_java_options()
-        tail = fps_benchmark.graphics_java_options(shader_tail_crop=True)
-        final = fps_benchmark.graphics_java_options(
-            shader_tail_crop=True, shader_final_crop=True)
-        self.assertNotIn("shaderFinalCrop=true", normal)
-        self.assertNotIn("shaderFinalCrop=true", tail)
-        self.assertIn("-Dsimplymirrors.shaderFinalCrop=true", final)
-        self.assertIn("-Dsimplymirrors.shaderTailCrop=true", final)

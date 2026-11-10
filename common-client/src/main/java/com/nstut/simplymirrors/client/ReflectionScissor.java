@@ -35,9 +35,6 @@ public final class ReflectionScissor implements AutoCloseable {
     // r5.9.3 HIGH GPU experiment only: never enabled in production by default.
     private static final boolean SHADER_TAIL_CROP =
         Boolean.getBoolean("simplymirrors.shaderTailCrop");
-    // Separate experimental final-pass crop; the origin pixel writes the SSBO.
-    private static final boolean SHADER_FINAL_CROP = SHADER_TAIL_CROP &&
-        Boolean.getBoolean("simplymirrors.shaderFinalCrop");
     // These shader IDs are GL-context scoped and removed on program destruction.
     private static final java.util.Map<Integer,String> PROGRAM_NAMES =
         new java.util.HashMap<Integer,String>();
@@ -51,7 +48,7 @@ public final class ReflectionScissor implements AutoCloseable {
     private static final int SHADER_CROP_PAD =
         Math.max(256,Math.min(1024,Integer.getInteger("simplymirrors.shaderCropPad",512)));
     private static boolean inFinalStage;
-    private static long shaderQuadChecks, shaderQuadsClipped, shaderFinalQuadsClipped;
+    private static long shaderQuadChecks, shaderQuadsClipped;
     // Expensive GL framebuffer queries have no value when coverage nearly fills
     // the viewport; reject those mirror groups once per reflection pass.
     public static boolean postProcessCropPossible() {
@@ -173,14 +170,11 @@ public final class ReflectionScissor implements AutoCloseable {
         ReflectionScissor scope=current;
         if(!postProcessCropPossible())return false;
         int padding=SHADER_CROP_PAD;
-        boolean finalPass=false;
         if(SHADER_TAIL_CROP) {
-            // The pinned pack's final shader is local, but its (0,0) fragment
-            // clears an SSBO. Include that origin or leave the pass uncropped.
-            // All unrecognized programs remain full-frame.
+            // The packed dependency chain is not local before composite5.
+            // Unknown/reloaded shader programs fail closed: render full frame.
             String program=PROGRAM_NAMES.get(glGetInteger(GL_CURRENT_PROGRAM));
-            finalPass=SHADER_FINAL_CROP && "final".equalsIgnoreCase(program);
-            padding=finalPass?32:ShaderTailCrop.paddingForProgram(program);
+            padding=ShaderTailCrop.paddingForProgram(program);
             if(padding<0)return false;
         }
         shaderQuadChecks++;
@@ -195,20 +189,9 @@ public final class ReflectionScissor implements AutoCloseable {
               scope.frameWidth,scope.frameHeight,viewport.get(0),viewport.get(1),
               viewport.get(2),viewport.get(3),padding);
         if(box==null)return false;
-        if(finalPass) {
-            // Only native-sized zero-origin output is eligible: the shader's
-            // gl_FragCoord(0,0) side effect must execute exactly once.
-            if(viewport.get(0)!=0 || viewport.get(1)!=0 ||
-               viewport.get(2)!=scope.frameWidth ||
-               viewport.get(3)!=scope.frameHeight)
-                return false;
-            box=ShaderTailCrop.includeOrigin(box,scope.frameWidth,scope.frameHeight);
-            if(box==null)return false;
-        }
         glScissor(box[0],box[1],box[2],box[3]);
         glEnable(GL_SCISSOR_TEST);
         shaderQuadsClipped++;
-        if(finalPass)shaderFinalQuadsClipped++;
         return true;
     }
 
@@ -224,8 +207,7 @@ public final class ReflectionScissor implements AutoCloseable {
         if((SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP) && Boolean.getBoolean("simplymirrors.gpuProfile") &&
            clipped>0 && clipped%180==0)
             System.out.println("SIMPLY_MIRRORS_SHADER_CROP quadsChecked="+
-                shaderQuadChecks+" quadsClipped="+shaderQuadsClipped+
-                " finalQuadsClipped="+shaderFinalQuadsClipped);
+                shaderQuadChecks+" quadsClipped="+shaderQuadsClipped);
         glScissor(oldX,oldY,oldWidth,oldHeight);
         if(oldEnabled)glEnable(GL_SCISSOR_TEST);
         else glDisable(GL_SCISSOR_TEST);

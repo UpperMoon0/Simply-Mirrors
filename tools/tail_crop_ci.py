@@ -110,7 +110,6 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
     summary_file = RUNS / f"{name}-evidence" / "summary.json"
     summary = json.loads(summary_file.read_text(encoding="utf-8"))
     if (summary.get("shaderTailCropEnabled") != (label == "trial") or
-        summary.get("shaderFinalCropEnabled") is not False or
         summary.get("resolution") != "1920x1080" or
         summary.get("renderDistance") != 12 or
         not summary.get("movingCameraEnabled")):

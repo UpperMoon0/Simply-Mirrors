@@ -31,8 +31,7 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
                           output_scissor: bool = False,
                           history_copy_image: bool = False,
                           postprocess_scissor: bool = False,
-                          shader_tail_crop: bool = False,
-                           shader_final_crop: bool = False) -> str:
+                          shader_tail_crop: bool = False) -> str:
     """Build explicit shader A/B toggles; never enable experimental culling by default."""
     return ("-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
             (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
@@ -42,8 +41,7 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
             (" -Dsimplymirrors.reflectionOutputScissor=true" if output_scissor else "") +
             (" -Dsimplymirrors.historyCopyImage=true" if history_copy_image else "") +
             (" -Dsimplymirrors.shaderPostProcessCrop=true" if postprocess_scissor else "") +
-            (" -Dsimplymirrors.shaderTailCrop=true" if shader_tail_crop else "") +
-             (" -Dsimplymirrors.shaderFinalCrop=true" if shader_final_crop else ""))
+            (" -Dsimplymirrors.shaderTailCrop=true" if shader_tail_crop else ""))
 
 
 def start_private_graphics_client(command: list[str], work: Path, log_path: Path,
@@ -55,8 +53,7 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                    output_scissor: bool = False,
                                    history_copy_image: bool = False,
                                    postprocess_scissor: bool = False,
-                                   shader_tail_crop: bool = False,
-                                    shader_final_crop: bool = False) -> subprocess.Popen:
+                                   shader_tail_crop: bool = False) -> subprocess.Popen:
     """Launch directly under the verified restricted Windows graphics worker.
 
     Never query an interactive user's WTS token or use CreateProcessAsUser.
@@ -73,8 +70,7 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                 graphics_java_options(gpu_profile, coverage_scissor,
                                                       frustum_crop, camera_motion,
                                                        output_scissor, history_copy_image,
-                                                       postprocess_scissor, shader_tail_crop,
-                                                        shader_final_crop))
+                                                       postprocess_scissor, shader_tail_crop))
     with log_path.open("wb") as stream:
         return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
                                 stderr=subprocess.STDOUT,
@@ -219,8 +215,6 @@ def run_benchmark():
                         help="Experimental: constrain only native FBO fullscreen output; never production default")
     parser.add_argument("--shader-tail-crop", action="store_true",
                         help="Experimental named local postprocessing tail only; never production default")
-    parser.add_argument("--shader-final-crop", action="store_true",
-                        help="Further experimental origin-preserving final shader crop, requires --shader-tail-crop")
     parser.add_argument("--postprocess-scissor", action="store_true",
                         help="Experimental native-resolution shader intermediate pass scissor; default off")
     parser.add_argument("--history-copy-image", action="store_true",
@@ -237,8 +231,6 @@ def run_benchmark():
     parser.add_argument("--render-distance", type=int, choices=[4, 8, 12], default=4,
                         help="Native benchmark viewport distance; use 12 for realistic 1080p")
     args = parser.parse_args()
-    if args.shader_final_crop and not args.shader_tail_crop:
-        parser.error("--shader-final-crop requires --shader-tail-crop")
     if not 5 <= args.rcon_timeout <= 120:
         parser.error("--rcon-timeout must be in [5, 120]")
     if not 120 <= args.startup_timeout <= 1800:
@@ -359,8 +351,7 @@ def run_benchmark():
                 output_scissor=args.reflection_output_scissor,
                 history_copy_image=args.history_copy_image,
                 postprocess_scissor=args.postprocess_scissor,
-                shader_tail_crop=args.shader_tail_crop,
-                shader_final_crop=args.shader_final_crop)
+                shader_tail_crop=args.shader_tail_crop)
             print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
                   " PID=" + str(client_process.pid), flush=True)
             deadline = time.monotonic() + args.startup_timeout
@@ -504,7 +495,6 @@ def run_benchmark():
             "historyCopyImageEnabled": args.history_copy_image,
             "postProcessScissorEnabled": args.postprocess_scissor,
             "shaderTailCropEnabled": args.shader_tail_crop,
-            "shaderFinalCropEnabled": args.shader_final_crop,
             "stages": comparison,
             "rounds": rounds,
             "imageChecks": checks,
