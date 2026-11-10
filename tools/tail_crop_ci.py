@@ -126,7 +126,8 @@ def accept() -> dict:
     result = {"pairs": all_pairs,
               "medianOneMirrorImprovementPct": round(one, 3),
               "medianNineMirrorImprovementPct": round(nine, 3)}
-    path = ROOT / TARGET / "run" / f"fps-tail-{stamp}-acceptance-evidence" / "summary.json"\n    path.parent.mkdir(parents=True, exist_ok=True)
+    path = ROOT / TARGET / "run" / f"fps-tail-{stamp}-acceptance-evidence" / "summary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     # Require meaningful repeatable improvement; one lucky run is not proof.
     if one < 3.0 or nine < -2.0:
