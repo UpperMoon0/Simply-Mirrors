@@ -625,4 +625,18 @@ class VisualThreadDumpDiscoveryTests(unittest.TestCase):
 
 
 
+
+class CILaneIsolationTests(unittest.TestCase):
+    def test_visual_smoke_does_not_launch_native_fps_experiment(self):
+        # Full-matrix shader visuals cannot silently launch the six-client
+        # performance gate. Jenkins invokes tail_crop_ci.py in its own tier.
+        expected = {"visual": "passed"}
+        with patch.object(visual_smoke, "exclusive_graphics_lane") as lane, \
+             patch.object(visual_smoke, "run_visual", return_value=expected) as visual, \
+             patch.object(visual_smoke.subprocess, "run") as process:
+            self.assertIs(visual_smoke.main(), expected)
+        lane.assert_called_once_with()
+        visual.assert_called_once_with()
+        process.assert_not_called()
+
 if __name__=="__main__":unittest.main()
