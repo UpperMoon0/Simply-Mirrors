@@ -1,4 +1,4 @@
-"""Single-use native graphics acceptance for experimental shader-tail cropping.
+"""Single-use native acceptance for experimental origin-preserving final cropping.
 
 Only launch from the reviewed graphics Jenkins agent. Benchmark all pairs on its
 same private GPU, sequentially, without touching the player's Minecraft client.
@@ -24,7 +24,8 @@ SCENES = ((8, "one-mirror"), (9, "nine-coplanar-mirrors"))
 # Median stage timings are aggregated across both mirror scenes, not a
 # scene-specific profiler. CPU timings reveal driver/API overhead that GPU
 # timestamps alone omit.
-PROFILE_FIELDS = ("gpuCaptureMs", "gpuWorldMs", "gpuRestoreMs", "gpuFinalizeMs",
+PROFILE_FIELDS = ("gpuCaptureMs", "gpuWorldMs", "gpuShadowsAndPrepareMs",
+                  "gpuRestoreMs", "gpuFinalizeMs",
                   "cpuCaptureMs", "cpuWorldMs", "cpuRestoreMs", "cpuFinalizeMs")
 
 
@@ -117,14 +118,11 @@ def benchmark_command(label: str, name: str) -> list[str]:
         "--shader-cache", str((ROOT / "build/shader-dependencies").resolve()),
         "--run-name", name,
     ]
+    # Hold the previously accepted +5.209% shader-tail + direct-history
+    # optimization CONSTANT in both arms. Only the new final-origin crop varies.
+    command.extend(("--shader-tail-crop", "--history-copy-image"))
     if label == "trial":
-        # Keep the final shader fully rasterized: native image A/B rejected the
-        # origin-preserving final crop (peak 32px RGB error 7.642 > 5.0).
-        # Direct GPU image copies avoid per-mip FBO blits and attachment
-        # churn while preserving the exact history pixels. The flag is
-        # experimental and has an OpenGL 4.3 runtime capability fallback.
-        # Its effect must be measured, not assumed.
-        command.extend(("--shader-tail-crop", "--history-copy-image"))
+        command.append("--shader-final-origin-crop")
     return command
 
 
@@ -139,8 +137,9 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
         raise RuntimeError(f"Native shader-tail {label} round {index} returned {result.returncode}")
     summary_file = RUNS / f"{name}-evidence" / "summary.json"
     summary = json.loads(summary_file.read_text(encoding="utf-8"))
-    if (summary.get("shaderTailCropEnabled") != (label == "trial") or
-        summary.get("historyCopyImageEnabled") != (label == "trial") or
+    if (summary.get("shaderTailCropEnabled") is not True or
+        summary.get("historyCopyImageEnabled") is not True or
+        summary.get("shaderFinalOriginCropEnabled") != (label == "trial") or
         summary.get("resolution") != "1920x1080" or
         summary.get("renderDistance") != 12 or
         not summary.get("movingCameraEnabled")):
@@ -156,8 +155,10 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
     if label == "trial":
         counts = [int(x) for x in re.findall(
             r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*quadsClipped=(\d+)", logs)]
-        if not counts or max(counts) <= 0:
-            raise AssertionError("Experimental shader-tail crop never clipped a named pass")
+        final_counts = [int(x) for x in re.findall(
+            r"SIMPLY_MIRRORS_SHADER_CROP[^\n]*finalOriginQuadsClipped=(\d+)", logs)]
+        if not counts or max(counts) <= 0 or not final_counts or max(final_counts) <= 0:
+            raise AssertionError("Experimental final-origin crop never clipped a named final pass")
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_RUN", label, index,
           json.dumps({k: v["medianAvgFps"] for k, v in summary["stages"].items()}),
           flush=True)
@@ -180,15 +181,14 @@ def accept() -> dict:
             control, control_images, _ = by_label["control"]
             trial, trial_images, _ = by_label["trial"]
             deltas = {}
-            images = {}
             for scene, label in SCENES:
                 baseline_fps = control["stages"][label]["medianAvgFps"]
                 candidate_fps = trial["stages"][label]["medianAvgFps"]
                 deltas[label] = round(100 * (candidate_fps / baseline_fps - 1), 3)
-                images[label] = compare_capture(
-                    control_images / f"scene-{scene}.png",
-                    trial_images / f"scene-{scene}.png", scene)
             try:
+                # Verify environmental comparability BEFORE drawing conclusions
+                # about pixel parity. A contended FPS run may capture different
+                # camera/temporal states and mimic broken shader output.
                 neutral = assert_stable_pair(control, trial, all_pairs)
             except UnstableBenchmarkError as unstable:
                 print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_UNSTABLE", json.dumps({
@@ -199,6 +199,13 @@ def accept() -> dict:
                 if attempt:
                     raise
                 continue
+            # Image failures on comparable runs remain hard failures and are
+            # NEVER retried as environmental noise.
+            images = {}
+            for scene, label in SCENES:
+                images[label] = compare_capture(
+                    control_images / f"scene-{scene}.png",
+                    trial_images / f"scene-{scene}.png", scene)
             all_pairs.append({
                 "pair": index, "attempt": attempt,
                 "fpsChangePct": deltas, "pixelComparisons": images,
@@ -223,6 +230,7 @@ def accept() -> dict:
     # Require meaningful repeatable improvement; one lucky run is not proof.
     if one < 3.0 or nine < -2.0:
         raise AssertionError(f"Insufficient native FPS improvement: {result}")
+    print("SIMPLY_MIRRORS_FINAL_ORIGIN_ACCEPTANCE_PASS", json.dumps(result), flush=True)
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_PASS", json.dumps(result), flush=True)
     return result
 

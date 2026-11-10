@@ -85,20 +85,22 @@ class TailCropEnvironmentStabilityTests(TestCase):
 
 
 class NativeCopyImageOptimizationTests(TestCase):
-    def test_trial_preserves_1080p_camera_and_enables_both_opt_in_paths(self):
+    def test_trial_preserves_1080p_camera_and_enables_final_origin_experiment(self):
         args = benchmark_command("trial", "tail-benchmark-trial")
         self.assertIn("--shader-tail-crop", args)
         self.assertIn("--history-copy-image", args)
+        self.assertIn("--shader-final-origin-crop", args)
         self.assertIn("--moving-camera", args)
         self.assertIn("--profile-gpu", args)
         self.assertEqual("1920", args[args.index("--width") + 1])
         self.assertEqual("1080", args[args.index("--height") + 1])
         self.assertNotIn("--shader-final-crop", args)
 
-    def test_control_runs_both_optimizations_disabled(self):
+    def test_control_retains_accepted_gpu_baseline_without_new_final_crop(self):
         args = benchmark_command("control", "tail-benchmark-control")
-        self.assertNotIn("--shader-tail-crop", args)
-        self.assertNotIn("--history-copy-image", args)
+        self.assertIn("--shader-tail-crop", args)
+        self.assertIn("--history-copy-image", args)
+        self.assertNotIn("--shader-final-origin-crop", args)
         self.assertNotIn("--shader-final-crop", args)
         self.assertIn("--moving-camera", args)
 
@@ -126,3 +128,32 @@ class NativeStageTelemetryTests(TestCase):
         got = profile_medians(logs)
         self.assertEqual({"cpuWorldMs": 8.0}, got)
         self.assertEqual({}, profile_medians("normal game log with no GPU profiling"))
+
+class FinalOriginTelemetryTests(TestCase):
+    def test_gpu_shadow_stage_is_included_for_root_cause_comparison(self):
+        text = ("SIMPLY_MIRRORS_GPU_PROFILE frames=90 "
+                "gpuShadowsAndPrepareMs=3.125 gpuFinalizeMs=6.451 "
+                "gpuWorldMs=10.900 gpuCaptureMs=0.700 gpuRestoreMs=0.650")
+        got = profile_medians(text)
+        self.assertAlmostEqual(3.125, got["gpuShadowsAndPrepareMs"])
+
+class BenchmarkFailureClassificationTests(TestCase):
+    def test_unstable_pair_cannot_be_mislabeled_as_pixel_corruption(self):
+        import os
+        from unittest.mock import patch
+        import tail_crop_ci
+        stages = {name: {"medianAvgFps": fps} for name, fps in (
+            ("no-mirror", 70.0), ("one-mirror", 40.0),
+            ("nine-coplanar-mirrors", 36.0))}
+        fake = ({"stages": stages}, Path("not-read-images"), Path("not-read-summary"))
+        with (patch.object(tail_crop_ci.os, "name", "nt"),
+              patch.dict(os.environ, {"CI_GRAPHICS_AGENT": "1"}),
+              patch.object(tail_crop_ci, "run_variant", return_value=fake),
+              patch.object(tail_crop_ci, "assert_stable_pair",
+                           side_effect=UnstableBenchmarkError("GPU contended")),
+              patch.object(tail_crop_ci, "compare_capture") as comparison):
+            with self.assertRaises(UnstableBenchmarkError):
+                tail_crop_ci.accept()
+            # Both attempts were rejected before opening any captured images.
+            self.assertEqual(4, tail_crop_ci.run_variant.call_count)
+            comparison.assert_not_called()
