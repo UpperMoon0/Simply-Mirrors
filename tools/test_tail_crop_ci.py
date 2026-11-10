@@ -136,3 +136,24 @@ class FinalOriginTelemetryTests(TestCase):
                 "gpuWorldMs=10.900 gpuCaptureMs=0.700 gpuRestoreMs=0.650")
         got = profile_medians(text)
         self.assertAlmostEqual(3.125, got["gpuShadowsAndPrepareMs"])
+
+class BenchmarkFailureClassificationTests(TestCase):
+    def test_unstable_pair_cannot_be_mislabeled_as_pixel_corruption(self):
+        import os
+        from unittest.mock import patch
+        import tail_crop_ci
+        stages = {name: {"medianAvgFps": fps} for name, fps in (
+            ("no-mirror", 70.0), ("one-mirror", 40.0),
+            ("nine-coplanar-mirrors", 36.0))}
+        fake = ({"stages": stages}, Path("not-read-images"), Path("not-read-summary"))
+        with patch.object(tail_crop_ci.os, "name", "nt"), \\
+             patch.dict(os.environ, {"CI_GRAPHICS_AGENT": "1"}), \\
+             patch.object(tail_crop_ci, "run_variant", return_value=fake), \\
+             patch.object(tail_crop_ci, "assert_stable_pair",
+                          side_effect=UnstableBenchmarkError("GPU contended")), \\
+             patch.object(tail_crop_ci, "compare_capture") as comparison:
+            with self.assertRaises(UnstableBenchmarkError):
+                tail_crop_ci.accept()
+            # Both attempts were rejected before opening any captured images.
+            self.assertEqual(4, tail_crop_ci.run_variant.call_count)
+            comparison.assert_not_called()
