@@ -87,10 +87,7 @@ def compare_capture(control: Path, trial: Path, scene: int) -> dict:
             "peak32RgbError": round(max_tile, 4), "roi": list(bounds)}
 
 
-def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[dict, Path, Path]:
-    # Use a fresh directory for every retry, preserving failed-run evidence.
-    suffix = f"-retry{attempt}" if attempt else ""
-    name = f"fps-tail-{stamp}-{label}-{index}{suffix}"
+def benchmark_command(label: str, name: str) -> list[str]:
     command = [
         sys.executable, "tools/fps_benchmark.py", "--target", TARGET,
         "--width", "1920", "--height", "1080", "--render-distance", "12",
@@ -107,6 +104,14 @@ def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[d
         # experimental and has an OpenGL 4.3 runtime capability fallback.
         # Its effect must be measured, not assumed.
         command.extend(("--shader-tail-crop", "--history-copy-image"))
+    return command
+
+
+def run_variant(label: str, index: int, stamp: str, attempt: int = 0) -> tuple[dict, Path, Path]:
+    # Use a fresh directory for every retry, preserving failed-run evidence.
+    suffix = f"-retry{attempt}" if attempt else ""
+    name = f"fps-tail-{stamp}-{label}-{index}{suffix}"
+    command = benchmark_command(label, name)
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_START", label, index, name, flush=True)
     result = subprocess.run(command, cwd=ROOT, check=False)
     if result.returncode:
