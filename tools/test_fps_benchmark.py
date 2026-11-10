@@ -47,6 +47,20 @@ class GraphicsOptionsTests(unittest.TestCase):
         options = fps_benchmark.graphics_java_options(coverage_scissor=False)
         self.assertNotIn("frustumCrop=true", options)
 
+    def test_gpu_experiments_are_off_by_default(self):
+        options = fps_benchmark.graphics_java_options()
+        self.assertNotIn("reflectionOutputScissor=true", options)
+        self.assertNotIn("historyCopyImage=true", options)
+        self.assertNotIn("shaderPostProcessCrop=true", options)
+
+    def test_explicit_gpu_ab_options_set_both_flags(self):
+        options = fps_benchmark.graphics_java_options(
+            output_scissor=True, history_copy_image=True)
+        self.assertIn("-Dsimplymirrors.reflectionOutputScissor=true", options)
+        self.assertIn("-Dsimplymirrors.historyCopyImage=true", options)
+        self.assertIn("-Dsimplymirrors.shaderPostProcessCrop=true",
+                      fps_benchmark.graphics_java_options(postprocess_scissor=True))
+
 
 
 class MovingCameraAcceptanceTests(unittest.TestCase):

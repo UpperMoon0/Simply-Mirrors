@@ -2,6 +2,7 @@ package com.nstut.simplymirrors.client.mixin;
 import com.nstut.simplymirrors.client.MirrorRenderer;
 import com.nstut.simplymirrors.client.MirrorGpuProfiler;
 import com.nstut.simplymirrors.client.ShaderReflection;
+import com.nstut.simplymirrors.client.ReflectionScissor;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -54,6 +55,7 @@ public abstract class IrisShadowMixin {
     private void simplymirrors$finalFullTarget(CallbackInfo ci) {
         if(MirrorRenderer.redirect!=null) {
             MirrorGpuProfiler.finalizeBegin();
+            ReflectionScissor.setFinalStage(true);
             simplymirrors$finalScissor=glIsEnabled(GL_SCISSOR_TEST);
             glDisable(GL_SCISSOR_TEST);
         }
@@ -62,6 +64,7 @@ public abstract class IrisShadowMixin {
     private void simplymirrors$finalDone(CallbackInfo ci) {
         if(MirrorRenderer.redirect!=null) {
             MirrorGpuProfiler.finalizeEnd();
+            ReflectionScissor.setFinalStage(false);
             if(simplymirrors$finalScissor)glEnable(GL_SCISSOR_TEST);
             else glDisable(GL_SCISSOR_TEST);
         }

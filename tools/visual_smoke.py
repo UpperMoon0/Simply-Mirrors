@@ -2,6 +2,8 @@
 from __future__ import annotations
 import argparse, json, math, os, re, shutil, signal, socket, struct, subprocess, sys, time
 from pathlib import Path
+from gpu_lane import exclusive_graphics_lane
+from image_pixels import flattened_pixels
 ROOT=Path(__file__).resolve().parents[1]
 TARGETS={t["target"]:t for t in json.loads((ROOT/"tools/targets.json").read_text())}
 FACES=["north","south","west","east","up","down"]
@@ -151,8 +153,11 @@ def exact(sock,size):
     return result
 
 class Rcon:
-    def __init__(self,port):
-        self.sock=socket.create_connection(("127.0.0.1",port),timeout=5)
+    def __init__(self,port,timeout=30):
+        # Shader/client startup can temporarily stall the localhost server;
+        # do not reject a valid render because of a five-second RCON hiccup.
+        # The visual fixture still has a strict 600-second join deadline.
+        self.sock=socket.create_connection(("127.0.0.1",port),timeout=timeout)
         self.packet(3,"simply-mirrors-disposable-test")
     def packet(self,kind,text):
         data=struct.pack("<ii",17,kind)+text.encode()+b"\0\0"
@@ -241,14 +246,14 @@ def motion_check(idle_path, moving_path):
         w,h=idle.size
         roi=(int(w*0.45),int(h*0.28),int(w*0.55),int(h*0.66))
         difference=ImageChops.difference(idle.crop(roi),moving.crop(roi))
-        changing=sum(max(pixel)>35 for pixel in difference.getdata())
+        changing=sum(max(pixel)>35 for pixel in flattened_pixels(difference))
         threshold=max(80,int((roi[2]-roi[0])*(roi[3]-roi[1])*0.006))
         if changing<=threshold:
             # Distinguish a misframed ROI from a completed animation. Full-frame
             # differences are diagnostic only, never accepted as motion proof.
             full=ImageChops.difference(idle,moving)
             bounds=full.getbbox()
-            full_changed=sum(max(pixel)>35 for pixel in full.getdata())
+            full_changed=sum(max(pixel)>35 for pixel in flattened_pixels(full))
             raise AssertionError(
                 f"Reflected player swing did not change sufficient framebuffer pixels: "
                 f"roi={changing}, threshold={threshold}, fullFrame={full_changed}, "
@@ -276,7 +281,7 @@ def camera_motion_check(idle_path,moving_path,settled_path):
     moving=moving.crop(roi)
     settled=settled.crop(roi)
     changed=ImageChops.difference(baseline,settled)
-    actual_motion=sum(max(pixel)>15 for pixel in changed.getdata())
+    actual_motion=sum(max(pixel)>15 for pixel in flattened_pixels(changed))
     assert actual_motion>max(200,int((roi[2]-roi[0])*(roi[3]-roi[1])*.006)), (
         f"Camera pan/strafe produced no meaningful reflected pixel displacement: {actual_motion}")
     temporal=ImageChops.difference(moving,settled)
@@ -506,6 +511,11 @@ def gpu_profile_lines(text: str) -> list[str]:
 
 
 def main():
+    with exclusive_graphics_lane():
+        return run_visual()
+
+
+def run_visual():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
     parser.add_argument("--run-name",help="Isolated test directory prefix")

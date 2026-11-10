@@ -12,12 +12,14 @@ import json
 import os
 import statistics
 from pathlib import Path
+from gpu_lane import exclusive_graphics_lane
 import shutil
 import subprocess
 import sys
 import time
 
 from shader_stack import prepare, install_pack
+from image_pixels import flattened_pixels
 from visual_smoke import Rcon, fixture, free_port, scene_file, disconnected_during_login
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,13 +27,19 @@ CASES = [(7, "no-mirror"), (8, "one-mirror"), (9, "nine-coplanar-mirrors")]
 
 
 def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = True,
-                          frustum_crop: bool = False, camera_motion: bool = False) -> str:
+                          frustum_crop: bool = False, camera_motion: bool = False,
+                          output_scissor: bool = False,
+                          history_copy_image: bool = False,
+                          postprocess_scissor: bool = False) -> str:
     """Build explicit shader A/B toggles; never enable experimental culling by default."""
     return ("-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
             (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
             (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "") +
             (" -Dsimplymirrors.frustumCrop=true" if frustum_crop else "") +
-            (" -Dsimplymirrors.fpsCameraMotion=true" if camera_motion else ""))
+            (" -Dsimplymirrors.fpsCameraMotion=true" if camera_motion else "") +
+            (" -Dsimplymirrors.reflectionOutputScissor=true" if output_scissor else "") +
+            (" -Dsimplymirrors.historyCopyImage=true" if history_copy_image else "") +
+            (" -Dsimplymirrors.shaderPostProcessCrop=true" if postprocess_scissor else ""))
 
 
 def start_private_graphics_client(command: list[str], work: Path, log_path: Path,
@@ -39,7 +47,10 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                   coverage_scissor: bool = True,
                                   java_tool_options: str | None = None,
                                   frustum_crop: bool = False,
-                                  camera_motion: bool = False) -> subprocess.Popen:
+                                   camera_motion: bool = False,
+                                   output_scissor: bool = False,
+                                   history_copy_image: bool = False,
+                                   postprocess_scissor: bool = False) -> subprocess.Popen:
     """Launch directly under the verified restricted Windows graphics worker.
 
     Never query an interactive user's WTS token or use CreateProcessAsUser.
@@ -54,7 +65,9 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
     env["PATH"] = str(Path(java_home) / "bin") + os.pathsep + env.get("PATH", "")
     env["JAVA_TOOL_OPTIONS"] = (java_tool_options if java_tool_options is not None else
                                 graphics_java_options(gpu_profile, coverage_scissor,
-                                                      frustum_crop, camera_motion))
+                                                      frustum_crop, camera_motion,
+                                                       output_scissor, history_copy_image,
+                                                       postprocess_scissor))
     with log_path.open("wb") as stream:
         return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
                                 stderr=subprocess.STDOUT,
@@ -181,6 +194,11 @@ def validate_camera_motion(first: Path, second: Path) -> dict:
 
 
 def main():
+    with exclusive_graphics_lane():
+        return run_benchmark()
+
+
+def run_benchmark():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", choices=["forge-1.20.1"], default="forge-1.20.1")
     parser.add_argument("--width", type=int, default=1280)
@@ -190,6 +208,12 @@ def main():
     parser.add_argument("--run-name", default="fps-" + str(int(time.time())))
     parser.add_argument("--rounds", type=int, default=1, help="1-5 alternating trial rounds")
     parser.add_argument("--profile-gpu", action="store_true", help="Enable asynchronous GPU timestamp stage profiling")
+    parser.add_argument("--reflection-output-scissor", action="store_true",
+                        help="Experimental: constrain only native FBO fullscreen output; never production default")
+    parser.add_argument("--postprocess-scissor", action="store_true",
+                        help="Experimental native-resolution shader intermediate pass scissor; default off")
+    parser.add_argument("--history-copy-image", action="store_true",
+                        help="Experimental: direct GL 4.3 shader-history image copies; never production default")
     parser.add_argument("--rcon-timeout", type=int, default=5,
                         help="RCON response timeout in seconds for resource-contended test hosts")
     parser.add_argument("--startup-timeout", type=int, default=600,
@@ -318,7 +342,10 @@ def main():
             client_process = start_private_graphics_client(
                 client_command, root, client_log, args.java_home, args.profile_gpu,
                 not args.disable_coverage_scissor, frustum_crop=args.enable_frustum_crop,
-                camera_motion=args.moving_camera)
+                camera_motion=args.moving_camera,
+                output_scissor=args.reflection_output_scissor,
+                history_copy_image=args.history_copy_image,
+                postprocess_scissor=args.postprocess_scissor)
             print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
                   " PID=" + str(client_process.pid), flush=True)
             deadline = time.monotonic() + args.startup_timeout
@@ -409,7 +436,7 @@ def main():
                 region = (int(a.width*.35), int(a.height*.25),
                           int(a.width*.65), int(a.height*.75))
                 difference = ImageChops.difference(a.crop(region), b.crop(region))
-                changed = sum(max(pixel) > 20 for pixel in difference.getdata())
+                changed = sum(max(pixel) > 20 for pixel in flattened_pixels(difference))
                 if changed < 1500:
                     raise AssertionError("One mirror did not change enough actual framebuffer pixels: " + str(changed))
             checks[str(round_index)] = {"singleMirrorChangedPixels": changed,
@@ -458,6 +485,9 @@ def main():
             "coverageScissorEnabled": not args.disable_coverage_scissor,
             "frustumCropEnabled": args.enable_frustum_crop,
             "movingCameraEnabled": args.moving_camera,
+            "reflectionOutputScissorEnabled": args.reflection_output_scissor,
+            "historyCopyImageEnabled": args.history_copy_image,
+            "postProcessScissorEnabled": args.postprocess_scissor,
             "stages": comparison,
             "rounds": rounds,
             "imageChecks": checks,
