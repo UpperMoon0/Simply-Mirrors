@@ -30,7 +30,8 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
                           frustum_crop: bool = False, camera_motion: bool = False,
                           output_scissor: bool = False,
                           history_copy_image: bool = False,
-                          postprocess_scissor: bool = False) -> str:
+                          postprocess_scissor: bool = False,
+                          shader_tail_crop: bool = False) -> str:
     """Build explicit shader A/B toggles; never enable experimental culling by default."""
     return ("-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
             (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
@@ -39,7 +40,8 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
             (" -Dsimplymirrors.fpsCameraMotion=true" if camera_motion else "") +
             (" -Dsimplymirrors.reflectionOutputScissor=true" if output_scissor else "") +
             (" -Dsimplymirrors.historyCopyImage=true" if history_copy_image else "") +
-            (" -Dsimplymirrors.shaderPostProcessCrop=true" if postprocess_scissor else ""))
+            (" -Dsimplymirrors.shaderPostProcessCrop=true" if postprocess_scissor else "") +
+            (" -Dsimplymirrors.shaderTailCrop=true" if shader_tail_crop else ""))
 
 
 def start_private_graphics_client(command: list[str], work: Path, log_path: Path,
@@ -50,7 +52,8 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                    camera_motion: bool = False,
                                    output_scissor: bool = False,
                                    history_copy_image: bool = False,
-                                   postprocess_scissor: bool = False) -> subprocess.Popen:
+                                   postprocess_scissor: bool = False,
+                                   shader_tail_crop: bool = False) -> subprocess.Popen:
     """Launch directly under the verified restricted Windows graphics worker.
 
     Never query an interactive user's WTS token or use CreateProcessAsUser.
@@ -67,7 +70,7 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                 graphics_java_options(gpu_profile, coverage_scissor,
                                                       frustum_crop, camera_motion,
                                                        output_scissor, history_copy_image,
-                                                       postprocess_scissor))
+                                                       postprocess_scissor, shader_tail_crop))
     with log_path.open("wb") as stream:
         return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
                                 stderr=subprocess.STDOUT,
@@ -210,6 +213,8 @@ def run_benchmark():
     parser.add_argument("--profile-gpu", action="store_true", help="Enable asynchronous GPU timestamp stage profiling")
     parser.add_argument("--reflection-output-scissor", action="store_true",
                         help="Experimental: constrain only native FBO fullscreen output; never production default")
+    parser.add_argument("--shader-tail-crop", action="store_true",
+                        help="Experimental named local postprocessing tail only; never production default")
     parser.add_argument("--postprocess-scissor", action="store_true",
                         help="Experimental native-resolution shader intermediate pass scissor; default off")
     parser.add_argument("--history-copy-image", action="store_true",
@@ -345,7 +350,8 @@ def run_benchmark():
                 camera_motion=args.moving_camera,
                 output_scissor=args.reflection_output_scissor,
                 history_copy_image=args.history_copy_image,
-                postprocess_scissor=args.postprocess_scissor)
+                postprocess_scissor=args.postprocess_scissor,
+                shader_tail_crop=args.shader_tail_crop)
             print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
                   " PID=" + str(client_process.pid), flush=True)
             deadline = time.monotonic() + args.startup_timeout
@@ -488,6 +494,7 @@ def run_benchmark():
             "reflectionOutputScissorEnabled": args.reflection_output_scissor,
             "historyCopyImageEnabled": args.history_copy_image,
             "postProcessScissorEnabled": args.postprocess_scissor,
+            "shaderTailCropEnabled": args.shader_tail_crop,
             "stages": comparison,
             "rounds": rounds,
             "imageChecks": checks,
