@@ -53,6 +53,7 @@ class GraphicsOptionsTests(unittest.TestCase):
         self.assertNotIn("historyCopyImage=true", options)
         self.assertNotIn("shaderPostProcessCrop=true", options)
         self.assertNotIn("shaderTailCrop=true", options)
+        self.assertNotIn("shaderEarlyCompositeCrop=true", options)
 
     def test_explicit_gpu_ab_options_set_both_flags(self):
         options = fps_benchmark.graphics_java_options(
@@ -63,6 +64,8 @@ class GraphicsOptionsTests(unittest.TestCase):
                       fps_benchmark.graphics_java_options(postprocess_scissor=True))
         self.assertIn("-Dsimplymirrors.shaderTailCrop=true",
                       fps_benchmark.graphics_java_options(shader_tail_crop=True))
+        self.assertIn("-Dsimplymirrors.shaderEarlyCompositeCrop=true",
+                      fps_benchmark.graphics_java_options(shader_early_composite_crop=True))
 
 
 
