@@ -53,7 +53,7 @@ public final class ReflectionScissor implements AutoCloseable {
     private static final int SHADER_CROP_PAD =
         Math.max(256,Math.min(1024,Integer.getInteger("simplymirrors.shaderCropPad",512)));
     private static boolean inFinalStage;
-    private static long shaderQuadChecks, shaderQuadsClipped;
+    private static long shaderQuadChecks, shaderQuadsClipped, finalOriginQuadsClipped;
     // Expensive GL framebuffer queries have no value when coverage nearly fills
     // the viewport; reject those mirror groups once per reflection pass.
     public static boolean postProcessCropPossible() {
@@ -210,6 +210,7 @@ public final class ReflectionScissor implements AutoCloseable {
         glScissor(box[0],box[1],box[2],box[3]);
         glEnable(GL_SCISSOR_TEST);
         shaderQuadsClipped++;
+        if(finalOrigin) finalOriginQuadsClipped++;
         return true;
     }
 
@@ -226,7 +227,8 @@ public final class ReflectionScissor implements AutoCloseable {
                 && Boolean.getBoolean("simplymirrors.gpuProfile") &&
            clipped>0 && clipped%180==0)
             System.out.println("SIMPLY_MIRRORS_SHADER_CROP quadsChecked="+
-                shaderQuadChecks+" quadsClipped="+shaderQuadsClipped);
+                shaderQuadChecks+" quadsClipped="+shaderQuadsClipped+
+                " finalOriginQuadsClipped="+finalOriginQuadsClipped);
         glScissor(oldX,oldY,oldWidth,oldHeight);
         if(oldEnabled)glEnable(GL_SCISSOR_TEST);
         else glDisable(GL_SCISSOR_TEST);
