@@ -4,6 +4,7 @@ import com.nstut.simplymirrors.math.MirrorCoverage;
 import com.nstut.simplymirrors.math.MirrorSurface;
 import com.nstut.simplymirrors.math.ReflectionOutputGuard;
 import com.nstut.simplymirrors.math.ShaderViewportCrop;
+import com.nstut.simplymirrors.math.ShaderTailCrop;
 import org.lwjgl.BufferUtils;
 import java.nio.IntBuffer;
 import java.util.List;
@@ -31,6 +32,19 @@ public final class ReflectionScissor implements AutoCloseable {
     private static ReflectionScissor current;
     private static final boolean SHADER_POSTPROCESS_CROP =
         Boolean.getBoolean("simplymirrors.shaderPostProcessCrop");
+    // r5.9.3 HIGH GPU experiment only: never enabled in production by default.
+    private static final boolean SHADER_TAIL_CROP =
+        Boolean.getBoolean("simplymirrors.shaderTailCrop");
+    // These shader IDs are GL-context scoped and removed on program destruction.
+    private static final java.util.Map<Integer,String> PROGRAM_NAMES =
+        new java.util.HashMap<Integer,String>();
+    public static void registerShaderProgram(int program, String name) {
+        if (SHADER_TAIL_CROP && program > 0 && name != null)
+            PROGRAM_NAMES.put(program, name);
+    }
+    public static void unregisterShaderProgram(int program) {
+        PROGRAM_NAMES.remove(program);
+    }
     private static final int SHADER_CROP_PAD =
         Math.max(256,Math.min(1024,Integer.getInteger("simplymirrors.shaderCropPad",512)));
     private static boolean inFinalStage;
@@ -39,8 +53,8 @@ public final class ReflectionScissor implements AutoCloseable {
     // the viewport; reject those mirror groups once per reflection pass.
     public static boolean postProcessCropPossible() {
         ReflectionScissor scope=current;
-        return SHADER_POSTPROCESS_CROP && inFinalStage && scope!=null &&
-               scope.active && scope.cropWorthwhile;
+        return (SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP) && inFinalStage &&
+               scope!=null && scope.active && scope.cropWorthwhile;
     }
     public static void setFinalStage(boolean finalStage) { inFinalStage=finalStage; }
     private static long outputQuadChecks, outputQuadClipped, outputAliasFboClipped, outputTextureMatches;
@@ -63,9 +77,12 @@ public final class ReflectionScissor implements AutoCloseable {
         active=true;
         this.x=x;this.y=y;this.width=width;this.height=height;
         this.frameWidth=frameWidth;this.frameHeight=frameHeight;
-        cropWorthwhile=SHADER_POSTPROCESS_CROP &&
+        cropWorthwhile=(SHADER_POSTPROCESS_CROP &&
             ShaderViewportCrop.rectangle(x,y,width,height,frameWidth,frameHeight,
-                0,0,frameWidth,frameHeight,SHADER_CROP_PAD)!=null;
+                0,0,frameWidth,frameHeight,SHADER_CROP_PAD)!=null) ||
+            (SHADER_TAIL_CROP &&
+            ShaderViewportCrop.rectangle(x,y,width,height,frameWidth,frameHeight,
+                0,0,frameWidth,frameHeight,24)!=null);
         mirrorFrameBuffer=OUTPUT_SCISSOR?glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING):0;
         mirrorColorTexture=OUTPUT_SCISSOR && mirrorFrameBuffer>0 &&
             glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
@@ -152,6 +169,14 @@ public final class ReflectionScissor implements AutoCloseable {
     public static boolean constrainPostProcessQuad() {
         ReflectionScissor scope=current;
         if(!postProcessCropPossible())return false;
+        int padding=SHADER_CROP_PAD;
+        if(SHADER_TAIL_CROP) {
+            // The packed dependency chain is not local before composite5.
+            // Unknown/reloaded shader programs fail closed: render full frame.
+            String program=PROGRAM_NAMES.get(glGetInteger(GL_CURRENT_PROGRAM));
+            padding=ShaderTailCrop.paddingForProgram(program);
+            if(padding<0)return false;
+        }
         shaderQuadChecks++;
         int fbo=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
         if(fbo==0 || glGetInteger(GL_DRAW_BUFFER)!=GL_COLOR_ATTACHMENT0 ||
@@ -162,7 +187,7 @@ public final class ReflectionScissor implements AutoCloseable {
         glGetIntegerv(GL_VIEWPORT,viewport);
         int[] box=ShaderViewportCrop.rectangle(scope.x,scope.y,scope.width,scope.height,
               scope.frameWidth,scope.frameHeight,viewport.get(0),viewport.get(1),
-              viewport.get(2),viewport.get(3),SHADER_CROP_PAD);
+              viewport.get(2),viewport.get(3),padding);
         if(box==null)return false;
         glScissor(box[0],box[1],box[2],box[3]);
         glEnable(GL_SCISSOR_TEST);
@@ -179,7 +204,7 @@ public final class ReflectionScissor implements AutoCloseable {
             System.out.println("SIMPLY_MIRRORS_OUTPUT_SCISSOR quadsChecked="+
                 outputQuadChecks+" textureMatches="+outputTextureMatches+
                 " outputQuadsClipped="+outputQuadClipped+" aliasedFboClips="+outputAliasFboClipped);
-        if(SHADER_POSTPROCESS_CROP && Boolean.getBoolean("simplymirrors.gpuProfile") &&
+        if((SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP) && Boolean.getBoolean("simplymirrors.gpuProfile") &&
            clipped>0 && clipped%180==0)
             System.out.println("SIMPLY_MIRRORS_SHADER_CROP quadsChecked="+
                 shaderQuadChecks+" quadsClipped="+shaderQuadsClipped);
