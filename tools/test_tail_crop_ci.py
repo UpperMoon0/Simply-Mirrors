@@ -5,7 +5,7 @@ from unittest import TestCase
 
 from PIL import Image, ImageDraw
 
-from tail_crop_ci import compare_capture, assert_stable_pair, UnstableBenchmarkError, benchmark_command
+from tail_crop_ci import compare_capture, assert_stable_pair, UnstableBenchmarkError, benchmark_command, profile_medians
 
 
 class TailCropImageAcceptanceTests(TestCase):
@@ -101,3 +101,28 @@ class NativeCopyImageOptimizationTests(TestCase):
         self.assertNotIn("--history-copy-image", args)
         self.assertNotIn("--shader-final-crop", args)
         self.assertIn("--moving-camera", args)
+
+
+class NativeStageTelemetryTests(TestCase):
+    def test_median_real_cpu_gpu_stage_timings(self):
+        line_a = ("[timestamp] SIMPLY_MIRRORS_GPU_PROFILE frames=90 "
+                  "gpuCaptureMs=0.400 gpuWorldMs=5.000 gpuRestoreMs=0.350 "
+                  "gpuFinalizeMs=2.600 cpuCaptureMs=1.200 cpuWorldMs=7.200 "
+                  "cpuRestoreMs=0.900 cpuFinalizeMs=3.000")
+        line_b = ("SIMPLY_MIRRORS_GPU_PROFILE frames=180 "
+                  "gpuCaptureMs=0.200 gpuWorldMs=4.000 gpuRestoreMs=0.250 "
+                  "gpuFinalizeMs=2.400 cpuCaptureMs=1.000 cpuWorldMs=6.000 "
+                  "cpuRestoreMs=0.700 cpuFinalizeMs=2.500")
+        got = profile_medians(line_a + "\\n" + line_b)
+        self.assertAlmostEqual(0.3, got["gpuCaptureMs"])
+        self.assertAlmostEqual(4.5, got["gpuWorldMs"])
+        self.assertAlmostEqual(0.3, got["gpuRestoreMs"])
+        self.assertAlmostEqual(1.1, got["cpuCaptureMs"])
+        self.assertAlmostEqual(2.75, got["cpuFinalizeMs"])
+
+    def test_invalid_missing_or_unsupported_stage_timings_are_not_misreported(self):
+        logs = ("SIMPLY_MIRRORS_GPU_PROFILE frames=90 "
+                "gpuCaptureMs=-1.0 gpuRestoreMs=10000 cpuWorldMs=8.0")
+        got = profile_medians(logs)
+        self.assertEqual({"cpuWorldMs": 8.0}, got)
+        self.assertEqual({}, profile_medians("normal game log with no GPU profiling"))
