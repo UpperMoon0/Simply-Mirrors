@@ -18,7 +18,7 @@ public abstract class ReflectionCullingMixin {
     @Shadow private Frustum cullingFrustum;
     @Inject(method="prepareCullFrustum",at=@At("TAIL"))
     private void simplymirrors$tagMirrorFrustum(PoseStack pose, Vec3 eye, Matrix4f projection, CallbackInfo ci) {
-        if (MirrorRenderer.redirect != null) MirrorApertureCulling.track(cullingFrustum);
+        if (MirrorRenderer.redirect != null) MirrorApertureCulling.track(cullingFrustum, eye);
     }
     @Inject(method="setupRender",at=@At("HEAD"))
     private void simplymirrors$reflectionCulling(CallbackInfo ci) {

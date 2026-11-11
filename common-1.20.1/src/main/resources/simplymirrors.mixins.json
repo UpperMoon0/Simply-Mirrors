@@ -10,6 +10,7 @@
     "IrisDepthTargetMixin",
     "ReflectionCullingMixin",
     "MirrorFrustumMixin",
+    "ReflectionFrustumIntersectionAccessor",
     "IrisFullscreenMixin",
     "IrisFinalDualDrawMixin",
     "IrisProgramLabelMixin",

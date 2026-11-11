@@ -1,7 +1,7 @@
 // Platform configuration is defined by the root build.
 
-loom { forge { mixinConfig 'simplymirrors.mixins.json' } }
-jar { manifest { attributes 'MixinConfigs': 'simplymirrors.mixins.json' } }
+loom { forge { mixinConfig 'simplymirrors.mixins.json'; mixinConfig 'simplymirrors.embeddium.mixins.json' } }
+jar { manifest { attributes 'MixinConfigs': 'simplymirrors.mixins.json,simplymirrors.embeddium.mixins.json' } }
 
 // Recipe browsing in the development client only; never published or bundled.
 repositories {

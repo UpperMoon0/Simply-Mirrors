@@ -54,10 +54,14 @@ class ApertureNativeAcceptanceTests(TestCase):
             aperture_ci.aperture_telemetry("unrelated output")
         with self.assertRaisesRegex(AssertionError, "lacks proof"):
             aperture_ci.aperture_telemetry("SIMPLY_MIRRORS_APERTURE_CULL sectionsChecked=500 sectionsCulled=0")
-        self.assertEqual({"sectionsChecked": 600, "sectionsCulled": 140},
+        with self.assertRaisesRegex(AssertionError, "Embeddium terrain"):
+            aperture_ci.aperture_telemetry(
+                "SIMPLY_MIRRORS_APERTURE_CULL sectionsChecked=500 sectionsCulled=150")
+        self.assertEqual({"sectionsChecked": 600, "sectionsCulled": 140,
+                          "sodiumSectionsChecked": 500, "sodiumSectionsCulled": 125},
                          aperture_ci.aperture_telemetry(
-                             "SIMPLY_MIRRORS_APERTURE_CULL sectionsChecked=400 sectionsCulled=100\n"
-                             "SIMPLY_MIRRORS_APERTURE_CULL sectionsChecked=200 sectionsCulled=40"))
+                             "SIMPLY_MIRRORS_APERTURE_CULL sectionsChecked=400 sectionsCulled=100 sodiumSectionsChecked=350 sodiumSectionsCulled=90\n"
+                             "SIMPLY_MIRRORS_APERTURE_CULL sectionsChecked=200 sectionsCulled=40 sodiumSectionsChecked=150 sodiumSectionsCulled=35"))
 
     def test_untrusted_agent_cannot_start_acceptance(self):
         with patch.dict(aperture_ci.os.environ, {"CI_GRAPHICS_AGENT": "0"}):

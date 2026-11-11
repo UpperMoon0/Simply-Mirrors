@@ -59,11 +59,21 @@ def aperture_telemetry(logs: str) -> dict[str, int]:
         r"SIMPLY_MIRRORS_APERTURE_CULL sectionsChecked=(\d+)\s+sectionsCulled=(\d+)", logs)
     checks = sum(int(checked) for checked, _ in matches)
     removed = sum(int(culled) for _, culled in matches)
-    if checks == 0 or removed == 0 or removed > checks:
+    sodium_matches = re.findall(
+        r"sodiumSectionsChecked=(\d+)\s+sodiumSectionsCulled=(\d+)", logs)
+    sodium_checked = sum(int(n) for n, _ in sodium_matches)
+    sodium_removed = sum(int(n) for _, n in sodium_matches)
+    # Embeddium replaces vanilla terrain rendering. Vanilla Frustum checks
+    # alone can include entities without excluding a single terrain section.
+    if (checks == 0 or removed == 0 or removed > checks or
+            sodium_checked == 0 or sodium_removed == 0 or
+            sodium_removed > sodium_checked):
         raise AssertionError(
-            "Aperture trial lacks proof of active section rejection: "
-            f"tested={checks} sectionsCulled={removed}")
-    return {"sectionsChecked": checks, "sectionsCulled": removed}
+            "Aperture trial lacks proof of Embeddium terrain section rejection: "
+            f"vanilla/total={checks}/{removed} sodium={sodium_checked}/{sodium_removed}")
+    return {"sectionsChecked": checks, "sectionsCulled": removed,
+            "sodiumSectionsChecked": sodium_checked,
+            "sodiumSectionsCulled": sodium_removed}
 
 def run_variant(label: str, index: int, stamp: str,
                 attempt: int = 0) -> tuple[dict, Path, Path]:
