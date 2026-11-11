@@ -3,6 +3,7 @@
   "minVersion": "0.8",
   "package": "com.nstut.simplymirrors.client.mixin",
   "refmap": "simplymirrors.refmap.json",
+  "plugin": "com.nstut.simplymirrors.client.mixin.EmbeddiumAperturePlugin",
   "client": [
     "CameraAccessor",
     "MinecraftMixin",
@@ -10,6 +11,7 @@
     "IrisDepthTargetMixin",
     "ReflectionCullingMixin",
     "MirrorFrustumMixin",
+    "EmbeddiumFrustumMixin",
     "ReflectionFrustumIntersectionAccessor",
     "IrisFullscreenMixin",
     "IrisFinalDualDrawMixin",

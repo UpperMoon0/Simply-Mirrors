@@ -5,6 +5,7 @@ import org.joml.FrustumIntersection;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -20,12 +21,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
        remap = false)
 public abstract class EmbeddiumFrustumMixin {
     @Shadow(remap = false) private FrustumIntersection frustum;
+    @Unique private static boolean simplymirrors$hookLogged;
 
     @Inject(method = "testAab(FFFFFF)Z", at = @At("HEAD"),
             cancellable = true, require = 0, remap = false)
     private void simplymirrors$clipSodiumSection(float minX, float minY, float minZ,
                                                    float maxX, float maxY, float maxZ,
                                                    CallbackInfoReturnable<Boolean> cir) {
+        // One-time proof that Embeddium calls the transformed target.
+        if (!simplymirrors$hookLogged && Boolean.getBoolean("simplymirrors.apertureCull")) {
+            simplymirrors$hookLogged = true;
+            System.out.println("SIMPLY_MIRRORS_EMBEDDIUM_FRUSTUM_HOOK_FIRST_CALL");
+        }
         if (!MirrorApertureCulling.mayBeVisibleEmbeddium(frustum,
                 minX, minY, minZ, maxX, maxY, maxZ)) {
             cir.setReturnValue(false);
