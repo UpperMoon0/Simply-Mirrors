@@ -23,6 +23,8 @@ public final class MirrorApertureCulling {
     private static long checked, rejected, cumulativeChecked, cumulativeRejected;
     private static long sodiumChecked, sodiumRejected, cumulativeSodiumChecked, cumulativeSodiumRejected;
     private static long completed;
+    private static long reflectionFrustaTagged, sodiumHookCalls, sodiumIdentityMismatches;
+    private static long totalTagged, totalHookCalls, totalIdentityMismatches;
 
     private MirrorApertureCulling() {}
 
@@ -34,12 +36,14 @@ public final class MirrorApertureCulling {
         reflectionIntersection = null;
         reflectionEye = aperture == null ? null : reflectedEye;
         checked = rejected = sodiumChecked = sodiumRejected = 0;
+        reflectionFrustaTagged = sodiumHookCalls = sodiumIdentityMismatches = 0;
     }
 
     public static void track(Frustum frustum, Vec3 eye) {
         if (MirrorRenderer.redirect != null && aperture != null
                 && reflectionEye != null && eye.distanceToSqr(reflectionEye) < 1.0e-6) {
             reflectionFrustum = frustum;
+            reflectionFrustaTagged++;
             // Embeddium wraps this SAME intersection in SimpleFrustum, rather
             // than calling vanilla Frustum.isVisible for chunk sections.
             reflectionIntersection =
@@ -65,9 +69,13 @@ public final class MirrorApertureCulling {
     public static boolean mayBeVisibleEmbeddium(FrustumIntersection intersection,
                                                  float minX, float minY, float minZ,
                                                  float maxX, float maxY, float maxZ) {
-        if (MirrorRenderer.redirect == null || aperture == null
-                || reflectionEye == null || intersection != reflectionIntersection)
+        if (MirrorRenderer.redirect == null || aperture == null)
             return true;
+        sodiumHookCalls++;
+        if (reflectionEye == null || intersection != reflectionIntersection) {
+            sodiumIdentityMismatches++;
+            return true;
+        }
         checked++;
         sodiumChecked++;
         boolean visible = aperture.intersects(
@@ -83,13 +91,20 @@ public final class MirrorApertureCulling {
             cumulativeRejected += rejected;
             cumulativeSodiumChecked += sodiumChecked;
             cumulativeSodiumRejected += sodiumRejected;
+            totalTagged += reflectionFrustaTagged;
+            totalHookCalls += sodiumHookCalls;
+            totalIdentityMismatches += sodiumIdentityMismatches;
             if (++completed % 120 == 0) {
                 System.out.println("SIMPLY_MIRRORS_APERTURE_CULL sectionsChecked=" + cumulativeChecked
                         + " sectionsCulled=" + cumulativeRejected
                         + " sodiumSectionsChecked=" + cumulativeSodiumChecked
-                        + " sodiumSectionsCulled=" + cumulativeSodiumRejected);
+                        + " sodiumSectionsCulled=" + cumulativeSodiumRejected
+                        + " reflectedFrustaTagged=" + totalTagged
+                        + " sodiumHookCalls=" + totalHookCalls
+                        + " sodiumIdentityMismatches=" + totalIdentityMismatches);
                 cumulativeChecked = cumulativeRejected = 0;
                 cumulativeSodiumChecked = cumulativeSodiumRejected = 0;
+                totalTagged = totalHookCalls = totalIdentityMismatches = 0;
             }
         }
         aperture = null;
