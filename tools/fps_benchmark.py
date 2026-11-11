@@ -35,12 +35,14 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
                           shader_final_origin_crop: bool = False,
                           shader_early_composite_crop: bool = False,
                           shader_final_dual_crop: bool = False,
-                          expected_width: int = 1920, expected_height: int = 1080) -> str:
+                          expected_width: int = 1920, expected_height: int = 1080,
+                          aperture_cull: bool = False) -> str:
     """Build explicit shader A/B toggles; never enable experimental culling by default."""
     return ("-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
             (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
             (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "") +
             (" -Dsimplymirrors.frustumCrop=true" if frustum_crop else "") +
+            (" -Dsimplymirrors.apertureCull=true" if aperture_cull else "") +
             (" -Dsimplymirrors.fpsCameraMotion=true" if camera_motion else "") +
             (" -Dsimplymirrors.reflectionOutputScissor=true" if output_scissor else "") +
             (" -Dsimplymirrors.historyCopyImage=true" if history_copy_image else "") +
@@ -67,7 +69,8 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                    shader_early_composite_crop: bool = False,
                                    shader_final_dual_crop: bool = False,
                                    expected_width: int = 1920,
-                                   expected_height: int = 1080) -> subprocess.Popen:
+                                   expected_height: int = 1080,
+                                   aperture_cull: bool = False) -> subprocess.Popen:
     """Launch directly under the verified restricted Windows graphics worker.
 
     Never query an interactive user's WTS token or use CreateProcessAsUser.
@@ -88,7 +91,7 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                                        shader_final_origin_crop,
                                                        shader_early_composite_crop,
                                                        shader_final_dual_crop,
-                                                       expected_width, expected_height))
+                                                       expected_width, expected_height, aperture_cull))
     with log_path.open("wb") as stream:
         return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
                                 stderr=subprocess.STDOUT,
@@ -262,6 +265,8 @@ def run_benchmark():
     parser.add_argument("--disable-coverage-scissor", action="store_true", help="Control run with coverage optimization disabled")
     parser.add_argument("--enable-frustum-crop", action="store_true",
                         help="Opt in to experimental reflection-section culling; default is off")
+    parser.add_argument("--aperture-cull", action="store_true",
+                        help="Experimental mirror-volume section culling; default off")
     parser.add_argument("--moving-camera", action="store_true",
                         help="Deterministic camera pan/translation, with two warmup image checks per mirror scene")
     parser.add_argument("--render-distance", type=int, choices=[4, 8, 12], default=4,
@@ -391,7 +396,8 @@ def run_benchmark():
                 shader_final_origin_crop=args.shader_final_origin_crop,
                 shader_early_composite_crop=args.shader_early_composite_crop,
                 shader_final_dual_crop=args.shader_final_dual_crop,
-                expected_width=args.width, expected_height=args.height)
+                expected_width=args.width, expected_height=args.height,
+                aperture_cull=args.aperture_cull)
             print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
                   " PID=" + str(client_process.pid), flush=True)
             deadline = time.monotonic() + args.startup_timeout
@@ -532,6 +538,7 @@ def run_benchmark():
             "renderDistance": args.render_distance,
             "coverageScissorEnabled": not args.disable_coverage_scissor,
             "frustumCropEnabled": args.enable_frustum_crop,
+            "apertureCullEnabled": args.aperture_cull,
             "movingCameraEnabled": args.moving_camera,
             "reflectionOutputScissorEnabled": args.reflection_output_scissor,
             "historyCopyImageEnabled": args.history_copy_image,

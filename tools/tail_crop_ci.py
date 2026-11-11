@@ -245,4 +245,7 @@ def accept() -> dict:
 
 
 if __name__ == "__main__":
-    accept()
+    # Legacy Jenkins CI entrypoint, intentionally dispatching the current experiment.
+    # Rejected final-dual crop remains available for forensic analysis via import.
+    from aperture_ci import accept as aperture_accept
+    aperture_accept()

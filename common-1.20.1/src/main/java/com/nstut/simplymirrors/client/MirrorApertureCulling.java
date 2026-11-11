@@ -6,7 +6,6 @@ import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import java.util.List;
-import java.util.logging.Logger;
 
 /**
  * Only the LevelRenderer's reflected-camera frustum is eligible for aperture
@@ -15,7 +14,6 @@ import java.util.logging.Logger;
  * Opt in with -Dsimplymirrors.apertureCull=true until native parity passes.
  */
 public final class MirrorApertureCulling {
-    private static final Logger LOG = Logger.getLogger("simply_mirrors");
     private static MirrorApertureVolume aperture;
     private static Frustum reflectionFrustum;
     private static long checked, rejected, cumulativeChecked, cumulativeRejected;
@@ -51,8 +49,8 @@ public final class MirrorApertureCulling {
             cumulativeChecked += checked;
             cumulativeRejected += rejected;
             if (++completed % 120 == 0) {
-                LOG.info("Mirror aperture sections tested=" + cumulativeChecked
-                        + " culled=" + cumulativeRejected);
+                System.out.println("SIMPLY_MIRRORS_APERTURE_CULL sectionsChecked=" + cumulativeChecked
+                        + " sectionsCulled=" + cumulativeRejected);
                 cumulativeChecked = cumulativeRejected = 0;
             }
         }
