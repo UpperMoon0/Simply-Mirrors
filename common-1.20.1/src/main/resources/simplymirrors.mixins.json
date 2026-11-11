@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "com.nstut.simplymirrors.client.mixin",
   "refmap": "simplymirrors.refmap.json",
-  "plugin": "com.nstut.simplymirrors.client.mixin.EmbeddiumAperturePlugin",
+  "plugin": "com.nstut.simplymirrors.client.EmbeddiumAperturePlugin",
   "client": [
     "CameraAccessor",
     "MinecraftMixin",

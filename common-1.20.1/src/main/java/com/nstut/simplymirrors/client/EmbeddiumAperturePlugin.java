@@ -1,4 +1,4 @@
-package com.nstut.simplymirrors.client.mixin;
+package com.nstut.simplymirrors.client;
 
 import java.util.List;
 import java.util.Set;

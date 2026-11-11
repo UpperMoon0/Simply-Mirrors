@@ -75,11 +75,12 @@ class ApertureMixinRegistrationTests(TestCase):
         root = Path(__file__).resolve().parents[1]
         mixins = json.loads((root / "common-1.20.1/src/main/resources/simplymirrors.mixins.json")
                             .read_text(encoding="utf-8"))
-        self.assertEqual("com.nstut.simplymirrors.client.mixin.EmbeddiumAperturePlugin",
+        self.assertEqual("com.nstut.simplymirrors.client.EmbeddiumAperturePlugin",
                          mixins["plugin"])
         self.assertEqual(1, mixins["client"].count("EmbeddiumFrustumMixin"))
         self.assertIn("MirrorFrustumMixin", mixins["client"])
         self.assertTrue(mixins["required"])
+        self.assertFalse(mixins["plugin"].startswith(mixins["package"] + "."))
 
     def test_no_secondary_config_and_primary_plugin_preserves_required_mixins(self):
         root = Path(__file__).resolve().parents[1]
@@ -87,5 +88,5 @@ class ApertureMixinRegistrationTests(TestCase):
         self.assertNotIn("simplymirrors.embeddium.mixins.json", forge)
         self.assertEqual(2, forge.count("simplymirrors.mixins.json"))
         self.assertFalse((root / "forge-1.20.1/src/main/resources/simplymirrors.embeddium.mixins.json").exists())
-        plugin = (root / "common-1.20.1/src/main/java/com/nstut/simplymirrors/client/mixin/EmbeddiumAperturePlugin.java").read_text(encoding="utf-8")
+        plugin = (root / "common-1.20.1/src/main/java/com/nstut/simplymirrors/client/EmbeddiumAperturePlugin.java").read_text(encoding="utf-8")
         self.assertIn('if (!mixinClassName.endsWith(".EmbeddiumFrustumMixin")) return true;', plugin)
