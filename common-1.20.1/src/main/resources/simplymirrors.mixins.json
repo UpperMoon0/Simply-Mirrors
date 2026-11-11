@@ -9,6 +9,7 @@
     "LevelRendererMixin",
     "IrisDepthTargetMixin",
     "ReflectionCullingMixin",
+    "MirrorFrustumMixin",
     "IrisFullscreenMixin",
     "IrisFinalDualDrawMixin",
     "IrisProgramLabelMixin",

@@ -107,12 +107,14 @@ public final class MirrorRenderer {
                         ?matrix(ReflectionFrustumCrop.crop(array(mainProjectionMatrix),
                                 main.width,main.height,coverageBounds))
                         :mainProjectionMatrix;
+                    MirrorApertureCulling.begin(surfaces, reflectedEye);
                     mc.levelRenderer.prepareCullFrustum(pose,reflectedEye,cullingProjection);
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
                     MirrorGpuProfiler.mark(4);
                 } finally {
                     try { if(shaders)ShaderReflection.end(); }
                     finally { if(clipped!=null)clipped.close(); }
+                    MirrorApertureCulling.end();
                     RenderSystem.depthMask(oldDepthMask);
                     mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);RenderSystem.setProjectionMatrix(mainProjectionMatrix,com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN);
                     mc.levelRenderer.prepareCullFrustum(mainPose,eye,mainProjectionMatrix);
