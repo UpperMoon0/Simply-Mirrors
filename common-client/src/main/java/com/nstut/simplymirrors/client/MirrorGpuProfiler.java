@@ -31,6 +31,7 @@ public final class MirrorGpuProfiler {
 
     public static void begin() {
         if (!ENABLED) return;
+        ShaderQuadGpuProfiler.poll();
         poll();
         if (current != null) current.release();
         current = new Frame();
@@ -138,6 +139,7 @@ public final class MirrorGpuProfiler {
         if (current != null) { current.release(); current = null; }
         while (!PENDING.isEmpty()) PENDING.removeFirst().release();
         SAMPLES.clear();
+        ShaderQuadGpuProfiler.reset();
     }
 
     private static final class Frame {

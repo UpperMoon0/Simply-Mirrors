@@ -56,6 +56,9 @@ public final class ReflectionScissor implements AutoCloseable {
         if ((SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP || SHADER_FINAL_DUAL_CROP) && program > 0 && name != null)
             PROGRAM_NAMES.put(program, name);
     }
+    public static String profileProgramName(int program) {
+        return PROGRAM_NAMES.get(program);
+    }
     public static void unregisterShaderProgram(int program) {
         PROGRAM_NAMES.remove(program);
     }

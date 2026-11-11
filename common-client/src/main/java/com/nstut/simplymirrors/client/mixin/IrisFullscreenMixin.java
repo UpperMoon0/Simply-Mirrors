@@ -2,6 +2,7 @@ package com.nstut.simplymirrors.client.mixin;
 import com.nstut.simplymirrors.client.MirrorRenderer;
 import com.nstut.simplymirrors.client.ShaderReflection;
 import com.nstut.simplymirrors.client.ReflectionScissor;
+import com.nstut.simplymirrors.client.ShaderQuadGpuProfiler;
 import org.lwjgl.BufferUtils;
 import java.nio.IntBuffer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -23,7 +24,12 @@ public abstract class IrisFullscreenMixin {
     @Unique private boolean simplymirrors$outputClipped;
     @Unique private final int[] simplymirrors$scissorBox = new int[4];
     @Inject(method="renderQuad",at=@At("HEAD"),require=0)
-    private void simplymirrors$screenQuad(CallbackInfo ci) { simplymirrors$screenWinding(true); }
+    private void simplymirrors$screenQuad(CallbackInfo ci) {
+        simplymirrors$screenWinding(true);
+        ShaderQuadGpuProfiler.begin();
+    }
+    @Inject(method="renderQuad",at=@At("RETURN"),require=0)
+    private void simplymirrors$quadGpuEnd(CallbackInfo ci) { ShaderQuadGpuProfiler.end(); }
     @Inject(method={"renderAll","renderFinalPass","renderHorizon"},at=@At("HEAD"),require=0)
     private void simplymirrors$screenOther(CallbackInfo ci) { simplymirrors$screenWinding(false); }
     @Unique private void simplymirrors$screenWinding(boolean outputEligible) {
