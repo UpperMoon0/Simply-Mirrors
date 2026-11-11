@@ -90,3 +90,10 @@ class ApertureMixinRegistrationTests(TestCase):
         self.assertFalse((root / "forge-1.20.1/src/main/resources/simplymirrors.embeddium.mixins.json").exists())
         plugin = (root / "common-1.20.1/src/main/java/com/nstut/simplymirrors/client/EmbeddiumAperturePlugin.java").read_text(encoding="utf-8")
         self.assertIn('if (!mixinClassName.endsWith(".EmbeddiumFrustumMixin")) return true;', plugin)
+
+class AperturePluginRemappingTests(TestCase):
+    def test_opt_in_does_not_reject_remapped_target_names(self):
+        root = Path(__file__).resolve().parents[1]
+        plugin = (root / "common-1.20.1/src/main/java/com/nstut/simplymirrors/client/EmbeddiumAperturePlugin.java").read_text(encoding="utf-8")
+        self.assertIn("return enabled;", plugin)
+        self.assertNotIn("targetClassName.equals", plugin)

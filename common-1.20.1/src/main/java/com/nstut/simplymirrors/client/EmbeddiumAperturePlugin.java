@@ -19,13 +19,13 @@ public final class EmbeddiumAperturePlugin implements IMixinConfigPlugin {
 
     @Override public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (!mixinClassName.endsWith(".EmbeddiumFrustumMixin")) return true;
+        // Mixin resolves the target from the @Mixin annotation. Forge/ModLauncher
+        // may supply a remapped target name here, so do not veto that mapping.
         boolean enabled = Boolean.getBoolean("simplymirrors.apertureCull");
-        boolean targetMatches = targetClassName.equals(
-                "me.jellysquid.mods.sodium.client.render.viewport.frustum.SimpleFrustum");
         if (enabled)
-            System.out.println("SIMPLY_MIRRORS_EMBEDDIUM_PLUGIN_DECISION targetMatches="
-                    + targetMatches + " apply=" + (enabled && targetMatches));
-        return enabled && targetMatches;
+            System.out.println("SIMPLY_MIRRORS_EMBEDDIUM_PLUGIN_DECISION target="
+                    + targetClassName + " apply=true");
+        return enabled;
     }
 
     @Override public void acceptTargets(Set<String> own, Set<String> other) { }
