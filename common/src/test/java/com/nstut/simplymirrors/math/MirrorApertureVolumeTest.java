@@ -85,6 +85,13 @@ public class MirrorApertureVolumeTest {
         }
     }
 
+    @Test public void invalidNumericInputsFailOpen() {
+        MirrorSurface face = new MirrorSurface(0,0,0,0,0,1);
+        assertNull(MirrorApertureVolume.from(Collections.singletonList(face), Double.NaN, .5, -5));
+        MirrorApertureVolume volume = MirrorApertureVolume.from(Collections.singletonList(face), .5, .5, -5);
+        assertTrue(volume.intersects(Double.NaN, 0, 0, 1, 1, 1));
+        assertTrue(volume.intersects(2, 0, 0, 1, 1, 1));
+    }
     @Test public void allSixFaceOrientationsProduceValidCones() {
         for (MirrorSurface face : MirrorSurface.faces(0, 0, 0)) {
             MirrorApertureVolume volume = MirrorApertureVolume.from(

@@ -20,7 +20,7 @@ public final class MirrorApertureVolume {
 
     public static MirrorApertureVolume from(List<MirrorSurface> faces,
                                              double eyeX, double eyeY, double eyeZ) {
-        if (faces == null || faces.isEmpty()) return null;
+        if (faces == null || faces.isEmpty() || !Double.isFinite(eyeX) || !Double.isFinite(eyeY) || !Double.isFinite(eyeZ)) return null;
         MirrorSurface first = faces.get(0);
         double normalCoord = first.nx * first.cx + first.ny * first.cy + first.nz * first.cz;
         double eyeSide = first.nx * eyeX + first.ny * eyeY + first.nz * eyeZ - normalCoord;
@@ -86,6 +86,7 @@ public final class MirrorApertureVolume {
     /** True means the box may contribute a reflected pixel; false is safe to cull. */
     public boolean intersects(double minX, double minY, double minZ,
                               double maxX, double maxY, double maxZ) {
+        if (!Double.isFinite(minX) || !Double.isFinite(minY) || !Double.isFinite(minZ) || !Double.isFinite(maxX) || !Double.isFinite(maxY) || !Double.isFinite(maxZ) || minX > maxX || minY > maxY || minZ > maxZ) return true;
         for (double[] plane : planes) {
             double x = plane[0] >= 0 ? maxX : minX;
             double y = plane[1] >= 0 ? maxY : minY;
