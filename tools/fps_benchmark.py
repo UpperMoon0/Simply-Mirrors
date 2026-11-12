@@ -342,8 +342,11 @@ def run_benchmark():
             f"-PvisualRunName={args.run_name}",
             f"-PvisualWidth={args.width}",
             f"-PvisualHeight={args.height}",
-            "--no-daemon", "--console=plain", "--max-workers=2",
-            "-Dorg.gradle.jvmargs=-Xmx1024m",
+            "--no-daemon", "--console=plain", "--max-workers=1",
+            # Two Gradle launchers remain alive beside the isolated game JVMs.
+            # Bound build-tool overhead on the 16 GiB native worker; keep both
+            # game heaps and all rendering/acceptance settings unchanged.
+            "-Dorg.gradle.jvmargs=-Xmx512m",
         ]
         gradle = str(root / "gradlew.bat")
         base = [gradle] + options
