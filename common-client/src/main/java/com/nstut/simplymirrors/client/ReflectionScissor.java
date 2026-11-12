@@ -50,17 +50,25 @@ public final class ReflectionScissor implements AutoCloseable {
     private static final boolean SHADER_FINAL_DUAL_CROP =
         Boolean.getBoolean("simplymirrors.shaderFinalDualCrop");
     // These shader IDs are GL-context scoped and removed on program destruction.
+    private static final boolean FINAL_FRAGMENT_GUARD =
+        Boolean.getBoolean("simplymirrors.shaderFinalFragmentGuard");
+    private static long finalFragmentAttempts, finalFragmentActive, finalFragmentMissingUniform;
+    private static long finalFragmentTargetRejected, finalFragmentViewportRejected, finalFragmentBoundsRejected;
+    // Uniform locations are stable for a linked program; invalidate on deletion/relink.
+    private static final java.util.Map<Integer,Integer> FINAL_GUARD_UNIFORMS =
+        new java.util.HashMap<Integer,Integer>();
     private static final java.util.Map<Integer,String> PROGRAM_NAMES =
         new java.util.HashMap<Integer,String>();
     public static void registerShaderProgram(int program, String name) {
-        if ((SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP || SHADER_FINAL_DUAL_CROP) && program > 0 && name != null)
-            PROGRAM_NAMES.put(program, name);
+        if ((SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP || SHADER_FINAL_DUAL_CROP || FINAL_FRAGMENT_GUARD) && program > 0 && name != null)
+            { PROGRAM_NAMES.put(program, name); FINAL_GUARD_UNIFORMS.remove(program); }
     }
     public static String profileProgramName(int program) {
         return PROGRAM_NAMES.get(program);
     }
     public static void unregisterShaderProgram(int program) {
         PROGRAM_NAMES.remove(program);
+        FINAL_GUARD_UNIFORMS.remove(program);
     }
     private static final int SHADER_CROP_PAD =
         Math.max(256,Math.min(1024,Integer.getInteger("simplymirrors.shaderCropPad",512)));
@@ -175,11 +183,72 @@ public final class ReflectionScissor implements AutoCloseable {
     }
 
     /**
+     * Single-draw final shader optimization, opt-in only. Fragment shader
+     * discards off-ROI fragments itself, but ALWAYS runs (0.5,0.5), the pinned
+     * Complementary player's SSBO reset pixel. Unlike a two-quad scissor,
+     * this preserves the original one-draw program/VAO/FBO sequence.
+     *
+     * Only activate if the real current program exposes our injected uniform
+     * and its draw target is the native mirror output attachment.
+     */
+    public static int beginFinalFragmentGuard() {
+        if (!FINAL_FRAGMENT_GUARD || current == null || !current.active ||
+                MirrorRenderer.redirect == null) return -1;
+        int program = glGetInteger(GL_CURRENT_PROGRAM);
+        if (!"final".equals(PROGRAM_NAMES.get(program))) return -1;
+        finalFragmentAttempts++;
+        Integer cachedLocation = FINAL_GUARD_UNIFORMS.get(program);
+        int location = cachedLocation != null ? cachedLocation :
+                glGetUniformLocation(program, "simplymirrors_FinalFragmentRect");
+        if (cachedLocation == null) FINAL_GUARD_UNIFORMS.put(program, location);
+        if (location < 0) { finalFragmentMissingUniform++; return -1; }
+        // Fail open for every unexpected FBO, viewport or mirror projection.
+        // Restoring zero width at draw return ensures main-camera parity.
+        glUniform4f(location, 0, 0, 0, 0);
+        int fbo = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
+        if (fbo == 0 || glGetInteger(GL_DRAW_BUFFER) != GL_COLOR_ATTACHMENT0) {
+            finalFragmentTargetRejected++;
+            return -1;
+        }
+        if (glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) != GL_TEXTURE ||
+                glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,
+                GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME) !=
+                MirrorRenderer.redirect.getColorTextureId()) {
+            finalFragmentTargetRejected++;
+            return -1;
+        }
+        IntBuffer viewport = BufferUtils.createIntBuffer(4);
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        // Only native 1:1 viewport coordinates match gl_FragCoord. A scaled,
+        // offset, or partial Iris target must keep its original fullscreen pass.
+        if (viewport.get(0) != 0 || viewport.get(1) != 0 ||
+                viewport.get(2) != current.frameWidth ||
+                viewport.get(3) != current.frameHeight) {
+            finalFragmentViewportRejected++;
+            return -1;
+        }
+        int[] box = ShaderViewportCrop.rectangle(current.x,current.y,
+                current.width,current.height,current.frameWidth,current.frameHeight,
+                viewport.get(0),viewport.get(1),viewport.get(2),viewport.get(3),96);
+        if (box == null) {
+            finalFragmentBoundsRejected++;
+            return -1;
+        }
+        glUniform4f(location, box[0],box[1],box[0]+box[2],box[1]+box[3]);
+        finalFragmentActive++;
+        return location;
+    }
+
+    public static void endFinalFragmentGuard(int location) {
+        if (FINAL_FRAGMENT_GUARD && location >= 0)
+            glUniform4f(location, 0, 0, 0, 0);
+    }
+    /**
      * Restrict only a fullscreen draw going directly into this reflection's
      * native-resolution output FBO. Every deferred/half-res/history target is
      * left untouched because it can feed another shader pass outside coverage.
-     *
-     * The caller must restore its original GL_SCISSOR_BOX and enable state.
+     * The caller must restore its original scissor state.
      */
     public static boolean constrainFinalOutputQuad() {
         ReflectionScissor scope=current;
@@ -362,6 +431,13 @@ public final class ReflectionScissor implements AutoCloseable {
             System.out.println("SIMPLY_MIRRORS_OUTPUT_SCISSOR quadsChecked="+
                 outputQuadChecks+" textureMatches="+outputTextureMatches+
                 " outputQuadsClipped="+outputQuadClipped+" aliasedFboClips="+outputAliasFboClipped);
+        if(FINAL_FRAGMENT_GUARD && Boolean.getBoolean("simplymirrors.gpuProfile") &&
+                clipped > 0 && clipped % 180 == 0)
+            System.out.println("SIMPLY_MIRRORS_FINAL_FRAGMENT_GUARD attempts="+finalFragmentAttempts+
+                " applied="+finalFragmentActive+" missingUniform="+finalFragmentMissingUniform+
+                " rejectedTarget="+finalFragmentTargetRejected+
+                " rejectedViewport="+finalFragmentViewportRejected+
+                " rejectedBounds="+finalFragmentBoundsRejected);
         if((SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP ||
                 SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP ||
                 SHADER_FINAL_DUAL_CROP)

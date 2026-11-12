@@ -1,5 +1,6 @@
 package com.nstut.simplymirrors.client.mixin;
 import com.nstut.simplymirrors.math.ShaderClippingTransformation;
+import com.nstut.simplymirrors.math.ShaderFinalFragmentGuard;
 import com.llamalad7.mixinextras.sugar.Local;
 import java.util.Map;
 import org.spongepowered.asm.mixin.*;
@@ -14,6 +15,12 @@ public abstract class IrisTransformMixin {
     @Inject(method="transform",at=@At("RETURN"),cancellable=true,require=0)
     private static void simplymirrors$clip(CallbackInfoReturnable<Map> ci,
                                             @Local(argsOnly=true,ordinal=0) String name){
-        if(name!=null)ci.setReturnValue(ShaderClippingTransformation.transformProgram(name.startsWith("gbuffers_")?"SODIUM":"VANILLA",name,ci.getReturnValue()));
+        if(name!=null) {
+            Map transformed=ShaderClippingTransformation.transformProgram(
+                    name.startsWith("gbuffers_")?"SODIUM":"VANILLA",name,ci.getReturnValue());
+            if(Boolean.getBoolean("simplymirrors.shaderFinalFragmentGuard"))
+                transformed=ShaderFinalFragmentGuard.transformProgram(name,transformed);
+            ci.setReturnValue(transformed);
+        }
     }
 }

@@ -245,7 +245,7 @@ def accept() -> dict:
 
 
 if __name__ == "__main__":
-    # Legacy Jenkins CI entrypoint, intentionally dispatching the current experiment.
-    # Rejected final-dual crop remains available for forensic analysis via import.
-    from aperture_ci import accept as aperture_accept
-    aperture_accept()
+    # Centralized GPU pipeline retains its reviewed entrypoint. This experiment
+    # swaps only the opt-in final fragment guard; legacy studies remain importable.
+    from final_fragment_ci import accept as final_fragment_accept
+    final_fragment_accept()

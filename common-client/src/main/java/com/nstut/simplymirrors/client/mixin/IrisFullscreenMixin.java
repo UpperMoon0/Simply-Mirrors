@@ -22,14 +22,20 @@ public abstract class IrisFullscreenMixin {
     @Unique private boolean simplymirrors$clip;
     @Unique private boolean simplymirrors$scissor;
     @Unique private boolean simplymirrors$outputClipped;
+    @Unique private int simplymirrors$finalFragmentGuardLocation = -1;
     @Unique private final int[] simplymirrors$scissorBox = new int[4];
     @Inject(method="renderQuad",at=@At("HEAD"),require=0)
     private void simplymirrors$screenQuad(CallbackInfo ci) {
         simplymirrors$screenWinding(true);
+        simplymirrors$finalFragmentGuardLocation=ReflectionScissor.beginFinalFragmentGuard();
         ShaderQuadGpuProfiler.begin();
     }
     @Inject(method="renderQuad",at=@At("RETURN"),require=0)
-    private void simplymirrors$quadGpuEnd(CallbackInfo ci) { ShaderQuadGpuProfiler.end(); }
+    private void simplymirrors$quadGpuEnd(CallbackInfo ci) {
+        ShaderQuadGpuProfiler.end();
+        ReflectionScissor.endFinalFragmentGuard(simplymirrors$finalFragmentGuardLocation);
+        simplymirrors$finalFragmentGuardLocation=-1;
+    }
     @Inject(method={"renderAll","renderFinalPass","renderHorizon"},at=@At("HEAD"),require=0)
     private void simplymirrors$screenOther(CallbackInfo ci) { simplymirrors$screenWinding(false); }
     @Unique private void simplymirrors$screenWinding(boolean outputEligible) {

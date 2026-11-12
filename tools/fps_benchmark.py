@@ -35,6 +35,7 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
                           shader_final_origin_crop: bool = False,
                           shader_early_composite_crop: bool = False,
                           shader_final_dual_crop: bool = False,
+                          shader_final_fragment_guard: bool = False,
                           expected_width: int = 1920, expected_height: int = 1080,
                           aperture_cull: bool = False) -> str:
     """Build explicit shader A/B toggles; never enable experimental culling by default."""
@@ -51,6 +52,7 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
             (" -Dsimplymirrors.shaderFinalOriginCrop=true" if shader_final_origin_crop else "") +
             (" -Dsimplymirrors.shaderEarlyCompositeCrop=true" if shader_early_composite_crop else "") +
             (" -Dsimplymirrors.shaderFinalDualCrop=true" if shader_final_dual_crop else "") +
+            (" -Dsimplymirrors.shaderFinalFragmentGuard=true" if shader_final_fragment_guard else "") +
             f" -Dsimplymirrors.fpsExpectedWidth={expected_width}" +
             f" -Dsimplymirrors.fpsExpectedHeight={expected_height}")
 
@@ -68,6 +70,7 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                    shader_final_origin_crop: bool = False,
                                    shader_early_composite_crop: bool = False,
                                    shader_final_dual_crop: bool = False,
+                                   shader_final_fragment_guard: bool = False,
                                    expected_width: int = 1920,
                                    expected_height: int = 1080,
                                    aperture_cull: bool = False) -> subprocess.Popen:
@@ -91,6 +94,7 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                                        shader_final_origin_crop,
                                                        shader_early_composite_crop,
                                                        shader_final_dual_crop,
+                                                       shader_final_fragment_guard,
                                                        expected_width, expected_height, aperture_cull))
     with log_path.open("wb") as stream:
         return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
@@ -254,6 +258,8 @@ def run_benchmark():
                         help="Experimental pinned composite SSR producer crop; disabled by default")
     parser.add_argument("--shader-final-dual-crop", action="store_true",
                         help="Experimental two-region final shader crop retaining origin SSBO reset; default off")
+    parser.add_argument("--shader-final-fragment-guard", action="store_true",
+                        help="Experimental origin-safe, native-resolution final shader fragment rejection; default off")
     parser.add_argument("--postprocess-scissor", action="store_true",
                         help="Experimental native-resolution shader intermediate pass scissor; default off")
     parser.add_argument("--history-copy-image", action="store_true",
@@ -396,6 +402,7 @@ def run_benchmark():
                 shader_final_origin_crop=args.shader_final_origin_crop,
                 shader_early_composite_crop=args.shader_early_composite_crop,
                 shader_final_dual_crop=args.shader_final_dual_crop,
+                shader_final_fragment_guard=args.shader_final_fragment_guard,
                 expected_width=args.width, expected_height=args.height,
                 aperture_cull=args.aperture_cull)
             print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
@@ -547,6 +554,7 @@ def run_benchmark():
             "shaderFinalOriginCropEnabled": args.shader_final_origin_crop,
             "shaderEarlyCompositeCropEnabled": args.shader_early_composite_crop,
             "shaderFinalDualCropEnabled": args.shader_final_dual_crop,
+            "shaderFinalFragmentGuardEnabled": args.shader_final_fragment_guard,
             "stages": comparison,
             "rounds": rounds,
             "imageChecks": checks,
