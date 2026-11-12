@@ -268,18 +268,45 @@ def fixture_java_processes(client_dir, proc_root=Path("/proc")):
     return matches
 
 
+def windows_fixture_java_processes(client_dir):
+    """Match Java by the exact disposable working directory or path argument."""
+    import psutil
+    target = os.path.normcase(str(client_dir.resolve()))
+    matches = []
+    for process in psutil.process_iter(["pid", "name"]):
+        try:
+            if (process.info["name"] or "").lower() not in ("java.exe", "javaw.exe"):
+                continue
+            command = process.cmdline()
+            def same_path(value):
+                return bool(value) and os.path.normcase(os.path.abspath(value)) == target
+            same_cwd = same_path(process.cwd())
+            explicit_path = any(same_path(arg.split("=", 1)[1] if arg.startswith("-D") and "=" in arg else arg)
+                                for arg in command)
+            if same_cwd or explicit_path:
+                matches.append((str(process.pid), command))
+        except (psutil.Error, OSError):
+            continue
+    return matches
+
+
 def capture_client_thread_dump(client_dir, evidence):
     """Record this disposable client's JVM threads without attaching to other games."""
-    if os.name != "posix" or not Path("/proc").is_dir():
+    if os.name not in ("nt", "posix"):
         return
-    jcmd = shutil.which("jcmd")
+    if os.name == "posix" and not Path("/proc").is_dir():
+        return
+    java_home = os.environ.get("JAVA_HOME")
+    pinned_jcmd = Path(java_home) / "bin" / ("jcmd.exe" if os.name == "nt" else "jcmd") if java_home else None
+    jcmd = str(pinned_jcmd) if pinned_jcmd and pinned_jcmd.is_file() else shutil.which("jcmd")
     report = evidence / "client-thread-dump.txt"
     if not jcmd:
         report.write_text("jcmd not installed; could not inspect visual fixture.\n")
         return
     lines = []
     try:
-        for pid, command in fixture_java_processes(client_dir):
+        for pid, command in (windows_fixture_java_processes(client_dir) if os.name == "nt"
+                             else fixture_java_processes(client_dir)):
             lines.append(f"=== client JVM {pid} ({command[:700]!r}) ===\n")
             try:
                 dump = subprocess.run([jcmd, pid, "Thread.print", "-l"],

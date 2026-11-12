@@ -528,4 +528,46 @@ class VisualThreadDumpDiscoveryTests(unittest.TestCase):
 
 
 
+class WindowsFixtureDiagnosticTests(unittest.TestCase):
+    def test_exact_fixture_match_excludes_normal_client_and_prefix_sibling(self):
+        import types
+        with tempfile.TemporaryDirectory() as temp:
+            client = Path(temp) / "client"
+            def process(pid, name, cwd, args):
+                p = Mock()
+                p.info = {"pid": pid, "name": name}
+                p.pid = pid
+                p.cwd.return_value = str(cwd)
+                p.cmdline.return_value = args
+                return p
+            processes = [
+                process(1, "java.exe", client, ["java.exe", "Main"]),
+                process(2, "javaw.exe", temp, ["javaw.exe", "--gameDir", str(client)]),
+                process(3, "java.exe", str(client) + "-other", ["java.exe", str(client) + "-other"]),
+                process(4, "python.exe", client, ["python.exe", "java.exe", str(client)]),
+                process(5, "java.exe", temp, ["java.exe", "-DgameDir=" + str(client)]),
+                process(6, "java.exe", Path(temp) / "normal-game", ["java.exe", "Main"]),
+                process(7, "java.exe", temp, ["java.exe", "Main"]),
+            ]
+            processes[-1].cwd.side_effect = PermissionError("denied")
+            fake = types.SimpleNamespace(process_iter=lambda attrs: processes, Error=RuntimeError)
+            with patch.dict("sys.modules", {"psutil": fake}):
+                self.assertEqual(["1", "2", "5"],
+                                 [pid for pid, _ in visual_smoke.windows_fixture_java_processes(client)])
+
+    @unittest.skipUnless(os.name == "nt", "Windows diagnostic integration")
+    def test_windows_capture_uses_bounded_jcmd_for_matched_fixture(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            with patch.object(visual_smoke, "windows_fixture_java_processes", return_value=[("123", ["java.exe"])]), \
+                 patch.object(visual_smoke.shutil, "which", return_value="jcmd.exe"), \
+                 patch.dict(os.environ, {"JAVA_HOME": ""}), \
+                 patch.object(visual_smoke.subprocess, "run",
+                              return_value=Mock(returncode=0, stdout="Render thread", stderr="")) as run:
+                visual_smoke.capture_client_thread_dump(directory, directory)
+            self.assertEqual(["jcmd.exe", "123", "Thread.print", "-l"], run.call_args.args[0])
+            self.assertEqual(12, run.call_args.kwargs["timeout"])
+            self.assertIn("Render thread", (directory / "client-thread-dump.txt").read_text())
+
+
 if __name__=="__main__":unittest.main()
