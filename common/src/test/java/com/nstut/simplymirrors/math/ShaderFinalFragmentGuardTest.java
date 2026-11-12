@@ -121,4 +121,43 @@ public class ShaderFinalFragmentGuardTest {
                 + "void clearSSBOs(){if(gl_FragCoord.x + gl_FragCoord.y < 1.5){}}\n"
                 + "void main(){clearSSBOs(); vec4 previous=gl_FragData[0];}\n";
         assertSame(unsafe, ShaderFinalFragmentGuard.transformFragment(unsafe));
-    }}
+    }
+    // Actual Oculus 1.8.0 patchComposite output (simple print mode):
+    // gl_FragData is renamed, texture2D becomes texture, literals gain f.
+    private static final String OCULUS_HIGH = "#version 410 core\n"
+            + "layout(location = 0) out vec4 iris_FragData0;\n"
+            + "uniform sampler2D colortex3; uniform sampler2D noisetex; in vec2 texCoord;\n"
+            + "void main() { vec2 texCoordM = texCoord;\n"
+            + "vec3 color = texture(colortex3, texCoordM).rgb;\n"
+            + "float dither = texture(noisetex, texCoord).b;\n"
+            + "color += vec3((dither - 0.25f) / 128.0f);\n"
+            + "iris_FragData0 = vec4(color, 1.0f); }\n";
+
+    @Test public void oculusHighWithoutCompiledOutSsboResetGetsRealUniform() {
+        String patched = ShaderFinalFragmentGuard.transformFragment(OCULUS_HIGH);
+        assertTrue(patched.contains("uniform vec4 simplymirrors_FinalFragmentRect;"));
+        assertTrue(patched.indexOf("discard;") < patched.indexOf("vec2 texCoordM"));
+        assertTrue(patched.contains("iris_FragData0 = vec4(color, 1.0f);"));
+        assertEquals(patched, ShaderFinalFragmentGuard.transformFragment(patched));
+    }
+
+    @Test public void oculusOriginResetStillPreservesOriginWithFloatSuffix() {
+        String transformed = PINNED.replace("gl_FragData[0]", "iris_FragData0")
+                .replace("1.5)", "1.5f)");
+        assertTrue(ShaderFinalFragmentGuard.transformFragment(transformed)
+                .contains("uniform vec4 simplymirrors_FinalFragmentRect;"));
+    }
+
+    @Test public void pureHighRecognitionRejectsSharedSideEffectsAnywhere() {
+        for (String effect : new String[] {
+                "layout(std430) buffer State { int value; };",
+                "void helper(){ imageStore(sharedImage, ivec2(0), vec4(1)); }",
+                "void helper(){ atomicAdd(counter, 1); }",
+                "void helper(){ memoryBarrier(); }",
+                "void clearSSBOs(){}"
+        }) {
+            String unsafe = OCULUS_HIGH + effect;
+            assertSame(unsafe, ShaderFinalFragmentGuard.transformFragment(unsafe));
+        }
+    }
+}
