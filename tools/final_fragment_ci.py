@@ -1,4 +1,4 @@
-ï»¿"""Strict real-GPU A/B for origin-safe final shader fragment rejection.
+"""Strict real-GPU A/B for origin-safe final shader fragment rejection.
 
 The native full-resolution final draw is preserved. The shader's origin
 fragment still executes for the pinned Complementary SSBO reset.
