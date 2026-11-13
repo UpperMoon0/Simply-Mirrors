@@ -119,6 +119,20 @@ public final class ShaderReflection {
             if(oldDraw!=framebuffer) glBindFramebuffer(GL_DRAW_FRAMEBUFFER,oldDraw);
         }
     }
+    /** Own injected uniform is false for the main camera and restored after each quad. */
+    public static int beginVolumetricPass() {
+        if (MirrorRenderer.redirect==null ||
+                !(Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse") ||
+                  Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay"))) return -1;
+        int program=glGetInteger(GL_CURRENT_PROGRAM);
+        if(program==0)return -1;
+        int location=location(program,"simplymirrors_VolumetricReflection");
+        if(location>=0)glUniform1i(location,1);
+        return location;
+    }
+    public static void endVolumetricPass(int location) {
+        if(location>=0)glUniform1i(location,0);
+    }
     public static void upload() {
         // Iris reuses Minecraft depth but can retain a distinct packed stencil
         // attachment. Normalize unsupported reflection-only FBOs before drawing.

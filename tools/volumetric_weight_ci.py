@@ -1,4 +1,4 @@
-"""Strict native A/B for exact volumetric fog-weight reuse; no visual settings change."""
+"""Strict native A/B for volumetric weight and affine shadow-ray reuse."""
 from __future__ import annotations
 
 import json
@@ -27,7 +27,7 @@ def benchmark_command(label: str, name: str) -> list[str]:
         "--run-name", name, "--shader-tail-crop", "--history-copy-image",
     ]
     if label == "trial":
-        result.append("--shader-volumetric-weight-reuse")
+        result.extend(["--shader-volumetric-weight-reuse", "--shader-volumetric-shadow-ray"])
     return result
 
 
@@ -38,6 +38,7 @@ def verify_settings(summary: dict, label: str) -> None:
         "historyCopyImageEnabled": True,
         "shaderFinalFragmentGuardEnabled": False,
         "shaderVolumetricWeightReuseEnabled": expected,
+        "shaderVolumetricShadowRayEnabled": expected,
         "shaderFinalOriginCropEnabled": False,
         "shaderEarlyCompositeCropEnabled": False,
         "shaderFinalDualCropEnabled": False,
@@ -57,7 +58,11 @@ def verify_settings(summary: dict, label: str) -> None:
 def require_weight_reuse(logs: str) -> dict:
     if "SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_REUSE program=composite1" not in logs:
         raise AssertionError("Pinned native composite1 weight reuse did not apply")
-    return {"program": "composite1", "applied": True}
+    if "SIMPLY_MIRRORS_VOLUMETRIC_SHADOW_RAY program=composite1" not in logs:
+        raise AssertionError("Pinned native composite1 shadow-ray transform did not apply")
+    if "SIMPLY_MIRRORS_VOLUMETRIC_REFLECTION_SCOPE program=composite1" not in logs:
+        raise AssertionError("Pinned native composite1 reflection scope did not apply")
+    return {"program": "composite1", "applied": True, "shadowRayApplied": True, "reflectionOnly": True}
 
 
 def stage_savings_ms(control: dict, trial: dict) -> dict[str, float]:
