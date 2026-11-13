@@ -44,6 +44,7 @@ public final class ShaderHistoryRedirectGlTest {
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_MIRRORED_REPEAT);
             byte[][] expected=read(original,pixel,transfer);
+            byte[][] cleared=clearedReference(format,pixel,transfer,signed,integer);
             glBindFramebuffer(GL_FRAMEBUFFER,fbo);
             glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,original,0);
             if(glCheckFramebufferStatus(GL_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)throw new AssertionError("Original FBO incomplete");
@@ -56,12 +57,9 @@ public final class ShaderHistoryRedirectGlTest {
                     glBindTexture(GL_TEXTURE_2D,scratch);
                     if(glGetTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T)!=GL_MIRRORED_REPEAT)throw new AssertionError("Sampler state lost");
                     byte[][] empty=read(scratch,pixel,transfer);
-                    // Only check stored channels: RGB/R11F synthesize alpha=1 on read.
-                    int components=(format==GL_RGB16F || format==GL_R11F_G11F_B10F)?3:4;
-                    for(byte[] mip:empty) {
-                        ByteBuffer b=ByteBuffer.wrap(mip).order(java.nio.ByteOrder.nativeOrder());
-                        for(int i=0;i<mip.length/4;i++)if(i%4<components && (integer?b.getInt(i*4)!=0:b.getFloat(i*4)!=0.0f))throw new AssertionError("Scratch history not zero format="+format+" component="+i+" bits="+Integer.toHexString(b.getInt(i*4))+" float="+b.getFloat(i*4));
-                    }
+                    // Exact driver equivalence to the existing framebuffer clear path.
+                    // NVIDIA SNORM float readback represents cleared zero as 1/255.
+                    if(!Arrays.deepEquals(cleared,empty))throw new AssertionError("Scratch clear differs from framebuffer baseline format="+format);
                     lease.framebuffer(fbo);
                     if(glGetFramebufferAttachmentParameteri(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME)!=scratch)throw new AssertionError("Cached FBO not redirected");
                     if(integer) {
@@ -84,6 +82,32 @@ public final class ShaderHistoryRedirectGlTest {
                 int error=glGetError();if(error!=GL_NO_ERROR)throw new AssertionError("GL error "+error+" format="+format);
             }
         } finally {glBindFramebuffer(GL_FRAMEBUFFER,0);glDeleteFramebuffers(fbo);glDeleteTextures(original);}
+    }
+    private static byte[][] clearedReference(int format,int pixel,int transfer,boolean signed,boolean integer) {
+        int texture=glGenTextures(),framebuffer=glGenFramebuffers();
+        int previous=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
+        try {
+            glBindTexture(GL_TEXTURE_2D,texture);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+            for(int level=0;level<4;level++) {
+                int size=8>>level;
+                glTexImage2D(GL_TEXTURE_2D,level,format,size,size,0,pixel,transfer,(ByteBuffer)null);
+            }
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER,framebuffer);
+            for(int level=0;level<4;level++) {
+                glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,texture,level);
+                if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)throw new AssertionError("Clear reference FBO incomplete");
+                if(integer) {
+                    if(signed)glClearBufferiv(GL_COLOR,0,new int[4]);
+                    else glClearBufferuiv(GL_COLOR,0,new int[4]);
+                } else glClearBufferfv(GL_COLOR,0,new float[4]);
+            }
+            return read(texture,pixel,transfer);
+        } finally {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER,previous);
+            glDeleteFramebuffers(framebuffer);glDeleteTextures(texture);
+        }
     }
     private static byte[][] read(int texture,int pixel,int type) {
         glBindTexture(GL_TEXTURE_2D,texture);byte[][] result=new byte[4][];
