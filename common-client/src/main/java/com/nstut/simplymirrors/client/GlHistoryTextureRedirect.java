@@ -27,6 +27,7 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
     private final Map<Integer,Storage> images = new LinkedHashMap<Integer,Storage>();
     private final Map<Long,Attachment> attachments = new LinkedHashMap<Long,Attachment>();
     private boolean closed;
+    private int storageSetupDepth;
 
     static GlHistoryTextureRedirect acquire(int[] originals) {
         if (!org.lwjgl.opengl.GL.getCapabilities().OpenGL44)
@@ -96,6 +97,8 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
     }
     static int content(int original) {return current==null?original:current.texture(original);}
     static boolean active(){return current!=null;}
+    static void beginStorageSetup(){if(LAZY_CLEAR && current!=null)current.storageSetupDepth++;}
+    static void endStorageSetup(){if(current!=null && current.storageSetupDepth>0)current.storageSetupDepth--;}
     static void boundFramebuffer(int framebuffer){if(current!=null)current.framebuffer(framebuffer);}
     static int bind(int target,int unit,int original) {
         int mapped=target==GL_TEXTURE_2D?content(original):map(original);
@@ -153,8 +156,16 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
                 if(kind!=GL_TEXTURE)continue;
                 int original=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,point,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
                 Storage scratch=images.get(original);
-                if(scratch==null)continue;
-                clear(scratch);
+                if(scratch==null) {
+                    // Depth-target setup already redirected this cached FBO.
+                    // Its later real bind is the first potential color access.
+                    for(Storage s:images.values())if(s.id==original) {
+                        if(storageSetupDepth==0)clear(s);
+                        break;
+                    }
+                    continue;
+                }
+                if(storageSetupDepth==0)clear(scratch);
                 int level=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,point,GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL);
                 int face=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,point,GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE);
                 if(face!=0)throw new IllegalStateException("Non-2D history attachment");

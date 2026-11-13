@@ -49,12 +49,17 @@ public final class ShaderHistoryRedirectGlTest {
             glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,original,0);
             if(glCheckFramebufferStatus(GL_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)throw new AssertionError("Original FBO incomplete");
             // Exercise the cached FBO, sampler unit, image unit and reused scratch path.
-            for(int iteration=0;iteration<2;iteration++) {
+            for(int iteration=0;iteration<3;iteration++) {
                 int scratch;
                 try(GlHistoryTextureRedirect lease=GlHistoryTextureRedirect.acquire(new int[]{original})) {
                     // Reused scratch must also initialize before its first FBO
                     // write, even when no sampler has requested it yet.
-                    if(iteration==1)lease.framebuffer(fbo);
+                    if(iteration==2) {
+                        GlHistoryTextureRedirect.beginStorageSetup();
+                        try {lease.framebuffer(fbo);}
+                        finally {GlHistoryTextureRedirect.endStorageSetup();}
+                    }
+                    if(iteration>=1)lease.framebuffer(fbo);
                     scratch=lease.texture(original);
                     if(scratch==original)throw new AssertionError("History not redirected");
                     glBindTexture(GL_TEXTURE_2D,scratch);
