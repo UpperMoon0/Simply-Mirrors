@@ -1,7 +1,9 @@
 """Verify actual reflections on all six block faces with one isolated server/client session."""
 from __future__ import annotations
-import argparse, json, math, os, shutil, signal, socket, struct, subprocess, sys, time
+import argparse, json, math, os, re, shutil, signal, socket, struct, subprocess, sys, time
 from pathlib import Path
+from gpu_lane import exclusive_graphics_lane
+from image_pixels import flattened_pixels
 ROOT=Path(__file__).resolve().parents[1]
 TARGETS={t["target"]:t for t in json.loads((ROOT/"tools/targets.json").read_text())}
 FACES=["north","south","west","east","up","down"]
@@ -50,9 +52,38 @@ def fixture(scene, enclosed=False):
     return commands
 
 def scene_file(client_dir,scene):
-    temporary=client_dir/"visual-scene.next";temporary.write_text(str(scene));temporary.replace(client_dir/"visual-scene.txt")
+    temporary = client_dir / "visual-scene.next"
+    destination = client_dir / "visual-scene.txt"
+    temporary.write_text(str(scene))
+    # Retry temporary Windows sharing violations from the JVM scene reader.
+    # Keep the previous scene file intact until the atomic replacement works.
+    for attempt in range(12):
+        try:
+            temporary.replace(destination)
+            return
+        except PermissionError:
+            if attempt == 11:
+                raise
+            time.sleep(0.05)
 
-def activate_scene(rcon,client_dir,scene,client,timeout=600):
+class VisualClientDisconnected(RuntimeError):
+    """The disposable client explicitly reached the disconnection screen."""
+
+
+def disconnected_during_login(log_path, offset=0):
+    """Inspect only this client's fresh launch output, never an older attempt."""
+    if not log_path.is_file():
+        return False
+    with log_path.open("rb") as stream:
+        size = stream.seek(0, os.SEEK_END)
+        if size <= offset:
+            return False
+        stream.seek(max(offset, size - 32768))
+        fresh = stream.read().decode("utf-8", errors="replace")
+    return "SIMPLY_MIRRORS_VISUAL_STAGE net.minecraft.client.gui.screens.DisconnectedScreen" in fresh
+
+
+def activate_scene(rcon,client_dir,scene,client,timeout=600,client_log_path=None,log_offset=0):
     # Do not let the client pose a new scene until the server has authorized its
     # position. Client-only teleports can trigger movement corrections mid-capture.
     command="tp @a "+" ".join(map(str,POSES[scene]))
@@ -64,8 +95,50 @@ def activate_scene(rcon,client_dir,scene,client,timeout=600):
             scene_file(client_dir,scene)
             return
         if "Incorrect" in reply or "Unknown" in reply:raise RuntimeError(f"Scene teleport failed: {reply}")
+        # A real Minecraft DisconnectedScreen never retries on its own. Only
+        # the initial login may be restarted; in-game visual failures remain
+        # hard failures rather than being masked by a new client.
+        if scene == 0 and client_log_path and disconnected_during_login(client_log_path, log_offset):
+            raise VisualClientDisconnected("Disposable Minecraft client disconnected before joining the server")
         time.sleep(1)
     raise TimeoutError(f"No player joined for scene {FACES[scene]}")
+
+
+def launch_initial_visual_client(rcon, client_dir, command, cwd, client_log,
+                                 client_env, creation, evidence, log_path):
+    """Retry exactly one explicit *login* disconnection, never a render failure.
+
+    Each attempt is a new test-owned child under the same restricted graphics
+    desktop. A retry still needs six fresh in-game captures to pass.
+    """
+    for attempt in range(2):
+        client_log.flush()
+        offset = log_path.stat().st_size if log_path.exists() else 0
+        client = subprocess.Popen(command, cwd=cwd, stdout=client_log,
+                                  stderr=subprocess.STDOUT, env=client_env,
+                                  **creation)
+        print("SIMPLY_MIRRORS_VISUAL_CLIENT_LAUNCH attempt="+str(attempt+1)+
+              " pid="+str(client.pid), flush=True)
+        try:
+            activate_scene(rcon,client_dir,0,client,client_log_path=log_path,
+                           log_offset=offset)
+            return client
+        except VisualClientDisconnected:
+            print("SIMPLY_MIRRORS_VISUAL_LOGIN_DISCONNECTED attempt="+str(attempt+1),
+                  flush=True)
+            # Preserve the initial failed client log, scoped to this fixture.
+            with log_path.open("rb") as source:
+                source.seek(offset)
+                excerpt = source.read()[-32768:]
+            (evidence / ("login-disconnect-attempt-"+str(attempt+1)+".log")).write_bytes(excerpt)
+            stop(client)
+            if attempt == 1:
+                raise
+            scene_file(client_dir,-1)
+        except BaseException:
+            stop(client)
+            raise
+    raise AssertionError("Unreachable initial visual client retry state")
 
 def free_port():
     with socket.socket() as sock:
@@ -80,8 +153,11 @@ def exact(sock,size):
     return result
 
 class Rcon:
-    def __init__(self,port):
-        self.sock=socket.create_connection(("127.0.0.1",port),timeout=5)
+    def __init__(self,port,timeout=30):
+        # Shader/client startup can temporarily stall the localhost server;
+        # do not reject a valid render because of a five-second RCON hiccup.
+        # The visual fixture still has a strict 600-second join deadline.
+        self.sock=socket.create_connection(("127.0.0.1",port),timeout=timeout)
         self.packet(3,"simply-mirrors-disposable-test")
     def packet(self,kind,text):
         data=struct.pack("<ii",17,kind)+text.encode()+b"\0\0"
@@ -91,6 +167,7 @@ class Rcon:
         return reply[8:-2].decode(errors="replace")
     def command(self,text):return self.packet(2,text)
     def close(self):self.sock.close()
+
 
 def stop(process):
     if process is None or process.poll() is not None:return
@@ -169,14 +246,14 @@ def motion_check(idle_path, moving_path):
         w,h=idle.size
         roi=(int(w*0.45),int(h*0.28),int(w*0.55),int(h*0.66))
         difference=ImageChops.difference(idle.crop(roi),moving.crop(roi))
-        changing=sum(max(pixel)>35 for pixel in difference.getdata())
+        changing=sum(max(pixel)>35 for pixel in flattened_pixels(difference))
         threshold=max(80,int((roi[2]-roi[0])*(roi[3]-roi[1])*0.006))
         if changing<=threshold:
             # Distinguish a misframed ROI from a completed animation. Full-frame
             # differences are diagnostic only, never accepted as motion proof.
             full=ImageChops.difference(idle,moving)
             bounds=full.getbbox()
-            full_changed=sum(max(pixel)>35 for pixel in full.getdata())
+            full_changed=sum(max(pixel)>35 for pixel in flattened_pixels(full))
             raise AssertionError(
                 f"Reflected player swing did not change sufficient framebuffer pixels: "
                 f"roi={changing}, threshold={threshold}, fullFrame={full_changed}, "
@@ -204,7 +281,7 @@ def camera_motion_check(idle_path,moving_path,settled_path):
     moving=moving.crop(roi)
     settled=settled.crop(roi)
     changed=ImageChops.difference(baseline,settled)
-    actual_motion=sum(max(pixel)>15 for pixel in changed.getdata())
+    actual_motion=sum(max(pixel)>15 for pixel in flattened_pixels(changed))
     assert actual_motion>max(200,int((roi[2]-roi[0])*(roi[3]-roi[1])*.006)), (
         f"Camera pan/strafe produced no meaningful reflected pixel displacement: {actual_motion}")
     temporal=ImageChops.difference(moving,settled)
@@ -354,13 +431,101 @@ def prepare_visual_client_assets(command, task, cwd, evidence, attempts=3):
         time.sleep(3 * attempt)
 
 
+def prepare_visual_server_build(command, task, cwd, evidence, timeout=900):
+    """Bound the cold Gradle compile/remap phase independently of RCON readiness."""
+    log = evidence / "server-preparation.log"
+    try:
+        with log.open("w") as output:
+            result = subprocess.run(command + [task], cwd=cwd, stdout=output,
+                                    stderr=subprocess.STDOUT, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired as error:
+        raise TimeoutError(f"Visual server build preparation exceeded {timeout}s: {log}") from error
+    if result.returncode != 0:
+        raise RuntimeError(f"Visual server build preparation failed ({result.returncode}): " +
+                           log.read_text(errors="replace")[-8000:])
+    print(f"Server build prepared: {task}", flush=True)
+
+
+def latest_visual_heartbeat(log, scene):
+    """Return progress only for the active scene, never a previous face."""
+    if not log.exists():
+        return None
+    # Read a bounded tail to avoid growing work as the game log expands.
+    with log.open("rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        size = stream.tell()
+        stream.seek(max(0, size - 65536))
+        tail = stream.read().decode("utf-8", errors="replace")
+    pattern = rf"SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene={scene} ticks=(\d+) reflectionPasses=(\d+)"
+    matches = list(re.finditer(pattern, tail))
+    return tuple(map(int, matches[-1].groups())) if matches else None
+
+
+def wait_for_visual_face(result, face, scene, client, client_dir, evidence, client_log):
+    """Extend only when genuine render progress is observed; retain a hard cutoff."""
+    started = time.monotonic()
+    initial = 600 if scene == 0 else 180
+    hard_deadline = started + (780 if scene == 0 else 420)
+    deadline = started + initial
+    latest_tick = 0
+    latest_passes = 0
+    last_progress = started
+    diagnostic_captured = False
+    while time.monotonic() < min(deadline, hard_deadline) and not result.exists():
+        if client.poll() is not None:
+            raise RuntimeError(f"Client exited before {face} capture: {client_log}")
+        now = time.monotonic()
+        heartbeat = latest_visual_heartbeat(client_log, scene)
+        if heartbeat and (heartbeat[0] > latest_tick or heartbeat[1] > latest_passes):
+            latest_tick, latest_passes = heartbeat
+            last_progress = now
+            # Slow software GL must not be mistaken for a deadlock. Each
+            # fresh heartbeat grants at most 100 more seconds, within hard cap.
+            deadline = min(hard_deadline, max(deadline, now + 100))
+        if latest_tick > 0 and now - last_progress > 125:
+            break
+        if scene == 0 and not diagnostic_captured and now - started >= 180:
+            capture_client_thread_dump(client_dir, evidence)
+            diagnostic_captured = True
+        time.sleep(1)
+    if not result.exists():
+        if not diagnostic_captured:
+            capture_client_thread_dump(client_dir, evidence)
+        raise TimeoutError(
+            f"Client visual probe timed out on {face} (ticks={latest_tick}, "
+            f"passes={latest_passes}, seconds_since_heartbeat="
+            f"{time.monotonic()-last_progress:.1f}): " +
+            client_log.read_text(errors="replace")[-8000:])
+
+
+def should_profile_gpu(target: str, shaders: bool, interactive_offscreen: bool,
+                       reviewed_graphics_agent: bool) -> bool:
+    # Diagnostic only: do not enable probes in regular clients or Session 0.
+    return (target == "forge-1.20.1" and shaders and
+            interactive_offscreen and reviewed_graphics_agent)
+
+
+def gpu_profile_lines(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines()
+            if line.startswith("SIMPLY_MIRRORS_GPU_PROFILE frames=")]
+
+
 def main():
+    # The native GPU FPS experiment is a separate centrally reviewed Jenkins
+    # tier. Never couple six benchmark client launches to a routine shader
+    # visual smoke test: that caused repeated work on every PR commit.
+    with exclusive_graphics_lane():
+        return run_visual()
+
+def run_visual():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
     parser.add_argument("--run-name",help="Isolated test directory prefix")
     parser.add_argument("--shader-pack", type=Path, help="Use an exact local shaderpack ZIP instead of the pinned default")
     parser.add_argument("--interactive-offscreen", action="store_true",
                         help="Use the separate native Windows CI graphics desktop; never inject into another session")
+    parser.add_argument("--shader-cache", type=Path, default=ROOT/"build/shader-dependencies",
+                        help="Verified shader dependency cache location")
     parser.add_argument("--enclosed", action="store_true", help="Build an indoor mirror room (issue #5 regression)")
     parser.add_argument("--check-motion", action="store_true",
                         help="Animate a reflected player swing and verify two real framebuffer captures")
@@ -392,7 +557,7 @@ def main():
         parser.error("--shader-pack requires --shaders")
     if args.shaders:
         from shader_stack import prepare, install_pack
-        _,pinned_pack=prepare(args.target,ROOT/"build/shader-dependencies")
+        _,pinned_pack=prepare(args.target,args.shader_cache.resolve())
         pack=args.shader_pack.resolve(strict=True) if args.shader_pack else pinned_pack
         if pack.suffix.lower() != ".zip":
             parser.error("--shader-pack must be a shaderpack ZIP")
@@ -414,7 +579,7 @@ def main():
     command=[str(cwd/"gradlew.bat")] if os.name=="nt" else ["./gradlew"]
     if t["build_root"]==".":command.append(f"-Ptarget={args.target}")
     command += ["-PvisualTest",f"-PvisualMc={t['minecraft']}",f"-PvisualLoader={t['loader']}",f"-PvisualPort={port}","--no-daemon","--console=plain","-Dorg.gradle.jvmargs=-Xmx1024m","--max-workers=2"]
-    command += [f"-PvisualRunName={run_name}",f"-PmirrorsShaderStack={ROOT/'build/shader-dependencies' if args.shaders else 'off'}"]
+    command += [f"-PvisualRunName={run_name}",f"-PmirrorsShaderStack={args.shader_cache.resolve() if args.shaders else 'off'}"]
     task_prefix=f":{args.target}:" if t["build_root"]=="." else ""
     evidence=module/f"run/{run_name}-evidence";evidence.mkdir(parents=True,exist_ok=True)
     (evidence/"extra-client-mods.json").write_text(json.dumps(extra_mods,indent=2))
@@ -427,9 +592,10 @@ def main():
         (evidence/"shaderpack.json").write_text(json.dumps({"name":pack.name,"sha256":hashlib.sha256(pack.read_bytes()).hexdigest()},indent=2))
     creation={"creationflags":subprocess.CREATE_NO_WINDOW} if os.name=="nt" else {"start_new_session":True}
     server=client=rcon=None
+    server_command=["-PmirrorsShaderStack=off" if item.startswith("-PmirrorsShaderStack=") else item for item in command]
+    prepare_visual_server_build(server_command,task_prefix+"classes",cwd,evidence)
     with (evidence/"server.log").open("w") as server_log,(evidence/"client.log").open("w") as client_log:
         try:
-            server_command=["-PmirrorsShaderStack=off" if item.startswith("-PmirrorsShaderStack=") else item for item in command]
             server=subprocess.Popen(server_command+[task_prefix+"runVisualServer"],cwd=cwd,stdout=server_log,stderr=subprocess.STDOUT,**creation)
             print("Starting disposable server",args.target,flush=True)
             deadline=time.monotonic()+360
@@ -455,6 +621,10 @@ def main():
                 print("SIMPLY_MIRRORS_VISUAL_PRIVATE_DESKTOP", flush=True)
                 client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS", "") +
                                                   " -Dsimplymirrors.visualOffscreen=true").strip()
+            if should_profile_gpu(args.target, args.shaders, args.interactive_offscreen,
+                                  os.environ.get("CI_GRAPHICS_AGENT") == "1"):
+                client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
+                                                   " -Dsimplymirrors.gpuProfile=true").strip()
             if args.check_camera_motion:
                 client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
                                                    " -Dsimplymirrors.visualCheckCameraMotion=true").strip()
@@ -466,28 +636,24 @@ def main():
                 # The fixture server and all production/runtime jars are untouched.
                 client_env["JAVA_TOOL_OPTIONS"]=(client_env.get("JAVA_TOOL_OPTIONS","")+
                                                    " -Dsimplymirrors.visualForceStencil=true").strip()
-            client=subprocess.Popen(command+[task_prefix+"runVisualClient"],cwd=cwd,stdout=client_log,
-                                    stderr=subprocess.STDOUT,env=client_env,**creation)
+            # The graphics worker is already a restricted interactive
+            # process in its dedicated private desktop. Inherit that exact
+            # identity, rather than brokering the logged-in user's WTS token.
+            client=launch_initial_visual_client(
+                rcon,client_dir,command+[task_prefix+"runVisualClient"],cwd,
+                client_log,client_env,creation,evidence,evidence/"client.log")
+            if args.interactive_offscreen:
+                print("SIMPLY_MIRRORS_VISUAL_ACTIVE_GPU_CLIENT pid="+str(client.pid),flush=True)
             results={};failures={}
             for scene,face in enumerate(FACES):
                 if scene:
                     for text in fixture(scene,args.enclosed):
                         reply=rcon.command(text)
                         if any(word in reply for word in ["Unknown","Incorrect","too many blocks"]):raise RuntimeError(f"Fixture failed: {text}: {reply}")
-                activate_scene(rcon,client_dir,scene,client)
+                    activate_scene(rcon,client_dir,scene,client)
                 result=client_dir/f"visual-evidence/result-{scene}.json"
-                started=time.monotonic()
-                deadline=started+(600 if scene==0 else 180)
-                diagnostic_captured=False
-                while time.monotonic()<deadline and not result.exists():
-                    if client.poll() is not None:raise RuntimeError(f"Client exited before {face} capture: {evidence/'client.log'}")
-                    if not diagnostic_captured and scene==0 and time.monotonic()-started>=180:
-                        capture_client_thread_dump(client_dir,evidence)
-                        diagnostic_captured=True
-                    time.sleep(1)
-                if not result.exists():
-                    if not diagnostic_captured:capture_client_thread_dump(client_dir,evidence)
-                    raise TimeoutError(f"Client visual probe timed out on {face}: "+(evidence/"client.log").read_text(errors="replace")[-8000:])
+                client_log_path=evidence/"client.log"
+                wait_for_visual_face(result,face,scene,client,client_dir,evidence,client_log_path)
                 data=json.loads(result.read_text());assert data["passes"]>=120,data;assert data["angleFrames"]>=120,data;assert data["creativeTab"],data;assert data["glError"]==0,data
                 if args.shaders:assert data.get('shaderPackActive') is True,data
                 if args.force_stencil:assert data.get('stencilEnabled') is True,data
@@ -508,6 +674,13 @@ def main():
                 results[face]=data
                 print("Failed reflective face" if face in failures else "Verified reflective face",args.target,face,json.dumps(data),flush=True)
             finish_capture(client_dir,evidence,results,failures,client)
+            if should_profile_gpu(args.target, args.shaders, args.interactive_offscreen,
+                                  os.environ.get("CI_GRAPHICS_AGENT") == "1"):
+                profile = gpu_profile_lines((evidence/"client.log").read_text(errors="replace"))
+                if not profile:
+                    raise AssertionError("Native shader GPU stage profiler emitted no samples")
+                for line in profile[-6:]:
+                    print(line, flush=True)
             print("SIMPLY_MIRRORS_VISUAL_PASS",args.target,json.dumps(results),flush=True)
         except BaseException as error:
             (evidence/"failure.txt").write_text(f"{type(error).__name__}: {error}\n")
@@ -523,5 +696,8 @@ def main():
                     try:server.wait(timeout=30)
                     except subprocess.TimeoutExpired:pass
             stop(server)
+            if args.interactive_offscreen:
+                from fps_benchmark import cleanup_owned_gradle_servers
+                cleanup_owned_gradle_servers(cwd,run_name)
 
 if __name__=="__main__":main()

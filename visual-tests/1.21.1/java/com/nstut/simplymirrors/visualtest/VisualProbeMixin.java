@@ -77,6 +77,12 @@ public abstract class VisualProbeMixin {
         if(requested==6){simplymirrors$done=true;mc.stop();return;}
         if(requested!=simplymirrors$scene){simplymirrors$scene=requested;simplymirrors$mirrorFrames=0;simplymirrors$sceneFrames=0;simplymirrors$startPasses=MirrorRenderer.completedPasses;simplymirrors$captured=false;simplymirrors$motionPhase=0;simplymirrors$cameraPhase=0;}
         simplymirrors$sceneFrames++;
+        // Report actual render-thread progress to the bounded Python watchdog.
+        // All supported MC versions must emit this exact scene-scoped schema.
+        if(simplymirrors$sceneFrames==1 || simplymirrors$sceneFrames%30==0)
+            System.out.println("SIMPLY_MIRRORS_VISUAL_HEARTBEAT scene="+requested+
+                    " ticks="+simplymirrors$sceneFrames+
+                    " reflectionPasses="+(MirrorRenderer.completedPasses-simplymirrors$startPasses));
         if(MirrorRenderer.completedPasses>simplymirrors$startPasses)simplymirrors$mirrorFrames++;
         int phase=simplymirrors$mirrorFrames/20;
         float yaw=VisualScene.yaw(requested)+(phase==1?20:phase==2?-20:0);
@@ -163,7 +169,7 @@ public abstract class VisualProbeMixin {
         boolean tab=false;for(CreativeModeTab t:BuiltInRegistries.CREATIVE_MODE_TAB)if(t!=null&&t.getDisplayName().getString().equals("Simply Mirrors"))tab=true;
         int error=glGetError();Path dir=mc.gameDirectory.toPath().resolve("visual-evidence");Files.createDirectories(dir);
         VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,dir.resolve("mirror-"+requested+".png"));
-        String json="{\"passes\":"+(MirrorRenderer.completedPasses-simplymirrors$startPasses)+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+",\"shaderPackActive\":"+com.nstut.simplymirrors.visualsupport.ShaderProbe.active()+",\"stencilEnabled\":"+simplymirrors$stencilReady+",\"motionCaptured\":"+(requested==0&&simplymirrors$motionPhase==2)+",\"cameraMotionCaptured\":"+(cameraTest&&simplymirrors$cameraPhase==4)+"}";
+        String json="{\"passes\":"+(MirrorRenderer.completedPasses-simplymirrors$startPasses)+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+",\"shaderPackActive\":"+com.nstut.simplymirrors.visualsupport.ShaderProbe.active()+",\"stencilEnabled\":"+simplymirrors$stencilReady+",\"motionCaptured\":"+(requested==0&&simplymirrors$motionPhase==2)+",\"cameraMotionCaptured\":"+(cameraTest&&simplymirrors$cameraPhase==4)+",\"fovDegrees\":" + mc.options.fov().get()+"}";
         Files.write(dir.resolve("result-"+requested+".json"),json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         System.out.println("SIMPLY_MIRRORS_VISUAL_RESULT "+requested+" "+json);simplymirrors$captured=true;
     }

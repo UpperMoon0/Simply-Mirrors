@@ -2,6 +2,7 @@ package com.nstut.simplymirrors.client;
 import com.nstut.simplymirrors.math.MirrorMatrices;
 import com.nstut.simplymirrors.math.MirrorTemporalHistory;
 import com.nstut.simplymirrors.math.CameraUniformOverrides;
+import com.nstut.simplymirrors.math.ShaderProgramLocations;
 import java.lang.reflect.Method;
 import static org.lwjgl.opengl.GL33.*;
 /** Optional shader state is render-thread scoped; no loader or shader dependency is required. */
@@ -14,25 +15,34 @@ public final class ShaderReflection {
     private static ShaderRenderTargetSnapshot renderTargets;
     private static ReflectionFramebufferParity framebufferParity;
     private static Object updatingCamera;
+    // Render-transaction cache; never trust a program ID after shader reload.
+    private static final ShaderProgramLocations UNIFORM_LOCATIONS = new ShaderProgramLocations();
+    private static final ShaderProgramLocations.Lookup LOCATION_LOOKUP =
+            new ShaderProgramLocations.Lookup() {
+                public int find(int program, String name) { return glGetUniformLocation(program, name); }
+            };
+    private static int location(int program, String name) {
+        return UNIFORM_LOCATIONS.get(program, name, LOCATION_LOOKUP);
+    }
     private static final CameraUniformOverrides.Uniforms UNIFORMS = new CameraUniformOverrides.Uniforms() {
         public int currentProgram() { return glGetInteger(GL_CURRENT_PROGRAM); }
         public void bind(int program) { glUseProgram(program); }
         public float[] readFloats(int program, String name, int size) {
-            int location=glGetUniformLocation(program,name); if(location<0)return null;
+            int location=location(program,name); if(location<0)return null;
             float[] value=new float[size]; glGetUniformfv(program,location,value); return value;
         }
         public int[] readInts(int program, String name, int size) {
-            int location=glGetUniformLocation(program,name); if(location<0)return null;
+            int location=location(program,name); if(location<0)return null;
             int[] value=new int[size]; glGetUniformiv(program,location,value); return value;
         }
         public void writeFloats(int program, String name, float[] value) {
-            int location=glGetUniformLocation(program,name);
+            int location=location(program,name);
             if(value.length==16)glUniformMatrix4fv(location,false,value);
             else if(value.length==3)glUniform3f(location,value[0],value[1],value[2]);
             else glUniform1f(location,value[0]);
         }
         public void writeInts(int program, String name, int[] value) {
-            glUniform3i(glGetUniformLocation(program,name),value[0],value[1],value[2]);
+            glUniform3i(location(program,name),value[0],value[1],value[2]);
         }
     };
     private static Method active;
@@ -52,11 +62,13 @@ public final class ShaderReflection {
         catch(ReflectiveOperationException e) {throw new IllegalStateException("Cannot query shader pipeline",e);}
     }
     public static void begin(float[] perspective,float[] view,double nx,double ny,double nz,double x,double y,double z,Object reflectedCamera,float[] mainView,double[] mainEye,double[] reflectedEye,MirrorTemporalHistory.Pose previous) {
+        UNIFORM_LOCATIONS.clear();
         capturedCamera=IrisCameraState.capture();
         cameraUniforms=new CameraUniformOverrides(UNIFORMS,perspective,mainView,view,mainEye,reflectedEye,
                 previous.view,previous.projection,previous.mainEye,previous.eye,previous.valid);
         renderTargets=ShaderRenderTargetSnapshot.capture();
         framebufferParity=new ReflectionFramebufferParity();
+        if(GlHistoryTextureRedirect.active()) clearIrisSamplers();
         plane=MirrorMatrices.clipPlane(view,nx,ny,nz,x,y,z);
         projection=MirrorMatrices.inverse(perspective);camera=reflectedCamera;suspensions=0;glEnable(GL_CLIP_DISTANCE0);
     }
@@ -67,13 +79,18 @@ public final class ShaderReflection {
             finally {
                 try {
                     try {if(framebufferParity!=null)framebufferParity.close();}
-                    finally {if(renderTargets!=null)renderTargets.close();}
+                    finally {if(renderTargets!=null)renderTargets.close();
+                        if(Boolean.getBoolean("simplymirrors.historyTextureRedirect"))clearIrisSamplers();}
                 }
-                finally {framebufferParity=null;renderTargets=null;cameraUniforms=null;capturedCamera=null;updatingCamera=null;camera=null;plane=null;projection=null;suspensions=0;glDisable(GL_CLIP_DISTANCE0);}
+                finally {framebufferParity=null;renderTargets=null;cameraUniforms=null;capturedCamera=null;updatingCamera=null;camera=null;plane=null;projection=null;suspensions=0;UNIFORM_LOCATIONS.clear();glDisable(GL_CLIP_DISTANCE0);}
             }
         }
     }
     public static boolean reflecting() { return cameraUniforms!=null; }
+    public static boolean discardFinalHistory() {
+        return Boolean.getBoolean("simplymirrors.discardFinalHistory") && reflecting()
+            && GlHistoryTextureRedirect.active();
+    }
     public static void beforeUniforms() {
         if(capturedCamera==null)return;
         // A program first seen in a reflection must initialize previous-frame suppliers
@@ -98,6 +115,20 @@ public final class ShaderReflection {
      * very first draw and readback never see an invalid split depth/stencil.
      * Only active during a scoped mirrored render; Iris remains optional.
      */
+    public static int historyTexture(int texture){return GlHistoryTextureRedirect.map(texture);}
+    public static int historyInitializedTexture(int texture){return GlHistoryTextureRedirect.content(texture);}
+    public static void beginHistoryStorageSetup(){GlHistoryTextureRedirect.beginStorageSetup();}
+    public static void endHistoryStorageSetup(){GlHistoryTextureRedirect.endStorageSetup();}
+    public static int historyTextureBinding(int target,int unit,int texture){return GlHistoryTextureRedirect.bind(target,unit,texture);}
+    public static int historyCurrentTextureBinding(int texture){
+        return GlHistoryTextureRedirect.active()?GlHistoryTextureRedirect.bindCurrent(texture):texture;
+    }
+    public static int historyImageBinding(int unit,int texture){return GlHistoryTextureRedirect.bindImage(unit,texture);}
+    private static void clearIrisSamplers() {
+        try {Class.forName("net.irisshaders.iris.gl.program.ProgramSamplers").getMethod("clearActiveSamplers").invoke(null);}
+        catch(ReflectiveOperationException failure){throw new IllegalStateException("Cannot reset Iris sampler bindings",failure);}
+    }
+    public static void historyFramebufferBound(int framebuffer){GlHistoryTextureRedirect.boundFramebuffer(framebuffer);}
     public static void onIrisFramebufferBound(int framebuffer) {
         if(framebufferParity==null || framebuffer<=0) return;
         int oldDraw=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
@@ -108,19 +139,48 @@ public final class ShaderReflection {
             if(oldDraw!=framebuffer) glBindFramebuffer(GL_DRAW_FRAMEBUFFER,oldDraw);
         }
     }
+    private static boolean cloudRayReported;
+    public static int beginCloudPass() {
+        if (MirrorRenderer.redirect==null || !Boolean.getBoolean("simplymirrors.shaderCloudOcclusion")) return -1;
+        int program=glGetInteger(GL_CURRENT_PROGRAM);
+        if(program==0)return -1;
+        int uniform=location(program,"simplymirrors_CloudOcclusion");
+        if(uniform>=0) {
+            glUniform1i(uniform,1);
+            if(!cloudRayReported) {
+                System.out.println("SIMPLY_MIRRORS_CLOUD_RAY_EXIT_ACTIVE");
+                cloudRayReported=true;
+            }
+        }
+        return uniform;
+    }
+    /** Own injected uniform is false for the main camera and restored after each quad. */
+    public static int beginVolumetricPass() {
+        if (MirrorRenderer.redirect==null ||
+                !(Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse") ||
+                  Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay"))) return -1;
+        int program=glGetInteger(GL_CURRENT_PROGRAM);
+        if(program==0)return -1;
+        int location=location(program,"simplymirrors_VolumetricReflection");
+        if(location>=0)glUniform1i(location,1);
+        return location;
+    }
+    public static void endVolumetricPass(int location) {
+        if(location>=0)glUniform1i(location,0);
+    }
     public static void upload() {
         // Iris reuses Minecraft depth but can retain a distinct packed stencil
         // attachment. Normalize unsupported reflection-only FBOs before drawing.
         if(framebufferParity!=null)framebufferParity.repairBoundDrawFramebuffer();
         int program=glGetInteger(GL_CURRENT_PROGRAM);
         if(program==0)return;
-        int location=glGetUniformLocation(program,"simplymirrors_ClipPlane");
+        int location=location(program,"simplymirrors_ClipPlane");
         // Unpatched sky/fallback programs do not define gl_ClipDistance.
         // Re-enable it when a transformed world program is bound again.
         boolean clip=plane!=null && suspensions==0 && location>=0;
         if(plane!=null){if(clip)glEnable(GL_CLIP_DISTANCE0);else glDisable(GL_CLIP_DISTANCE0);}
         if(location<0)return;
-        if(projection!=null){int matrix=glGetUniformLocation(program,"simplymirrors_InverseProjection");if(matrix>=0)glUniformMatrix4fv(matrix,false,projection);}
+        if(projection!=null){int matrix=location(program,"simplymirrors_InverseProjection");if(matrix>=0)glUniformMatrix4fv(matrix,false,projection);}
         if(clip)glUniform4f(location,plane[0],plane[1],plane[2],plane[3]);
         else glUniform4f(location,0,0,0,1);
     }

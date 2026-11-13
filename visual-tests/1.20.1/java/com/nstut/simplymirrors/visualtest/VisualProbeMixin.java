@@ -1,5 +1,6 @@
 package com.nstut.simplymirrors.visualtest;
 import com.nstut.simplymirrors.client.MirrorRenderer;
+import com.nstut.simplymirrors.visualsupport.FpsBenchmarkProbe;
 import com.nstut.simplymirrors.visualsupport.VisualCapture;
 import com.nstut.simplymirrors.visualsupport.VisualScene;
 import net.minecraft.client.gui.screens.TitleScreen;
@@ -25,12 +26,23 @@ public abstract class VisualProbeMixin {
     @Unique private boolean simplymirrors$captured;
     @Unique private boolean simplymirrors$done;
     @Unique private boolean simplymirrors$joining;
+    @ModifyArg(method="runTick",at=@At(value="INVOKE",
+            target="Lnet/minecraft/client/renderer/GameRenderer;render(FJZ)V"),index=0)
+    private float simplymirrors$parityPartialTick(float partialTick) {
+        return Boolean.getBoolean("simplymirrors.fpsBenchmark") &&
+                FpsBenchmarkProbe.parityCapture() ? 0f : partialTick;
+    }
     @Inject(method="runTick",at=@At("TAIL"))
     private void simplymirrors$probe(CallbackInfo ci) throws Exception {
         if(simplymirrors$done)return;Minecraft mc=Minecraft.getInstance();
-        if(simplymirrors$frames++==0) {mc.options.onboardAccessibility=false;mc.options.pauseOnLostFocus=false;mc.options.renderDistance().set(4);mc.options.bobView().set(false);mc.options.framerateLimit().set(30);mc.options.hideGui=true;}
+        if(simplymirrors$frames++==0) {mc.options.onboardAccessibility=false;mc.options.pauseOnLostFocus=false;mc.options.renderDistance().set(4);mc.options.bobView().set(false);mc.options.framerateLimit().set(Boolean.getBoolean("simplymirrors.fpsBenchmark")?260:30);mc.options.hideGui=true;if(Boolean.getBoolean("simplymirrors.fpsBenchmark"))FpsBenchmarkProbe.prepareWindow(mc);else if(Boolean.getBoolean("simplymirrors.visualOffscreen"))GLFW.glfwSetWindowPos(mc.getWindow().getWindow(),-15000,-15000);}
         if(mc.player==null||mc.level==null) {
-            if(simplymirrors$frames%300==0)System.out.println("SIMPLY_MIRRORS_VISUAL_STAGE "+(mc.screen==null?"none":mc.screen.getClass().getName()));
+            if(simplymirrors$frames%300==0) {
+                System.out.println("SIMPLY_MIRRORS_VISUAL_STAGE "+(mc.screen==null?"none":mc.screen.getClass().getName()));
+                if(mc.screen instanceof net.minecraft.client.gui.screens.DisconnectedScreen)
+                    System.out.println("SIMPLY_MIRRORS_VISUAL_DISCONNECT_REASON "+
+                        mc.screen.getNarrationMessage().getString().replace('\n',' '));
+            }
             if(mc.getOverlay()==null&&mc.screen instanceof net.minecraft.client.gui.screens.AccessibilityOnboardingScreen)mc.setScreen(new TitleScreen());
             if(!simplymirrors$joining&&mc.getOverlay()==null&&mc.screen instanceof TitleScreen) {
                 simplymirrors$joining=true;String port=System.getProperty("simplymirrors.visualPort");String address="127.0.0.1:"+port;
@@ -38,6 +50,7 @@ public abstract class VisualProbeMixin {
             }
             return;
         }
+        if(Boolean.getBoolean("simplymirrors.fpsBenchmark")) {FpsBenchmarkProbe.tick(mc);return;}
         mc.player.getAbilities().flying=true;
         int requested=VisualScene.index(mc.gameDirectory.toPath());
         if(requested<0)return;
@@ -63,7 +76,7 @@ public abstract class VisualProbeMixin {
         boolean tab=false;for(CreativeModeTab t:BuiltInRegistries.CREATIVE_MODE_TAB)if(t!=null&&t.getDisplayName().getString().equals("Simply Mirrors"))tab=true;
         int error=glGetError();Path dir=mc.gameDirectory.toPath().resolve("visual-evidence");Files.createDirectories(dir);
         VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,dir.resolve("mirror-"+requested+".png"));
-        String json="{\"passes\":"+(MirrorRenderer.completedPasses-simplymirrors$startPasses)+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+",\"shaderPackActive\":"+com.nstut.simplymirrors.visualsupport.ShaderProbe.active()+"}";
+        String json="{\"passes\":"+(MirrorRenderer.completedPasses-simplymirrors$startPasses)+",\"angleFrames\":"+simplymirrors$mirrorFrames+",\"glError\":"+error+",\"creativeTab\":"+tab+",\"shaderPackActive\":"+com.nstut.simplymirrors.visualsupport.ShaderProbe.active()+",\"fovDegrees\":" + mc.options.fov().get()+"}";
         Files.write(dir.resolve("result-"+requested+".json"),json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         System.out.println("SIMPLY_MIRRORS_VISUAL_RESULT "+requested+" "+json);simplymirrors$captured=true;
     }

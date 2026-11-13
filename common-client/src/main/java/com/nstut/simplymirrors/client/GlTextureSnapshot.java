@@ -12,6 +12,15 @@ final class GlTextureSnapshot implements AutoCloseable {
     private final List<Texture> textures = new ArrayList<>();
     private int textureFramebuffer, backupFramebuffer;
     private boolean closed;
+    // Opt-in GPU transfer experiment. Identical image formats/storage are verified
+    // by GlHistoryBackupPool; never activate this on GL 3.3-only devices.
+    private static final boolean COPY_IMAGE = Boolean.getBoolean("simplymirrors.historyCopyImage");
+    private static boolean canCopyImage() {
+        return COPY_IMAGE && org.lwjgl.opengl.GL.getCapabilities().OpenGL43;
+    }
+
+    /** Reclaim persistent GL scratch when the world/renderer is released. */
+    static void releaseScratch() { GlHistoryBackupPool.clear(); GlHistoryTextureRedirect.releaseScratch(); }
 
     static GlTextureSnapshot capture(int[] textureIds) {
         GlTextureSnapshot snapshot = new GlTextureSnapshot();
@@ -43,13 +52,15 @@ final class GlTextureSnapshot implements AutoCloseable {
             if (w == 0 || h == 0) continue;
             int format = glGetTexLevelParameteri(GL_TEXTURE_2D, level, GL_TEXTURE_INTERNAL_FORMAT);
             int type = glGetTexLevelParameteri(GL_TEXTURE_2D, level, GL_TEXTURE_RED_TYPE);
-            Image image = new Image(texture, level, w, h, type, glGenRenderbuffers());
-            images.add(image); // Own the allocation before any operation can fail.
-            glBindRenderbuffer(GL_RENDERBUFFER, image.backup);
-            glRenderbufferStorage(GL_RENDERBUFFER, format, w, h);
-            attachTexture(GL_READ_FRAMEBUFFER, image);
-            attachBackup(GL_DRAW_FRAMEBUFFER, image);
-            copy(image);
+            int backup = GlHistoryBackupPool.acquire(format, w, h);
+            Image image = new Image(texture, level, w, h, type, format, backup);
+            images.add(image); // Own the lease before any operation can fail.
+            if (!canCopyImage()) {
+                glBindRenderbuffer(GL_RENDERBUFFER, image.backup);
+                attachTexture(GL_READ_FRAMEBUFFER, image);
+                attachBackup(GL_DRAW_FRAMEBUFFER, image);
+            }
+            copy(image, true);
             image.saved = true;
         }
     }
@@ -71,9 +82,23 @@ final class GlTextureSnapshot implements AutoCloseable {
             throw new IllegalStateException("Cannot isolate shader history framebuffer");
     }
 
-    private static void copy(Image image) {
-        glBlitFramebuffer(0, 0, image.width, image.height, 0, 0, image.width, image.height,
-                GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    private static void copy(Image image, boolean saving) {
+        if (canCopyImage()) {
+            // Same exact internal format and mip dimensions; direct image copy
+            // avoids temporary read/draw FBO attachment and completeness churn.
+            // The native GL 3.3 framebuffer blit remains the default fallback.
+            org.lwjgl.opengl.GL43.glCopyImageSubData(
+                    saving ? image.texture : image.backup,
+                    saving ? GL_TEXTURE_2D : GL_RENDERBUFFER,
+                    saving ? image.level : 0, 0, 0, 0,
+                    saving ? image.backup : image.texture,
+                    saving ? GL_RENDERBUFFER : GL_TEXTURE_2D,
+                    saving ? 0 : image.level, 0, 0, 0,
+                    image.width, image.height, 1);
+        } else {
+            glBlitFramebuffer(0, 0, image.width, image.height, 0, 0, image.width, image.height,
+                    GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        }
     }
 
     private void clear(Image image) {
@@ -92,9 +117,11 @@ final class GlTextureSnapshot implements AutoCloseable {
                 for (Image image : images) {
                     if (!image.saved) continue;
                     try {
-                        attachBackup(GL_READ_FRAMEBUFFER, image);
-                        attachTexture(GL_DRAW_FRAMEBUFFER, image);
-                        copy(image);
+                        if (!canCopyImage()) {
+                            attachBackup(GL_READ_FRAMEBUFFER, image);
+                            attachTexture(GL_DRAW_FRAMEBUFFER, image);
+                        }
+                        copy(image, false);
                     } catch (RuntimeException | Error problem) {
                         if (failure == null) failure = problem; else failure.addSuppressed(problem);
                     }
@@ -111,7 +138,8 @@ final class GlTextureSnapshot implements AutoCloseable {
                 if (failure instanceof Error) throw (Error) failure;
                 if (failure != null) throw (RuntimeException) failure;
             } finally {
-                for (Image image : images) glDeleteRenderbuffers(image.backup);
+                for (Image image : images)
+                    GlHistoryBackupPool.release(image.backup, image.format, image.width, image.height);
                 if (textureFramebuffer != 0) glDeleteFramebuffers(textureFramebuffer);
                 if (backupFramebuffer != 0) glDeleteFramebuffers(backupFramebuffer);
                 images.clear(); textures.clear();
@@ -120,10 +148,11 @@ final class GlTextureSnapshot implements AutoCloseable {
     }
 
     private static final class Image {
-        final int texture, level, width, height, type, backup;
+        final int texture, level, width, height, type, format, backup;
         boolean saved;
-        Image(int texture, int level, int width, int height, int type, int backup) {
-            this.texture=texture; this.level=level; this.width=width; this.height=height; this.type=type; this.backup=backup;
+        Image(int texture, int level, int width, int height, int type, int format, int backup) {
+            this.texture=texture; this.level=level; this.width=width; this.height=height;
+            this.type=type; this.format=format; this.backup=backup;
         }
     }
 
