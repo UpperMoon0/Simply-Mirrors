@@ -1,6 +1,7 @@
 package com.nstut.simplymirrors.client.mixin;
 import com.nstut.simplymirrors.math.ShaderClippingTransformation;
 import com.nstut.simplymirrors.math.ShaderFinalFragmentGuard;
+import com.nstut.simplymirrors.math.ShaderVolumetricWeightReuse;
 import com.llamalad7.mixinextras.sugar.Local;
 import java.util.Map;
 import org.spongepowered.asm.mixin.*;
@@ -20,6 +21,12 @@ public abstract class IrisTransformMixin {
                     name.startsWith("gbuffers_")?"SODIUM":"VANILLA",name,ci.getReturnValue());
             if(Boolean.getBoolean("simplymirrors.shaderFinalFragmentGuard"))
                 transformed=ShaderFinalFragmentGuard.transformProgram(name,transformed);
+            if(Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse")) {
+                Map reused=ShaderVolumetricWeightReuse.transformProgram(name,transformed);
+                if(reused!=transformed)
+                    System.out.println("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_REUSE program="+name);
+                transformed=reused;
+            }
             ci.setReturnValue(transformed);
         }
     }

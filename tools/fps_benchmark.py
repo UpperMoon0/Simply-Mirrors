@@ -37,13 +37,15 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
                           shader_final_dual_crop: bool = False,
                           shader_final_fragment_guard: bool = False,
                           expected_width: int = 1920, expected_height: int = 1080,
-                          aperture_cull: bool = False) -> str:
+                          aperture_cull: bool = False,
+                                  shader_volumetric_weight_reuse: bool = False) -> str:
     """Build explicit shader A/B toggles; never enable experimental culling by default."""
     return ("-Dsimplymirrors.fpsBenchmark=true -Dsimplymirrors.fpsOffscreen=true" +
             (" -Dsimplymirrors.gpuProfile=true" if gpu_profile else "") +
             (" -Dsimplymirrors.coverageScissor=false" if not coverage_scissor else "") +
             (" -Dsimplymirrors.frustumCrop=true" if frustum_crop else "") +
             (" -Dsimplymirrors.apertureCull=true" if aperture_cull else "") +
+            (" -Dsimplymirrors.shaderVolumetricWeightReuse=true" if shader_volumetric_weight_reuse else "") +
             (" -Dsimplymirrors.fpsCameraMotion=true" if camera_motion else "") +
             (" -Dsimplymirrors.reflectionOutputScissor=true" if output_scissor else "") +
             (" -Dsimplymirrors.historyCopyImage=true" if history_copy_image else "") +
@@ -73,7 +75,8 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                    shader_final_fragment_guard: bool = False,
                                    expected_width: int = 1920,
                                    expected_height: int = 1080,
-                                   aperture_cull: bool = False) -> subprocess.Popen:
+                                   aperture_cull: bool = False,
+                                  shader_volumetric_weight_reuse: bool = False) -> subprocess.Popen:
     """Launch directly under the verified restricted Windows graphics worker.
 
     Never query an interactive user's WTS token or use CreateProcessAsUser.
@@ -95,7 +98,8 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                                        shader_early_composite_crop,
                                                        shader_final_dual_crop,
                                                        shader_final_fragment_guard,
-                                                       expected_width, expected_height, aperture_cull))
+                                                       expected_width, expected_height, aperture_cull,
+                                                       shader_volumetric_weight_reuse))
     with log_path.open("wb") as stream:
         return subprocess.Popen(command, cwd=work, env=env, stdout=stream,
                                 stderr=subprocess.STDOUT,
@@ -258,6 +262,8 @@ def run_benchmark():
                         help="Experimental pinned composite SSR producer crop; disabled by default")
     parser.add_argument("--shader-final-dual-crop", action="store_true",
                         help="Experimental two-region final shader crop retaining origin SSBO reset; default off")
+    parser.add_argument("--shader-volumetric-weight-reuse", action="store_true",
+                        help="Reuse exact preceding volumetric fog weight; default off")
     parser.add_argument("--shader-final-fragment-guard", action="store_true",
                         help="Experimental origin-safe, native-resolution final shader fragment rejection; default off")
     parser.add_argument("--postprocess-scissor", action="store_true",
@@ -407,7 +413,8 @@ def run_benchmark():
                 shader_final_dual_crop=args.shader_final_dual_crop,
                 shader_final_fragment_guard=args.shader_final_fragment_guard,
                 expected_width=args.width, expected_height=args.height,
-                aperture_cull=args.aperture_cull)
+                aperture_cull=args.aperture_cull,
+                shader_volumetric_weight_reuse=args.shader_volumetric_weight_reuse)
             print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
                   " PID=" + str(client_process.pid), flush=True)
             deadline = time.monotonic() + args.startup_timeout
@@ -558,6 +565,7 @@ def run_benchmark():
             "shaderEarlyCompositeCropEnabled": args.shader_early_composite_crop,
             "shaderFinalDualCropEnabled": args.shader_final_dual_crop,
             "shaderFinalFragmentGuardEnabled": args.shader_final_fragment_guard,
+            "shaderVolumetricWeightReuseEnabled": args.shader_volumetric_weight_reuse,
             "stages": comparison,
             "rounds": rounds,
             "imageChecks": checks,

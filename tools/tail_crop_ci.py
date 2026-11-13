@@ -246,6 +246,6 @@ def accept() -> dict:
 
 if __name__ == "__main__":
     # Centralized GPU pipeline retains its reviewed entrypoint. This experiment
-    # swaps only the opt-in final fragment guard; legacy studies remain importable.
-    from final_fragment_ci import accept as final_fragment_accept
-    final_fragment_accept()
+    # swaps only exact volumetric fog-weight reuse; legacy studies remain importable.
+    from volumetric_weight_ci import accept as volumetric_accept
+    volumetric_accept()
