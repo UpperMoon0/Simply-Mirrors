@@ -25,7 +25,8 @@
     "IrisFallbackMixin",
     "HistoryTextureBindingMixin",
     "IrisHistoryTextureMixin",
-    "IrisHistoryFramebufferMixin"
+    "IrisHistoryFramebufferMixin",
+    "IrisDiscardHistoryMixin"
   ],
   "injectors": {
     "defaultRequire": 1

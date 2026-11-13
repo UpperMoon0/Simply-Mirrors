@@ -87,6 +87,10 @@ public final class ShaderReflection {
         }
     }
     public static boolean reflecting() { return cameraUniforms!=null; }
+    public static boolean discardFinalHistory() {
+        return Boolean.getBoolean("simplymirrors.discardFinalHistory") && reflecting()
+            && GlHistoryTextureRedirect.active();
+    }
     public static void beforeUniforms() {
         if(capturedCamera==null)return;
         // A program first seen in a reflection must initialize previous-frame suppliers

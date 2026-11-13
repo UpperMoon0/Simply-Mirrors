@@ -21,7 +21,14 @@ class VolumetricWeightTest(unittest.TestCase):
             self.assertIn("historyTextureRedirect=true",fps_benchmark.graphics_java_options())
     def test_native_transform_is_required(self):
         with self.assertRaises(AssertionError): ci.require_weight_reuse("")
-        self.assertTrue(ci.require_weight_reuse("SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE textures=8 units=8 attachments=12")["applied"])
+        history="SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE textures=8 units=8 attachments=12"
+        with self.assertRaises(AssertionError): ci.require_weight_reuse(history)
+        self.assertTrue(ci.require_weight_reuse(history+"\nSIMPLY_MIRRORS_DISCARD_FINAL_HISTORY copies=3")["applied"])
+    def test_final_history_discard_is_opt_in(self):
+        with patch.dict(os.environ,{"SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY":"0"}):
+            self.assertNotIn("discardFinalHistory=true",fps_benchmark.graphics_java_options())
+        with patch.dict(os.environ,{"SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY":"1"}):
+            self.assertIn("discardFinalHistory=true",fps_benchmark.graphics_java_options())
 
     def acceptance_pairs(self, control, trial, improvement=3.5):
         def stages(capture, world, restore):

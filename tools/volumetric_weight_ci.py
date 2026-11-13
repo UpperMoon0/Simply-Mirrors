@@ -1,4 +1,4 @@
-"""Strict native A/B for same-format zero-copy history texture isolation."""
+"""Strict native A/B for discarding reflection-only final history copies."""
 from __future__ import annotations
 
 import json
@@ -38,7 +38,8 @@ def verify_settings(summary: dict, label: str) -> None:
         "shaderFinalFragmentGuardEnabled": False,
         "shaderVolumetricWeightReuseEnabled": False,
         "shaderCloudOcclusionEnabled": False,
-        "historyTextureRedirectEnabled": expected,
+        "historyTextureRedirectEnabled": True,
+        "discardFinalHistoryEnabled": expected,
         "shaderVolumetricShadowRayEnabled": False,
         "shaderFinalOriginCropEnabled": False,
         "shaderEarlyCompositeCropEnabled": False,
@@ -60,7 +61,11 @@ def require_weight_reuse(logs: str) -> dict:
     match = re.search(r"SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE textures=(\d+) units=(\d+) attachments=(\d+)", logs)
     if match is None or any(int(x) <= 0 for x in match.groups()):
         raise AssertionError("Native history texture redirection did not map samplers and cached FBOs")
-    return {"textures": int(match[1]), "units": int(match[2]), "attachments": int(match[3]), "applied": True}
+    copies = re.search(r"SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY copies=(\d+)", logs)
+    if copies is None or int(copies[1]) <= 0:
+        raise AssertionError("Native final-history copies were not discarded")
+    return {"textures": int(match[1]), "units": int(match[2]), "attachments": int(match[3]),
+            "discardedFinalCopies": int(copies[1]), "applied": True}
 
 
 
@@ -125,7 +130,8 @@ def run_variant(label: str, index: int, stamp: str,
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_START", label, index, name, flush=True)
     env = os.environ.copy()
     env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "0"
-    env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1" if label == "trial" else "0"
+    env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1"
+    env["SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"] = "1" if label == "trial" else "0"
     result = subprocess.run(benchmark_command(label, name), cwd=ROOT, check=False, env=env)
     if result.returncode:
         raise RuntimeError(f"Native volumetric weight {label} {index} returned {result.returncode}")
