@@ -60,7 +60,7 @@ public final class ShaderHistoryRedirectGlTest {
                     int components=(format==GL_RGB16F || format==GL_R11F_G11F_B10F)?3:4;
                     for(byte[] mip:empty) {
                         ByteBuffer b=ByteBuffer.wrap(mip).order(java.nio.ByteOrder.nativeOrder());
-                        for(int i=0;i<mip.length/4;i++)if(i%4<components && b.getInt(i*4)!=0)throw new AssertionError("Scratch history not zero");
+                        for(int i=0;i<mip.length/4;i++)if(i%4<components && (integer?b.getInt(i*4)!=0:b.getFloat(i*4)!=0.0f))throw new AssertionError("Scratch history not zero format="+format+" component="+i+" bits="+Integer.toHexString(b.getInt(i*4))+" float="+b.getFloat(i*4));
                     }
                     lease.framebuffer(fbo);
                     if(glGetFramebufferAttachmentParameteri(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME)!=scratch)throw new AssertionError("Cached FBO not redirected");
