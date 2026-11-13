@@ -22,7 +22,10 @@
     "IrisFrameMixin",
     "ReflectionCameraMixin",
     "IrisShadowMixin",
-    "IrisFallbackMixin"
+    "IrisFallbackMixin",
+    "HistoryTextureBindingMixin",
+    "IrisHistoryTextureMixin",
+    "IrisHistoryFramebufferMixin"
   ],
   "injectors": {
     "defaultRequire": 1

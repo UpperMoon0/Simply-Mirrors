@@ -1,4 +1,4 @@
-"""Strict native A/B for exact opaque-terrain cloud-ray rejection."""
+"""Strict native A/B for same-format zero-copy history texture isolation."""
 from __future__ import annotations
 
 import json
@@ -37,7 +37,8 @@ def verify_settings(summary: dict, label: str) -> None:
         "historyCopyImageEnabled": True,
         "shaderFinalFragmentGuardEnabled": False,
         "shaderVolumetricWeightReuseEnabled": False,
-        "shaderCloudOcclusionEnabled": expected,
+        "shaderCloudOcclusionEnabled": False,
+        "historyTextureRedirectEnabled": expected,
         "shaderVolumetricShadowRayEnabled": False,
         "shaderFinalOriginCropEnabled": False,
         "shaderEarlyCompositeCropEnabled": False,
@@ -56,9 +57,10 @@ def verify_settings(summary: dict, label: str) -> None:
 
 
 def require_weight_reuse(logs: str) -> dict:
-    if "SIMPLY_MIRRORS_CLOUD_OCCLUSION program=deferred1" not in logs:
-        raise AssertionError("Pinned native deferred1 cloud-ray rejection did not apply")
-    return {"program": "deferred1", "applied": True, "reflectionOnly": True}
+    match = re.search(r"SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE textures=(\d+) units=(\d+) attachments=(\d+)", logs)
+    if match is None or any(int(x) <= 0 for x in match.groups()):
+        raise AssertionError("Native history texture redirection did not map samplers and cached FBOs")
+    return {"textures": int(match[1]), "units": int(match[2]), "attachments": int(match[3]), "applied": True}
 
 
 
@@ -115,7 +117,8 @@ def run_variant(label: str, index: int, stamp: str,
     name = f"fps-volumetric-weight-{stamp}-{label}-{index}{suffix}"
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_START", label, index, name, flush=True)
     env = os.environ.copy()
-    env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "1" if label == "trial" else "0"
+    env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "0"
+    env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1" if label == "trial" else "0"
     result = subprocess.run(benchmark_command(label, name), cwd=ROOT, check=False, env=env)
     if result.returncode:
         raise RuntimeError(f"Native volumetric weight {label} {index} returned {result.returncode}")
@@ -137,6 +140,12 @@ def run_variant(label: str, index: int, stamp: str,
 def accept() -> dict:
     if os.name != "nt" or os.environ.get("CI_GRAPHICS_AGENT") != "1":
         raise RuntimeError("Only the trusted private native GPU CI agent can run acceptance")
+    # Fail before Minecraft FPS if actual-driver original/mip/filter isolation fails.
+    preflight = [str(ROOT / "gradlew.bat"), "-Ptarget=common", ":common:shaderHistoryRedirectGlTest",
+                 "--no-daemon", "--max-workers=1", "-Dorg.gradle.jvmargs=-Xmx512m"]
+    preflight_env = os.environ.copy()
+    preflight_env.pop("JAVA_TOOL_OPTIONS", None)
+    subprocess.run(preflight, cwd=ROOT, env=preflight_env, check=True)
     stamp = uuid.uuid4().hex[:8]
     accepted: list[dict] = []
     for index in range(3):

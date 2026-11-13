@@ -68,6 +68,7 @@ public final class ShaderReflection {
                 previous.view,previous.projection,previous.mainEye,previous.eye,previous.valid);
         renderTargets=ShaderRenderTargetSnapshot.capture();
         framebufferParity=new ReflectionFramebufferParity();
+        if(GlHistoryTextureRedirect.active()) clearIrisSamplers();
         plane=MirrorMatrices.clipPlane(view,nx,ny,nz,x,y,z);
         projection=MirrorMatrices.inverse(perspective);camera=reflectedCamera;suspensions=0;glEnable(GL_CLIP_DISTANCE0);
     }
@@ -78,7 +79,8 @@ public final class ShaderReflection {
             finally {
                 try {
                     try {if(framebufferParity!=null)framebufferParity.close();}
-                    finally {if(renderTargets!=null)renderTargets.close();}
+                    finally {if(renderTargets!=null)renderTargets.close();
+                        if(Boolean.getBoolean("simplymirrors.historyTextureRedirect"))clearIrisSamplers();}
                 }
                 finally {framebufferParity=null;renderTargets=null;cameraUniforms=null;capturedCamera=null;updatingCamera=null;camera=null;plane=null;projection=null;suspensions=0;UNIFORM_LOCATIONS.clear();glDisable(GL_CLIP_DISTANCE0);}
             }
@@ -109,6 +111,17 @@ public final class ShaderReflection {
      * very first draw and readback never see an invalid split depth/stencil.
      * Only active during a scoped mirrored render; Iris remains optional.
      */
+    public static int historyTexture(int texture){return GlHistoryTextureRedirect.map(texture);}
+    public static int historyTextureBinding(int target,int unit,int texture){return GlHistoryTextureRedirect.bind(target,unit,texture);}
+    public static int historyCurrentTextureBinding(int texture){
+        return GlHistoryTextureRedirect.active()?GlHistoryTextureRedirect.bindCurrent(texture):texture;
+    }
+    public static int historyImageBinding(int unit,int texture){return GlHistoryTextureRedirect.bindImage(unit,texture);}
+    private static void clearIrisSamplers() {
+        try {Class.forName("net.irisshaders.iris.gl.program.ProgramSamplers").getMethod("clearActiveSamplers").invoke(null);}
+        catch(ReflectiveOperationException failure){throw new IllegalStateException("Cannot reset Iris sampler bindings",failure);}
+    }
+    public static void historyFramebufferBound(int framebuffer){GlHistoryTextureRedirect.boundFramebuffer(framebuffer);}
     public static void onIrisFramebufferBound(int framebuffer) {
         if(framebufferParity==null || framebuffer<=0) return;
         int oldDraw=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);

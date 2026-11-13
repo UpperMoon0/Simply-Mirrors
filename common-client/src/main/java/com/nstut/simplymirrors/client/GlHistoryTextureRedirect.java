@@ -5,15 +5,20 @@ import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import static org.lwjgl.opengl.GL33.*;
+import static org.lwjgl.opengl.GL42.*;
 
 /**
- * Experimental zero-copy history storage. NOT wired to the renderer yet.
+ * Experimental zero-copy history storage; opt-in only, pending native acceptance.
  * Iris texture bind/copy/mipmap entry points and cached FBOs must all route
  * through this lease before it can replace GlTextureSnapshot. The original
  * textures stay untouched; only cleared, same-format scratch images are drawn.
  * Requires native image-isolation tests before any Minecraft A/B activation.
  */
 final class GlHistoryTextureRedirect implements AutoCloseable {
+    private static GlHistoryTextureRedirect current;
+    private static boolean reported;
+    private final java.util.Set<Integer> units=new java.util.LinkedHashSet<Integer>();
+    private final java.util.Set<Integer> imageUnits=new java.util.LinkedHashSet<Integer>();
     private static final ArrayDeque<Storage> FREE = new ArrayDeque<Storage>();
     private static final long MAX_BYTES = 256L * 1024 * 1024;
     private static long cachedBytes;
@@ -24,6 +29,7 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
     static GlHistoryTextureRedirect acquire(int[] originals) {
         if (!org.lwjgl.opengl.GL.getCapabilities().OpenGL44)
             throw new IllegalStateException("Texture redirection prototype requires OpenGL 4.4");
+        if(current!=null)throw new IllegalStateException("Nested texture history lease");
         GlHistoryTextureRedirect lease = new GlHistoryTextureRedirect();
         int bound = glGetInteger(GL_TEXTURE_BINDING_2D);
         int unpack = glGetInteger(GL_PIXEL_UNPACK_BUFFER_BINDING);
@@ -74,6 +80,7 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
                     else org.lwjgl.opengl.GL44.glClearTexImage(scratch.id,level,GL_RGBA,GL_FLOAT,new float[4]);
                 }
             }
+            current=lease;
             return lease;
         } catch(RuntimeException | Error failure) {
             try {lease.close();}catch(RuntimeException | Error cleanup){failure.addSuppressed(cleanup);}
@@ -83,6 +90,27 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
         }
     }
 
+    static int map(int original) {return current==null?original:current.texture(original);}
+    static boolean active(){return current!=null;}
+    static void boundFramebuffer(int framebuffer){if(current!=null)current.framebuffer(framebuffer);}
+    static int bind(int target,int unit,int original) {
+        int mapped=map(original);
+        if(current!=null && target==GL_TEXTURE_2D && mapped!=original)current.units.add(unit);
+        return mapped;
+    }
+    static int bindCurrent(int original) {
+        return bind(GL_TEXTURE_2D,glGetInteger(GL_ACTIVE_TEXTURE)-GL_TEXTURE0,original);
+    }
+    static int bindImage(int unit,int original) {
+        int mapped=map(original);
+        if(current!=null && mapped!=original)current.imageUnits.add(unit);
+        return mapped;
+    }
+    private int original(int scratch) {
+        for(Map.Entry<Integer,Storage> entry:images.entrySet())
+            if(entry.getValue().id==scratch)return entry.getKey();
+        return scratch;
+    }
     int texture(int original) {
         Storage scratch=closed?null:images.get(original);
         return scratch==null?original:scratch.id;
@@ -114,14 +142,35 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
 
     @Override public void close() {
         if(closed)return;closed=true;
+        if(current==this)current=null;
+        if(!reported && !units.isEmpty() && !attachments.isEmpty()) {
+            System.out.println("SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE textures="+images.size()+" units="+units.size()+" attachments="+attachments.size());
+            reported=true;
+        }
         int bound=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
+        int activeUnit=glGetInteger(GL_ACTIVE_TEXTURE);
         try {
+            for(Integer unit:units) {
+                glActiveTexture(GL_TEXTURE0+unit);
+                int texture=glGetInteger(GL_TEXTURE_BINDING_2D),main=original(texture);
+                if(main!=texture)glBindTexture(GL_TEXTURE_2D,main);
+            }
+            for(Integer unit:imageUnits) {
+                int texture=org.lwjgl.opengl.GL30.glGetIntegeri(GL_IMAGE_BINDING_NAME,unit),main=original(texture);
+                if(main!=texture)org.lwjgl.opengl.GL42.glBindImageTexture(unit,main,
+                    org.lwjgl.opengl.GL30.glGetIntegeri(GL_IMAGE_BINDING_LEVEL,unit),
+                    org.lwjgl.opengl.GL30.glGetIntegeri(GL_IMAGE_BINDING_LAYERED,unit)!=0,
+                    org.lwjgl.opengl.GL30.glGetIntegeri(GL_IMAGE_BINDING_LAYER,unit),
+                    org.lwjgl.opengl.GL30.glGetIntegeri(GL_IMAGE_BINDING_ACCESS,unit),
+                    org.lwjgl.opengl.GL30.glGetIntegeri(GL_IMAGE_BINDING_FORMAT,unit));
+            }
             for(Attachment a:attachments.values()) {
                 if(!glIsFramebuffer(a.framebuffer))continue;
                 glBindFramebuffer(GL_DRAW_FRAMEBUFFER,a.framebuffer);
                 glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER,a.point,GL_TEXTURE_2D,a.original,a.level);
             }
         } finally {
+            glActiveTexture(activeUnit);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER,bound);
             for(Storage s:images.values())give(s);
             images.clear();attachments.clear();

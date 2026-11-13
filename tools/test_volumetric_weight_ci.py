@@ -14,6 +14,11 @@ class VolumetricWeightTest(unittest.TestCase):
             self.assertNotIn("shaderCloudOcclusion=true",fps_benchmark.graphics_java_options())
         with patch.dict(os.environ,{"SIMPLY_MIRRORS_CLOUD_OCCLUSION":"1"}):
             self.assertIn("shaderCloudOcclusion=true",fps_benchmark.graphics_java_options())
+    def test_history_redirection_is_opt_in(self):
+        with patch.dict(os.environ,{"SIMPLY_MIRRORS_HISTORY_REDIRECT":"0"}):
+            self.assertNotIn("historyTextureRedirect=true",fps_benchmark.graphics_java_options())
+        with patch.dict(os.environ,{"SIMPLY_MIRRORS_HISTORY_REDIRECT":"1"}):
+            self.assertIn("historyTextureRedirect=true",fps_benchmark.graphics_java_options())
     def test_native_transform_is_required(self):
         with self.assertRaises(AssertionError): ci.require_weight_reuse("")
-        self.assertTrue(ci.require_weight_reuse("SIMPLY_MIRRORS_CLOUD_OCCLUSION program=deferred1")["applied"])
+        self.assertTrue(ci.require_weight_reuse("SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE textures=8 units=8 attachments=12")["applied"])

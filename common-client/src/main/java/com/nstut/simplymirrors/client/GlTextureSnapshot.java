@@ -20,7 +20,7 @@ final class GlTextureSnapshot implements AutoCloseable {
     }
 
     /** Reclaim persistent GL scratch when the world/renderer is released. */
-    static void releaseScratch() { GlHistoryBackupPool.clear(); }
+    static void releaseScratch() { GlHistoryBackupPool.clear(); GlHistoryTextureRedirect.releaseScratch(); }
 
     static GlTextureSnapshot capture(int[] textureIds) {
         GlTextureSnapshot snapshot = new GlTextureSnapshot();
