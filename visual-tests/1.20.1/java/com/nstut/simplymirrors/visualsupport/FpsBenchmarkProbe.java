@@ -9,6 +9,7 @@ import org.lwjgl.glfw.GLFW;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -122,8 +123,13 @@ public final class FpsBenchmarkProbe {
                 VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),
                         mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,
                         evidence.resolve("scene-" + scene + ".png"));
-                Files.write(evidence.resolve("scene-" + scene + ".json"),
-                        pendingCaptureJson.getBytes(StandardCharsets.UTF_8));
+                // Publish only complete JSON: the Python reader polls the final path.
+                // A direct write exposes an empty/partial file under host paging.
+                Path result = evidence.resolve("scene-" + scene + ".json");
+                Path pending = evidence.resolve("scene-" + scene + ".json.pending");
+                Files.write(pending, pendingCaptureJson.getBytes(StandardCharsets.UTF_8));
+                Files.move(pending, result, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
                 pendingCaptureJson=null;
                 System.out.println("SIMPLY_MIRRORS_FPS_PARITY_CAPTURE scenario="+scene+" settledFrames=64 fixedAnimation=true");
             }
