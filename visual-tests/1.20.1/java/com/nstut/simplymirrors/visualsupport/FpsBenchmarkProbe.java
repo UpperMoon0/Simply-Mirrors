@@ -30,6 +30,9 @@ public final class FpsBenchmarkProbe {
     private static boolean finished;
     private static boolean relocated;
     private static boolean motionFirst, motionSecond;
+    private static String pendingCaptureJson;
+    private static int parityFrames;
+    public static boolean parityCapture() { return pendingCaptureJson != null; }
 
     private FpsBenchmarkProbe() { }
 
@@ -78,6 +81,8 @@ public final class FpsBenchmarkProbe {
             durations.clear();
             reflectionPasses.clear();
             motionFirst = motionSecond = false;
+            pendingCaptureJson = null;
+            parityFrames = 0;
             System.out.println("SIMPLY_MIRRORS_FPS_STAGE scenario=" + scene);
         }
 
@@ -86,7 +91,7 @@ public final class FpsBenchmarkProbe {
         // Static fixtures remain the default for historical comparability.
         boolean moving = Boolean.getBoolean("simplymirrors.fpsCameraMotion");
         double[] eye = VisualScene.eye(0);
-        double phase = (now - entered) * (2.0 * Math.PI / 6_000_000_000.0);
+        double phase = finished ? 0 : (now - entered) * (2.0 * Math.PI / 6_000_000_000.0);
         double x = eye[0] + (moving ? 0.15 * Math.sin(phase) : 0);
         double y = eye[1] - 1.62;
         double z = eye[2] + (moving ? 0.05 * Math.cos(phase) : 0);
@@ -103,6 +108,27 @@ public final class FpsBenchmarkProbe {
         mc.player.xRotO = pitch;
         mc.player.yBodyRot = yaw;
         mc.player.yHeadRot = yaw;
+        mc.player.yBodyRotO = yaw;
+        mc.player.yHeadRotO = yaw;
+        if (finished) {
+            // Freeze only the disposable fixture's animation after timed motion
+            // measurement. A/B captures must not compare different idle-arm poses.
+            mc.player.tickCount = 0;
+            if (pendingCaptureJson != null && ++parityFrames >= 64) {
+                int parityError=glGetError();
+                if (parityError != GL_NO_ERROR)
+                    throw new IllegalStateException("Parity OpenGL error: " + parityError);
+                Path evidence=home.resolve("fps-evidence");
+                VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),
+                        mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,
+                        evidence.resolve("scene-" + scene + ".png"));
+                Files.write(evidence.resolve("scene-" + scene + ".json"),
+                        pendingCaptureJson.getBytes(StandardCharsets.UTF_8));
+                pendingCaptureJson=null;
+                System.out.println("SIMPLY_MIRRORS_FPS_PARITY_CAPTURE scenario="+scene+" settledFrames=64 fixedAnimation=true");
+            }
+            return;
+        }
 
         // Capture at opposing sweep phases entirely inside warmup, so the
         // slow readback never contaminates measured frame intervals.
@@ -189,11 +215,9 @@ public final class FpsBenchmarkProbe {
             json.append(reflectionPasses.get(i));
         }
         json.append("]\n}\n");
-        VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(), width, height,
-                evidence.resolve("scene-" + scene + ".png"));
-        // Write result LAST; the orchestrator treats it as the completed marker.
-        Files.write(evidence.resolve("scene-" + scene + ".json"),
-                json.toString().getBytes(StandardCharsets.UTF_8));
+        // Cadence measurement remains moving-camera. Readback happens only
+        // after a fixed camera/animation pose and identical TAA settling frames.
+        pendingCaptureJson=json.toString();
         System.out.println("SIMPLY_MIRRORS_FPS_RESULT scenario=" + scene
                 + " samples=" + durations.size() + " fps=" + averageFps
                 + " p95ms=" + p95Ms + " passes=" + totalPasses);

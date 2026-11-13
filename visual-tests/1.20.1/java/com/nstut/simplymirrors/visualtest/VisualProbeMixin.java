@@ -26,6 +26,12 @@ public abstract class VisualProbeMixin {
     @Unique private boolean simplymirrors$captured;
     @Unique private boolean simplymirrors$done;
     @Unique private boolean simplymirrors$joining;
+    @ModifyArg(method="runTick",at=@At(value="INVOKE",
+            target="Lnet/minecraft/client/renderer/GameRenderer;render(FJZ)V"),index=0)
+    private float simplymirrors$parityPartialTick(float partialTick) {
+        return Boolean.getBoolean("simplymirrors.fpsBenchmark") &&
+                FpsBenchmarkProbe.parityCapture() ? 0f : partialTick;
+    }
     @Inject(method="runTick",at=@At("TAIL"))
     private void simplymirrors$probe(CallbackInfo ci) throws Exception {
         if(simplymirrors$done)return;Minecraft mc=Minecraft.getInstance();
