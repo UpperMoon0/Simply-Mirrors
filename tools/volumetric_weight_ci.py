@@ -1,4 +1,4 @@
-"""Strict native A/B for combined zero-copy/disposable/lazy reflection history."""
+"""Strict native A/B for combined history redirection and monotonic cloud ray exit."""
 from __future__ import annotations
 
 import json
@@ -26,7 +26,8 @@ def benchmark_command(label: str, name: str) -> list[str]:
         "--shader-cache", str((ROOT / "build/shader-dependencies").resolve()),
         "--run-name", name, "--shader-tail-crop", "--history-copy-image",
     ]
-    # Arithmetic reuse was rejected by native build 93; neither arm enables it.
+    # Isolate the new ray-loop exit: both arms retain the winning history path.
+    # Rejected lazy clearing and volumetric arithmetic stay disabled.
     return result
 
 
@@ -37,10 +38,10 @@ def verify_settings(summary: dict, label: str) -> None:
         "historyCopyImageEnabled": True,
         "shaderFinalFragmentGuardEnabled": False,
         "shaderVolumetricWeightReuseEnabled": False,
-        "shaderCloudOcclusionEnabled": False,
-        "historyTextureRedirectEnabled": expected,
-        "discardFinalHistoryEnabled": expected,
-        "lazyHistoryClearEnabled": expected,
+        "shaderCloudOcclusionEnabled": expected,
+        "historyTextureRedirectEnabled": True,
+        "discardFinalHistoryEnabled": True,
+        "lazyHistoryClearEnabled": False,
         "shaderVolumetricShadowRayEnabled": False,
         "shaderFinalOriginCropEnabled": False,
         "shaderEarlyCompositeCropEnabled": False,
@@ -65,12 +66,12 @@ def require_weight_reuse(logs: str) -> dict:
     copies = re.search(r"SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY copies=(\d+)", logs)
     if copies is None or int(copies[1]) <= 0:
         raise AssertionError("Native final-history copies were not discarded")
-    cleared = re.search(r"SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR initialized=(\d+) total=(\d+)", logs)
-    if cleared is None or not 0 < int(cleared[1]) < int(cleared[2]):
-        raise AssertionError("Lazy history initialization did not eliminate any native clears")
+    if ("SIMPLY_MIRRORS_CLOUD_OCCLUSION program=deferred1" not in logs or
+            "SIMPLY_MIRRORS_CLOUD_RAY_EXIT_ACTIVE" not in logs):
+        raise AssertionError("Native cloud-ray loop exit was not applied")
     return {"textures": int(match[1]), "units": int(match[2]), "attachments": int(match[3]),
-            "discardedFinalCopies": int(copies[1]), "initializedTextures": int(cleared[1]),
-            "totalTextures": int(cleared[2]), "applied": True}
+            "discardedFinalCopies": int(copies[1]), "cloudRayExit": True, "applied": True}
+
 
 
 
@@ -134,10 +135,10 @@ def run_variant(label: str, index: int, stamp: str,
     name = f"fps-volumetric-weight-{stamp}-{label}-{index}{suffix}"
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_START", label, index, name, flush=True)
     env = os.environ.copy()
-    env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "0"
-    env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1" if label == "trial" else "0"
-    env["SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"] = "1" if label == "trial" else "0"
-    env["SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR"] = "1" if label == "trial" else "0"
+    env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "1" if label == "trial" else "0"
+    env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1"
+    env["SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"] = "1"
+    env["SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR"] = "0"
     result = subprocess.run(benchmark_command(label, name), cwd=ROOT, check=False, env=env)
     if result.returncode:
         raise RuntimeError(f"Native volumetric weight {label} {index} returned {result.returncode}")
@@ -162,7 +163,7 @@ def accept() -> dict:
     # Fail before Minecraft FPS if actual-driver original/mip/filter isolation fails.
     preflight = [str(ROOT / "gradlew.bat"), "-Ptarget=common", ":common:shaderHistoryRedirectGlTest",
                  "--no-daemon", "--max-workers=1", "-Dorg.gradle.jvmargs=-Xmx512m",
-                 "-Dsimplymirrors.lazyHistoryClear=true"]
+                 "-Dsimplymirrors.lazyHistoryClear=false"]
     preflight_env = os.environ.copy()
     preflight_env.pop("JAVA_TOOL_OPTIONS", None)
     subprocess.run(preflight, cwd=ROOT, env=preflight_env, check=True)

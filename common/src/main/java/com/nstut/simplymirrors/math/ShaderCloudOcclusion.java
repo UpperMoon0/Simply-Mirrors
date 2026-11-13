@@ -3,7 +3,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-/** Reject cloud rays entirely behind opaque terrain before their sampling loop.
+/** End the cloud ray when remaining samples are behind opaque terrain.
  * Retains every visible sample and all screen-space consumers, including bloom.
  * Experimental and reflection-only until strict native acceptance succeeds.
  */
@@ -24,24 +24,20 @@ public final class ShaderCloudOcclusion {
     public static String transformFragment(String source) {
         String s = ShaderClippingTransformation.maskComments(source);
         if (s.contains(UNIFORM)) return source;
-        // Require the pinned Reimagined cloud slab and monotonically advancing ray.
-        if (!s.contains("GetVolumetricClouds") || !s.contains("cloudStretch") ||
+        // The pinned ray advances monotonically away from the camera. Once a
+        // sample is behind opaque terrain, every later sample is also hidden.
+        // Stop that loop rather than repeating length tests for hidden samples.
+        if (!s.contains("GetCloudNoise") || !s.contains("minPlaneDistance") ||
             !Pattern.compile("tracePos\\.y\\s*-=\\s*traceAdd\\.y\\s*;").matcher(s).find() ||
             !Pattern.compile("tracePos\\s*\\+=\\s*traceAdd\\s*;").matcher(s).find()) return source;
-        Matcher entry = Pattern.compile("vec4\\s+GetVolumetricClouds\\s*\\(").matcher(s);
-        Matcher slab = Pattern.compile("float\\s+planeDistanceDif\\s*=\\s*maxPlaneDistance\\s*-\\s*minPlaneDistance\\s*;").matcher(s);
-        if (!entry.find() || !slab.find()) return source;
-        int start = entry.start(), insert = slab.end();
-        if (start >= insert || entry.find() || slab.find()) return source;
-        // Every original sample has length >= minPlaneDistance: all ray component
-        // coefficients are nonnegative and increase, including the x/z first-step
-        // offset. Leave a one-block/relative margin for floating-point rounding.
-        // Exclude horizontal/nonfinite edge cases; original code remains fallback.
-        String guard = "\nif (" + UNIFORM + " && skyFade < 0.7 && abs(nPlayerPos.y) > 0.00001"
-            + " && minPlaneDistance < 100000000.0 && lViewPosM >= 0.0"
-            + " && minPlaneDistance > lViewPosM + max(1.0, abs(lViewPosM) * 0.0001))"
-            + " return vec4(0.0);\n";
-        return source.substring(0,start) + "uniform bool " + UNIFORM + ";\n"
-            + source.substring(start,insert) + guard + source.substring(insert);
+        Matcher entry=Pattern.compile("vec4\\s+GetVolumetricClouds\\s*\\(").matcher(s);
+        Matcher hidden=Pattern.compile("if\\s*\\(\\s*lTracePos\\s*>\\s*lViewPosM\\s*\\)\\s*\\{\\s*if\\s*\\(\\s*skyFade\\s*<\\s*0\\.7f?\\s*\\)\\s*continue\\s*;").matcher(s);
+        if(!entry.find() || !hidden.find())return source;
+        int declaration=entry.start(), replaceStart=hidden.start(), replaceEnd=hidden.end();
+        if(declaration>=replaceStart || entry.find() || hidden.find())return source;
+        String replacement="if (lTracePos > lViewPosM) { if (skyFade < 0.7) {"
+            +" if ("+UNIFORM+") break; else continue; }";
+        return source.substring(0,declaration)+"uniform bool "+UNIFORM+";\n"
+            +source.substring(declaration,replaceStart)+replacement+source.substring(replaceEnd);
     }
 }
