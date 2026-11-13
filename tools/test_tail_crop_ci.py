@@ -51,10 +51,18 @@ class TailCropEnvironmentStabilityTests(TestCase):
     @staticmethod
     def summary(no_mirror: float, one: float, nine: float) -> dict:
         return {"stages": {
-            "no-mirror": {"medianAvgFps": no_mirror},
-            "one-mirror": {"medianAvgFps": one},
-            "nine-coplanar-mirrors": {"medianAvgFps": nine},
+            "no-mirror": {"medianAvgFps": no_mirror, "medianP95FrameMs": 1000/no_mirror, "medianP99FrameMs": 1020/no_mirror},
+            "one-mirror": {"medianAvgFps": one, "medianP95FrameMs": 1000/one, "medianP99FrameMs": 1020/one},
+            "nine-coplanar-mirrors": {"medianAvgFps": nine, "medianP95FrameMs": 1000/nine, "medianP99FrameMs": 1020/nine},
         }}
+
+    def test_build_95_bursty_first_control_cannot_become_reference(self):
+        control = self.summary(74.533, 37.784, 39.257)
+        trial = self.summary(76.074, 42.628, 40.175)
+        control["stages"]["one-mirror"].update(
+            medianP95FrameMs=32.424, medianP99FrameMs=101.987)
+        with self.assertRaisesRegex(UnstableBenchmarkError, "control one-mirror frame-time bursts"):
+            assert_stable_pair(control, trial, [])
 
     def test_real_second_pair_no_mirror_drift_is_rejected(self):
         trial = self.summary(76.070, 42.834, 40.135)

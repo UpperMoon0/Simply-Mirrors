@@ -99,12 +99,11 @@ def evaluate_gpu_acceptance(pairs: list[dict]) -> dict:
         "medianControlGpuFinalizeMs": round(control_finalize, 3),
         "medianTrialGpuFinalizeMs": round(trial_finalize, 3),
     }
-    # deferred1 executes inside the reflected-world stage, not finalize.
-    # Retain a measured GPU-work gate over both stages plus the same FPS gates.
+    # World time includes finalize; do not count that nested stage twice.
     totals = {label: statistics.median(
-        p["stagesMs"][label]["gpuWorldMs"] + p["stagesMs"][label]["gpuFinalizeMs"]
+        p["stagesMs"][label]["gpuWorldMs"]
         for p in pairs) for label in ("control", "trial")}
-    summary["medianWorldAndFinalizeMs"] = totals
+    summary["medianGpuWorldMs"] = totals
     if one < 3.0 or nine < -2.0 or totals["trial"] >= totals["control"]:
         raise AssertionError(f"Insufficient real native volumetric shader improvement: {summary}")
     return summary

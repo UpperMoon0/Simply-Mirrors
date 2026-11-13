@@ -64,6 +64,17 @@ def assert_stable_pair(control: dict, trial: dict, accepted: list[dict]) -> floa
     neutral = 100 * (trial_fps["no-mirror"] / control_fps["no-mirror"] - 1)
     if abs(neutral) > 4.5:
         raise UnstableBenchmarkError(f"No-mirror A/B drift {neutral:.3f}% exceeds 4.5%")
+    # Build 95 control-0 had p99=101.987 ms vs p95=32.424 ms.
+    # Its neutral scene passed, but using that stalled arm as the initial
+    # reference manufactured a +12.82% gain and rejected subsequent clean arms.
+    # Reject bursty arms BEFORE selecting the first reference; no thresholds relax.
+    for variant, run in (("control", control), ("trial", trial)):
+        for scene, values in run["stages"].items():
+            p95, p99 = values["medianP95FrameMs"], values["medianP99FrameMs"]
+            if p99 > 1.5 * p95:
+                raise UnstableBenchmarkError(
+                    f"{variant} {scene} frame-time bursts: p99={p99:.3f}ms "
+                    f"exceeds 1.5 x p95={p95:.3f}ms")
     if accepted:
         reference = accepted[0]
         for variant, current in (("control", control_fps), ("trial", trial_fps)):
