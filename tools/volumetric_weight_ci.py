@@ -101,13 +101,20 @@ def evaluate_gpu_acceptance(pairs: list[dict]) -> dict:
         "medianControlGpuFinalizeMs": round(control_finalize, 3),
         "medianTrialGpuFinalizeMs": round(trial_finalize, 3),
     }
-    # World time includes finalize; do not count that nested stage twice.
+    # History redirection eliminates transfers outside gpuWorldMs. Enforce the
+    # sum of the disjoint capture/world/restore timers; finalize is nested in world.
+    for pair in pairs:
+        stage_savings_ms(pair["stagesMs"]["control"], pair["stagesMs"]["trial"])
+    summary["medianGpuWorldMs"] = {label: statistics.median(
+        p["stagesMs"][label]["gpuWorldMs"] for p in pairs)
+        for label in ("control", "trial")}
     totals = {label: statistics.median(
-        p["stagesMs"][label]["gpuWorldMs"]
+        sum(p["stagesMs"][label][key] for key in
+            ("gpuCaptureMs", "gpuWorldMs", "gpuRestoreMs"))
         for p in pairs) for label in ("control", "trial")}
-    summary["medianGpuWorldMs"] = totals
+    summary["medianGpuCaptureWorldRestoreMs"] = totals
     if one < 3.0 or nine < -2.0 or totals["trial"] >= totals["control"]:
-        raise AssertionError(f"Insufficient real native volumetric shader improvement: {summary}")
+        raise AssertionError(f"Insufficient real native reflection improvement: {summary}")
     return summary
 
 
