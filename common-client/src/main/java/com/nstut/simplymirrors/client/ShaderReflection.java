@@ -119,6 +119,14 @@ public final class ShaderReflection {
             if(oldDraw!=framebuffer) glBindFramebuffer(GL_DRAW_FRAMEBUFFER,oldDraw);
         }
     }
+    public static int beginCloudPass() {
+        if (MirrorRenderer.redirect==null || !Boolean.getBoolean("simplymirrors.shaderCloudOcclusion")) return -1;
+        int program=glGetInteger(GL_CURRENT_PROGRAM);
+        if(program==0)return -1;
+        int uniform=location(program,"simplymirrors_CloudOcclusion");
+        if(uniform>=0)glUniform1i(uniform,1);
+        return uniform;
+    }
     /** Own injected uniform is false for the main camera and restored after each quad. */
     public static int beginVolumetricPass() {
         if (MirrorRenderer.redirect==null ||

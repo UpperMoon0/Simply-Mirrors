@@ -1,5 +1,6 @@
 package com.nstut.simplymirrors.client.mixin;
 import com.nstut.simplymirrors.math.ShaderClippingTransformation;
+import com.nstut.simplymirrors.math.ShaderCloudOcclusion;
 import com.nstut.simplymirrors.math.ShaderFinalFragmentGuard;
 import com.nstut.simplymirrors.math.ShaderVolumetricWeightReuse;
 import com.nstut.simplymirrors.math.ShaderVolumetricShadowRay;
@@ -24,6 +25,12 @@ public abstract class IrisTransformMixin {
                     name.startsWith("gbuffers_")?"SODIUM":"VANILLA",name,ci.getReturnValue());
             if(Boolean.getBoolean("simplymirrors.shaderFinalFragmentGuard"))
                 transformed=ShaderFinalFragmentGuard.transformProgram(name,transformed);
+            if(Boolean.getBoolean("simplymirrors.shaderCloudOcclusion")) {
+                Map culled=ShaderCloudOcclusion.transformProgram(name,transformed);
+                if(culled!=transformed)
+                    System.out.println("SIMPLY_MIRRORS_CLOUD_OCCLUSION program="+name);
+                transformed=culled;
+            }
             Map originalVolumetric=transformed;
             if(Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse")) {
                 Map reused=ShaderVolumetricWeightReuse.transformProgram(name,transformed);

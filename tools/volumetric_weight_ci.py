@@ -1,4 +1,4 @@
-"""Strict native A/B for volumetric weight and affine shadow-ray reuse."""
+"""Strict native A/B for exact opaque-terrain cloud-ray rejection."""
 from __future__ import annotations
 
 import json
@@ -26,8 +26,7 @@ def benchmark_command(label: str, name: str) -> list[str]:
         "--shader-cache", str((ROOT / "build/shader-dependencies").resolve()),
         "--run-name", name, "--shader-tail-crop", "--history-copy-image",
     ]
-    if label == "trial":
-        result.extend(["--shader-volumetric-weight-reuse", "--shader-volumetric-shadow-ray"])
+    # Arithmetic reuse was rejected by native build 93; neither arm enables it.
     return result
 
 
@@ -37,8 +36,9 @@ def verify_settings(summary: dict, label: str) -> None:
         "shaderTailCropEnabled": True,
         "historyCopyImageEnabled": True,
         "shaderFinalFragmentGuardEnabled": False,
-        "shaderVolumetricWeightReuseEnabled": expected,
-        "shaderVolumetricShadowRayEnabled": expected,
+        "shaderVolumetricWeightReuseEnabled": False,
+        "shaderCloudOcclusionEnabled": expected,
+        "shaderVolumetricShadowRayEnabled": False,
         "shaderFinalOriginCropEnabled": False,
         "shaderEarlyCompositeCropEnabled": False,
         "shaderFinalDualCropEnabled": False,
@@ -56,13 +56,10 @@ def verify_settings(summary: dict, label: str) -> None:
 
 
 def require_weight_reuse(logs: str) -> dict:
-    if "SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_REUSE program=composite1" not in logs:
-        raise AssertionError("Pinned native composite1 weight reuse did not apply")
-    if "SIMPLY_MIRRORS_VOLUMETRIC_SHADOW_RAY program=composite1" not in logs:
-        raise AssertionError("Pinned native composite1 shadow-ray transform did not apply")
-    if "SIMPLY_MIRRORS_VOLUMETRIC_REFLECTION_SCOPE program=composite1" not in logs:
-        raise AssertionError("Pinned native composite1 reflection scope did not apply")
-    return {"program": "composite1", "applied": True, "shadowRayApplied": True, "reflectionOnly": True}
+    if "SIMPLY_MIRRORS_CLOUD_OCCLUSION program=deferred1" not in logs:
+        raise AssertionError("Pinned native deferred1 cloud-ray rejection did not apply")
+    return {"program": "deferred1", "applied": True, "reflectionOnly": True}
+
 
 
 def stage_savings_ms(control: dict, trial: dict) -> dict[str, float]:
@@ -102,7 +99,13 @@ def evaluate_gpu_acceptance(pairs: list[dict]) -> dict:
         "medianControlGpuFinalizeMs": round(control_finalize, 3),
         "medianTrialGpuFinalizeMs": round(trial_finalize, 3),
     }
-    if one < 3.0 or nine < -2.0 or trial_finalize >= control_finalize:
+    # deferred1 executes inside the reflected-world stage, not finalize.
+    # Retain a measured GPU-work gate over both stages plus the same FPS gates.
+    totals = {label: statistics.median(
+        p["stagesMs"][label]["gpuWorldMs"] + p["stagesMs"][label]["gpuFinalizeMs"]
+        for p in pairs) for label in ("control", "trial")}
+    summary["medianWorldAndFinalizeMs"] = totals
+    if one < 3.0 or nine < -2.0 or totals["trial"] >= totals["control"]:
         raise AssertionError(f"Insufficient real native volumetric shader improvement: {summary}")
     return summary
 
@@ -112,7 +115,9 @@ def run_variant(label: str, index: int, stamp: str,
     suffix = f"-retry{attempt}" if attempt else ""
     name = f"fps-volumetric-weight-{stamp}-{label}-{index}{suffix}"
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_START", label, index, name, flush=True)
-    result = subprocess.run(benchmark_command(label, name), cwd=ROOT, check=False)
+    env = os.environ.copy()
+    env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "1" if label == "trial" else "0"
+    result = subprocess.run(benchmark_command(label, name), cwd=ROOT, check=False, env=env)
     if result.returncode:
         raise RuntimeError(f"Native volumetric weight {label} {index} returned {result.returncode}")
     evidence = RUNS / f"{name}-evidence"

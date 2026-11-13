@@ -1,18 +1,19 @@
+import os
 import unittest
+from unittest.mock import patch
 import volumetric_weight_ci as ci
 import fps_benchmark
 class VolumetricWeightTest(unittest.TestCase):
-    def test_only_trial_enables_weight_reuse_and_keeps_guard_off(self):
-        control=ci.benchmark_command("control","proof")
-        trial=ci.benchmark_command("trial","proof")
-        self.assertNotIn("--shader-volumetric-weight-reuse",control)
-        self.assertIn("--shader-volumetric-weight-reuse",trial)
-        self.assertNotIn("--shader-volumetric-shadow-ray",control)
-        self.assertIn("--shader-volumetric-shadow-ray",trial)
-        self.assertNotIn("shaderVolumetricShadowRay=true",fps_benchmark.graphics_java_options())
-        self.assertIn("shaderVolumetricShadowRay=true",fps_benchmark.graphics_java_options(shader_volumetric_shadow_ray=True))
-        self.assertNotIn("--shader-final-fragment-guard",trial)
-        self.assertIn("shaderVolumetricWeightReuse=true",fps_benchmark.graphics_java_options(shader_volumetric_weight_reuse=True))
+    def test_cloud_experiment_excludes_rejected_arithmetic(self):
+        for label in ("control", "trial"):
+            command=ci.benchmark_command(label,"proof")
+            self.assertNotIn("--shader-volumetric-weight-reuse",command)
+            self.assertNotIn("--shader-volumetric-shadow-ray",command)
+            self.assertNotIn("--shader-final-fragment-guard",command)
+        with patch.dict(os.environ,{"SIMPLY_MIRRORS_CLOUD_OCCLUSION":"0"}):
+            self.assertNotIn("shaderCloudOcclusion=true",fps_benchmark.graphics_java_options())
+        with patch.dict(os.environ,{"SIMPLY_MIRRORS_CLOUD_OCCLUSION":"1"}):
+            self.assertIn("shaderCloudOcclusion=true",fps_benchmark.graphics_java_options())
     def test_native_transform_is_required(self):
         with self.assertRaises(AssertionError): ci.require_weight_reuse("")
-        self.assertTrue(ci.require_weight_reuse("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_REUSE program=composite1\nSIMPLY_MIRRORS_VOLUMETRIC_SHADOW_RAY program=composite1\nSIMPLY_MIRRORS_VOLUMETRIC_REFLECTION_SCOPE program=composite1")["applied"])
+        self.assertTrue(ci.require_weight_reuse("SIMPLY_MIRRORS_CLOUD_OCCLUSION program=deferred1")["applied"])

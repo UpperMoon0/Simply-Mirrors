@@ -47,6 +47,7 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
             (" -Dsimplymirrors.frustumCrop=true" if frustum_crop else "") +
             (" -Dsimplymirrors.apertureCull=true" if aperture_cull else "") +
             (" -Dsimplymirrors.shaderVolumetricWeightReuse=true" if shader_volumetric_weight_reuse else "") +
+            (" -Dsimplymirrors.shaderCloudOcclusion=true" if os.environ.get("SIMPLY_MIRRORS_CLOUD_OCCLUSION") == "1" else "") +
             (" -Dsimplymirrors.shaderVolumetricShadowRay=true" if shader_volumetric_shadow_ray else "") +
             (" -Dsimplymirrors.fpsCameraMotion=true" if camera_motion else "") +
             (" -Dsimplymirrors.reflectionOutputScissor=true" if output_scissor else "") +
@@ -590,6 +591,7 @@ def run_benchmark():
             "shaderFinalDualCropEnabled": args.shader_final_dual_crop,
             "shaderFinalFragmentGuardEnabled": args.shader_final_fragment_guard,
             "shaderVolumetricWeightReuseEnabled": args.shader_volumetric_weight_reuse,
+            "shaderCloudOcclusionEnabled": os.environ.get("SIMPLY_MIRRORS_CLOUD_OCCLUSION") == "1",
             "shaderVolumetricShadowRayEnabled": args.shader_volumetric_shadow_ray,
             "directGameLaunchEnabled": args.direct_game_launch,
             "stages": comparison,
