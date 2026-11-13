@@ -21,7 +21,7 @@ def benchmark_command(label: str, name: str) -> list[str]:
     result = [
         sys.executable, "tools/fps_benchmark.py", "--target", TARGET,
         "--width", "1920", "--height", "1080", "--render-distance", "12",
-        "--rounds", "1", "--profile-gpu", "--moving-camera",
+        "--rounds", "1", "--profile-gpu", "--moving-camera", "--direct-game-launch",
         "--startup-timeout", "1800", "--rcon-timeout", "90",
         "--shader-cache", str((ROOT / "build/shader-dependencies").resolve()),
         "--run-name", name, "--shader-tail-crop", "--history-copy-image",
@@ -46,6 +46,7 @@ def verify_settings(summary: dict, label: str) -> None:
         "resolution": "1920x1080",
         "renderDistance": 12,
         "movingCameraEnabled": True,
+        "directGameLaunchEnabled": True,
     }
     mismatch = {key: (summary.get(key), value)
                 for key, value in required.items() if summary.get(key) != value}

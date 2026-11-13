@@ -76,7 +76,8 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
                                    expected_width: int = 1920,
                                    expected_height: int = 1080,
                                    aperture_cull: bool = False,
-                                  shader_volumetric_weight_reuse: bool = False) -> subprocess.Popen:
+                                  shader_volumetric_weight_reuse: bool = False,
+                                  launch_environment: dict | None = None) -> subprocess.Popen:
     """Launch directly under the verified restricted Windows graphics worker.
 
     Never query an interactive user's WTS token or use CreateProcessAsUser.
@@ -87,6 +88,8 @@ def start_private_graphics_client(command: list[str], work: Path, log_path: Path
     if not Path(java_home, "bin", "java.exe").is_file():
         raise RuntimeError("Verified Java home is missing")
     env = os.environ.copy()
+    if launch_environment:
+        env.update(launch_environment)
     env["JAVA_HOME"] = java_home
     env["PATH"] = str(Path(java_home) / "bin") + os.pathsep + env.get("PATH", "")
     env["JAVA_TOOL_OPTIONS"] = (java_tool_options if java_tool_options is not None else
@@ -262,6 +265,8 @@ def run_benchmark():
                         help="Experimental pinned composite SSR producer crop; disabled by default")
     parser.add_argument("--shader-final-dual-crop", action="store_true",
                         help="Experimental two-region final shader crop retaining origin SSBO reset; default off")
+    parser.add_argument("--direct-game-launch", action="store_true",
+                        help="Exit Gradle before starting the exact exported game JVMs")
     parser.add_argument("--shader-volumetric-weight-reuse", action="store_true",
                         help="Reuse exact preceding volumetric fog weight; default off")
     parser.add_argument("--shader-final-fragment-guard", action="store_true",
@@ -362,10 +367,24 @@ def run_benchmark():
         env["JAVA_HOME"] = args.java_home
         env["GRADLE_USER_HOME"] = r"D:\DevCaches\.gradle"
         env["PATH"] = str(Path(args.java_home) / "bin") + os.pathsep + env.get("PATH", "")
+        server_command = base + ["-PmirrorsShaderStack=off", ":forge-1.20.1:runVisualServer"]
+        client_command = base + ["-PmirrorsShaderStack=" + str(args.shader_cache.resolve()),
+                                 ":forge-1.20.1:runVisualClient"]
+        server_work = client_work = root
+        client_environment = {}
+        if args.direct_game_launch:
+            from native_visual_launch import export_launch
+            server_command, server_work, server_environment = export_launch(
+                server_command, root, evidence / "server-launch.json",
+                evidence / "server-prepare.log", env, args.startup_timeout)
+            client_command, client_work, client_environment = export_launch(
+                client_command, root, evidence / "client-launch.json",
+                evidence / "client-prepare.log", env, args.startup_timeout)
+            env.update(server_environment)
         with server_log.open("w", encoding="utf-8") as stream:
             server = subprocess.Popen(
-                base + ["-PmirrorsShaderStack=off", ":forge-1.20.1:runVisualServer"],
-                cwd=root, stdout=stream, stderr=subprocess.STDOUT,
+                server_command,
+                cwd=server_work, stdout=stream, stderr=subprocess.STDOUT,
                 creationflags=subprocess.CREATE_NO_WINDOW, env=env)
         print("FPS_STAGE server starting", flush=True)
         until = time.monotonic() + args.startup_timeout
@@ -394,14 +413,12 @@ def run_benchmark():
                                           "white_concrete")
             require_command(rcon, command)
         system_gpu(evidence, "before")
-        client_command = base + ["-PmirrorsShaderStack=" + str(args.shader_cache.resolve()),
-                                 ":forge-1.20.1:runVisualClient"]
         # Only a fresh initial login disconnection may be retried, once.
         # Never retry shader validation, missing reflections or a bad capture.
         joined = False
         for attempt in range(2):
             client_process = start_private_graphics_client(
-                client_command, root, client_log, args.java_home, args.profile_gpu,
+                client_command, client_work, client_log, args.java_home, args.profile_gpu,
                 not args.disable_coverage_scissor, frustum_crop=args.enable_frustum_crop,
                 camera_motion=args.moving_camera,
                 output_scissor=args.reflection_output_scissor,
@@ -414,7 +431,8 @@ def run_benchmark():
                 shader_final_fragment_guard=args.shader_final_fragment_guard,
                 expected_width=args.width, expected_height=args.height,
                 aperture_cull=args.aperture_cull,
-                shader_volumetric_weight_reuse=args.shader_volumetric_weight_reuse)
+                shader_volumetric_weight_reuse=args.shader_volumetric_weight_reuse,
+                launch_environment=client_environment)
             print("FPS_STAGE client launched private-GPU attempt=" + str(attempt + 1) +
                   " PID=" + str(client_process.pid), flush=True)
             deadline = time.monotonic() + args.startup_timeout
@@ -566,6 +584,7 @@ def run_benchmark():
             "shaderFinalDualCropEnabled": args.shader_final_dual_crop,
             "shaderFinalFragmentGuardEnabled": args.shader_final_fragment_guard,
             "shaderVolumetricWeightReuseEnabled": args.shader_volumetric_weight_reuse,
+            "directGameLaunchEnabled": args.direct_game_launch,
             "stages": comparison,
             "rounds": rounds,
             "imageChecks": checks,

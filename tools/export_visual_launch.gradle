@@ -1,0 +1,59 @@
+// Export the pinned Loom JavaExec invocation after its build dependencies finish.
+// The game is launched later, after this Gradle JVM has exited, to avoid keeping
+// two build daemons resident on the 16 GiB native GPU worker.
+import groovy.json.JsonOutput
+import org.gradle.api.tasks.StopExecutionException
+
+gradle.projectsEvaluated {
+    if (gradle.parent != null) return
+    def output = gradle.startParameter.projectProperties['visualLaunchManifest']
+    if (!output) throw new GradleException('visualLaunchManifest is required')
+    def tasks = gradle.startParameter.taskNames
+    if (tasks.size()!=1 || !(tasks[0] in [':forge-1.20.1:runVisualServer', ':forge-1.20.1:runVisualClient']))
+        throw new GradleException('Only the pinned Forge visual launch may be exported: '+tasks)
+    def project = gradle.rootProject.project(':forge-1.20.1')
+    def task = project.tasks.getByName(tasks[0].tokenize(':').last())
+    task.doFirst {
+        // Loom configures cwd and its tiny run-specific environment inside exec().
+        // Read those same provider values without executing JavaExec's fork.
+        def internal = { String name ->
+            Class type = task.class
+            while(type != null) {
+                try {
+                    def method=type.getDeclaredMethod(name)
+                    method.setAccessible(true)
+                    return method.invoke(task).get()
+                } catch (NoSuchMethodException ignored) { type=type.superclass }
+            }
+            throw new GradleException('Pinned Loom launch provider missing: '+name)
+        }
+        def runEnv=internal('getInternalEnvironmentVars')
+        if (!runEnv.keySet().every { it in ['MOD_CLASSES', 'MCP_MAPPINGS'] })
+            throw new GradleException('Unexpected Loom launch environment key names: '+runEnv.keySet().sort())
+        def jvm=(task.allJvmArgs + task.jvmArguments.getOrElse([]) + task.jvmArgumentProviders.collectMany { it.asArguments() }).collect { it.toString() }
+        // Replace only Loom's classpath argument file with the same full classpath.
+        // This permits one Java launcher argfile without nested @file expansion.
+        def loomClasspathFile=new File(internal('getArgFilePath').toString()).absolutePath
+        jvm=jvm.findAll { it != '@'+loomClasspathFile }
+        if(jvm.any { it.startsWith('@') })
+            throw new GradleException('Unexpected nested JVM argument file')
+        def command=jvm+['-classpath', task.classpath.asPath, task.mainClass.get()]+task.args+task.argumentProviders.collectMany { it.asArguments() }
+        def manifest=[schema:1, java:task.javaLauncher.get().executablePath.asFile.absolutePath,
+                      cwd:new File(project.projectDir,internal('getInternalRunDir').toString()).absolutePath,
+                      arguments:command, environment:runEnv]
+        def destination=new File(output)
+        destination.parentFile.mkdirs()
+        destination.setText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)),'UTF-8')
+        logger.lifecycle('SIMPLY_MIRRORS_VISUAL_LAUNCH_EXPORTED '+task.name)
+        throw new StopExecutionException()
+    }
+    // Preserve run-configuration preparation actions and export immediately
+    // before the pinned JavaExec task action. Expand lazy JVM arguments above.
+    def exportAction=task.actions.remove(0)
+    def execIndices=task.actions.withIndex().findAll { action,index ->
+        action.class.name.endsWith('StandardTaskAction')
+    }.collect { action,index -> index }
+    if(execIndices.size()!=1)
+        throw new GradleException('Unexpected pinned JavaExec action sequence: '+task.actions.collect { it.class.name })
+    task.actions.add(execIndices[0],exportAction)
+}
