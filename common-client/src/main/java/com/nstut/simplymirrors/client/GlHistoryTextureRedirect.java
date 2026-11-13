@@ -17,6 +17,8 @@ import static org.lwjgl.opengl.GL42.*;
 final class GlHistoryTextureRedirect implements AutoCloseable {
     private static GlHistoryTextureRedirect current;
     private static boolean reported;
+    private static boolean lazyReported;
+    private static final boolean LAZY_CLEAR = Boolean.getBoolean("simplymirrors.lazyHistoryClear");
     private final java.util.Set<Integer> units=new java.util.LinkedHashSet<Integer>();
     private final java.util.Set<Integer> imageUnits=new java.util.LinkedHashSet<Integer>();
     private static final ArrayDeque<Storage> FREE = new ArrayDeque<Storage>();
@@ -64,6 +66,7 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
                 boolean anisotropic=org.lwjgl.opengl.GL.getCapabilities().GL_EXT_texture_filter_anisotropic;
                 float anisotropy=anisotropic?glGetTexParameterf(GL_TEXTURE_2D,34046):1;
                 Storage scratch=take(format,width,height,type,widths,heights);
+                scratch.cleared=false;
                 lease.images.put(original,scratch);
                 glBindTexture(GL_TEXTURE_2D,scratch.id);
                 for(int i=0;i<names.length;i++)glTexParameteri(GL_TEXTURE_2D,names[i],values[i]);
@@ -73,12 +76,7 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
                 glTexParameterfv(GL_TEXTURE_2D,GL_TEXTURE_BORDER_COLOR,border);
                 glTexParameteriv(GL_TEXTURE_2D,GL_TEXTURE_SWIZZLE_RGBA,swizzle);
                 if(anisotropic)glTexParameterf(GL_TEXTURE_2D,34046,anisotropy);
-                for(int level=0;level<levels;level++) {
-                    if(widths[level]==0 || heights[level]==0)continue;
-                    if(type==GL_INT)org.lwjgl.opengl.GL44.glClearTexImage(scratch.id,level,GL_RGBA_INTEGER,GL_INT,new int[4]);
-                    else if(type==GL_UNSIGNED_INT)org.lwjgl.opengl.GL44.glClearTexImage(scratch.id,level,GL_RGBA_INTEGER,GL_UNSIGNED_INT,new int[4]);
-                    else org.lwjgl.opengl.GL44.glClearTexImage(scratch.id,level,GL_RGBA,GL_FLOAT,new float[4]);
-                }
+                if(!LAZY_CLEAR)clear(scratch);
             }
             current=lease;
             return lease;
@@ -90,11 +88,17 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
         }
     }
 
-    static int map(int original) {return current==null?original:current.texture(original);}
+    // Parameter-only DSA calls do not read image contents. In particular,
+    // Oculus resets filters for every target after the final draw.
+    static int map(int original) {
+        Storage s=current==null?null:current.images.get(original);
+        return s==null?original:s.id;
+    }
+    static int content(int original) {return current==null?original:current.texture(original);}
     static boolean active(){return current!=null;}
     static void boundFramebuffer(int framebuffer){if(current!=null)current.framebuffer(framebuffer);}
     static int bind(int target,int unit,int original) {
-        int mapped=map(original);
+        int mapped=target==GL_TEXTURE_2D?content(original):map(original);
         if(current!=null && target==GL_TEXTURE_2D && mapped!=original)current.units.add(unit);
         return mapped;
     }
@@ -102,7 +106,7 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
         return bind(GL_TEXTURE_2D,glGetInteger(GL_ACTIVE_TEXTURE)-GL_TEXTURE0,original);
     }
     static int bindImage(int unit,int original) {
-        int mapped=map(original);
+        int mapped=content(original);
         if(current!=null && mapped!=original)current.imageUnits.add(unit);
         return mapped;
     }
@@ -113,7 +117,27 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
     }
     int texture(int original) {
         Storage scratch=closed?null:images.get(original);
+        if(scratch!=null)clear(scratch);
         return scratch==null?original:scratch.id;
+    }
+
+    /** Clear before the first possible read OR partial write. Untouched private
+     * images have no consumer and need no bandwidth-consuming initialization.
+     * Every allocated mip still gets the exact original clear when used.
+     */
+    private static void clear(Storage scratch) {
+        if(scratch.cleared)return;
+        int unpack=LAZY_CLEAR?glGetInteger(GL_PIXEL_UNPACK_BUFFER_BINDING):0;
+        try {
+            if(LAZY_CLEAR)glBindBuffer(GL_PIXEL_UNPACK_BUFFER,0);
+            for(int level=0;level<scratch.widths.length;level++) {
+                if(scratch.widths[level]==0 || scratch.heights[level]==0)continue;
+                if(scratch.type==GL_INT)org.lwjgl.opengl.GL44.glClearTexImage(scratch.id,level,GL_RGBA_INTEGER,GL_INT,new int[4]);
+                else if(scratch.type==GL_UNSIGNED_INT)org.lwjgl.opengl.GL44.glClearTexImage(scratch.id,level,GL_RGBA_INTEGER,GL_UNSIGNED_INT,new int[4]);
+                else org.lwjgl.opengl.GL44.glClearTexImage(scratch.id,level,GL_RGBA,GL_FLOAT,new float[4]);
+            }
+            scratch.cleared=true;
+        } finally {if(LAZY_CLEAR)glBindBuffer(GL_PIXEL_UNPACK_BUFFER,unpack);}
     }
 
     /** Reattach cached Iris FBOs without mutating Iris's logical attachment map. */
@@ -130,6 +154,7 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
                 int original=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,point,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
                 Storage scratch=images.get(original);
                 if(scratch==null)continue;
+                clear(scratch);
                 int level=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,point,GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL);
                 int face=glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER,point,GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE);
                 if(face!=0)throw new IllegalStateException("Non-2D history attachment");
@@ -143,6 +168,12 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
     @Override public void close() {
         if(closed)return;closed=true;
         if(current==this)current=null;
+        if(LAZY_CLEAR && !lazyReported && !units.isEmpty() && !attachments.isEmpty()) {
+            int initialized=0;
+            for(Storage s:images.values())if(s.cleared)initialized++;
+            System.out.println("SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR initialized="+initialized+" total="+images.size());
+            lazyReported=true;
+        }
         if(!reported && !units.isEmpty() && !attachments.isEmpty()) {
             System.out.println("SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE textures="+images.size()+" units="+units.size()+" attachments="+attachments.size());
             reported=true;
@@ -193,7 +224,7 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
                     type==GL_INT || type==GL_UNSIGNED_INT?GL_RGBA_INTEGER:GL_RGBA,
                     type==GL_INT?GL_INT:type==GL_UNSIGNED_INT?GL_UNSIGNED_INT:GL_FLOAT,(ByteBuffer)null);
             }
-            return new Storage(id,format,width,height,widths.clone(),heights.clone());
+            return new Storage(id,format,width,height,type,widths.clone(),heights.clone());
         } catch(RuntimeException | Error failure) {glDeleteTextures(id);throw failure;}
     }
     private static void give(Storage storage) {
@@ -208,9 +239,11 @@ final class GlHistoryTextureRedirect implements AutoCloseable {
         cachedBytes=0;
     }
     private static final class Storage {
-        final int id,format,width,height;final int[] widths,heights;final long bytes;
-        Storage(int id,int format,int width,int height,int[] widths,int[] heights) {
+        final int id,format,width,height,type;final int[] widths,heights;final long bytes;
+        boolean cleared;
+        Storage(int id,int format,int width,int height,int type,int[] widths,int[] heights) {
             this.id=id;this.format=format;this.width=width;this.height=height;this.widths=widths;this.heights=heights;
+            this.type=type;
             long count=0;for(int i=0;i<widths.length;i++)count+=(long)widths[i]*heights[i];bytes=count*16;
         }
     }

@@ -23,12 +23,20 @@ class VolumetricWeightTest(unittest.TestCase):
         with self.assertRaises(AssertionError): ci.require_weight_reuse("")
         history="SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE textures=8 units=8 attachments=12"
         with self.assertRaises(AssertionError): ci.require_weight_reuse(history)
-        self.assertTrue(ci.require_weight_reuse(history+"\nSIMPLY_MIRRORS_DISCARD_FINAL_HISTORY copies=3")["applied"])
+        copied=history+"\nSIMPLY_MIRRORS_DISCARD_FINAL_HISTORY copies=3"
+        with self.assertRaises(AssertionError): ci.require_weight_reuse(copied)
+        with self.assertRaises(AssertionError): ci.require_weight_reuse(copied+"\nSIMPLY_MIRRORS_LAZY_HISTORY_CLEAR initialized=10 total=10")
+        self.assertTrue(ci.require_weight_reuse(copied+"\nSIMPLY_MIRRORS_LAZY_HISTORY_CLEAR initialized=8 total=10")["applied"])
     def test_final_history_discard_is_opt_in(self):
         with patch.dict(os.environ,{"SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY":"0"}):
             self.assertNotIn("discardFinalHistory=true",fps_benchmark.graphics_java_options())
         with patch.dict(os.environ,{"SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY":"1"}):
             self.assertIn("discardFinalHistory=true",fps_benchmark.graphics_java_options())
+    def test_lazy_clear_is_opt_in(self):
+        with patch.dict(os.environ,{"SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR":"0"}):
+            self.assertNotIn("lazyHistoryClear=true",fps_benchmark.graphics_java_options())
+        with patch.dict(os.environ,{"SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR":"1"}):
+            self.assertIn("lazyHistoryClear=true",fps_benchmark.graphics_java_options())
 
     def acceptance_pairs(self, control, trial, improvement=3.5):
         def stages(capture, world, restore):

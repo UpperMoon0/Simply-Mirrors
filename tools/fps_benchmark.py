@@ -50,6 +50,7 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
             (" -Dsimplymirrors.shaderCloudOcclusion=true" if os.environ.get("SIMPLY_MIRRORS_CLOUD_OCCLUSION") == "1" else "") +
             (" -Dsimplymirrors.historyTextureRedirect=true" if os.environ.get("SIMPLY_MIRRORS_HISTORY_REDIRECT") == "1" else "") +
             (" -Dsimplymirrors.discardFinalHistory=true" if os.environ.get("SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY") == "1" else "") +
+            (" -Dsimplymirrors.lazyHistoryClear=true" if os.environ.get("SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR") == "1" else "") +
             (" -Dsimplymirrors.shaderVolumetricShadowRay=true" if shader_volumetric_shadow_ray else "") +
             (" -Dsimplymirrors.fpsCameraMotion=true" if camera_motion else "") +
             (" -Dsimplymirrors.reflectionOutputScissor=true" if output_scissor else "") +
@@ -596,6 +597,7 @@ def run_benchmark():
             "shaderCloudOcclusionEnabled": os.environ.get("SIMPLY_MIRRORS_CLOUD_OCCLUSION") == "1",
             "historyTextureRedirectEnabled": os.environ.get("SIMPLY_MIRRORS_HISTORY_REDIRECT") == "1",
             "discardFinalHistoryEnabled": os.environ.get("SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY") == "1",
+            "lazyHistoryClearEnabled": os.environ.get("SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR") == "1",
             "shaderVolumetricShadowRayEnabled": args.shader_volumetric_shadow_ray,
             "directGameLaunchEnabled": args.direct_game_launch,
             "stages": comparison,

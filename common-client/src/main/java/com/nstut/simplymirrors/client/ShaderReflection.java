@@ -116,6 +116,7 @@ public final class ShaderReflection {
      * Only active during a scoped mirrored render; Iris remains optional.
      */
     public static int historyTexture(int texture){return GlHistoryTextureRedirect.map(texture);}
+    public static int historyInitializedTexture(int texture){return GlHistoryTextureRedirect.content(texture);}
     public static int historyTextureBinding(int target,int unit,int texture){return GlHistoryTextureRedirect.bind(target,unit,texture);}
     public static int historyCurrentTextureBinding(int texture){
         return GlHistoryTextureRedirect.active()?GlHistoryTextureRedirect.bindCurrent(texture):texture;

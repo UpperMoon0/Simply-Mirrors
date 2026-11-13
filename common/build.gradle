@@ -76,5 +76,6 @@ tasks.register('shaderHistoryRedirectGlTest', JavaExec) {
     dependsOn tasks.named('shaderGlTestClasses')
     classpath = sourceSets.shaderGlTest.runtimeClasspath
     mainClass = 'com.nstut.simplymirrors.client.ShaderHistoryRedirectGlTest'
+    systemProperty 'simplymirrors.lazyHistoryClear', System.getProperty('simplymirrors.lazyHistoryClear', 'false')
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
 }

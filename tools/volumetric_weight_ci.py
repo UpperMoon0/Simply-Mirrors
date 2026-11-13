@@ -1,4 +1,4 @@
-"""Strict native A/B for discarding reflection-only final history copies."""
+"""Strict native A/B for combined zero-copy/disposable/lazy reflection history."""
 from __future__ import annotations
 
 import json
@@ -38,8 +38,9 @@ def verify_settings(summary: dict, label: str) -> None:
         "shaderFinalFragmentGuardEnabled": False,
         "shaderVolumetricWeightReuseEnabled": False,
         "shaderCloudOcclusionEnabled": False,
-        "historyTextureRedirectEnabled": True,
+        "historyTextureRedirectEnabled": expected,
         "discardFinalHistoryEnabled": expected,
+        "lazyHistoryClearEnabled": expected,
         "shaderVolumetricShadowRayEnabled": False,
         "shaderFinalOriginCropEnabled": False,
         "shaderEarlyCompositeCropEnabled": False,
@@ -64,8 +65,12 @@ def require_weight_reuse(logs: str) -> dict:
     copies = re.search(r"SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY copies=(\d+)", logs)
     if copies is None or int(copies[1]) <= 0:
         raise AssertionError("Native final-history copies were not discarded")
+    cleared = re.search(r"SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR initialized=(\d+) total=(\d+)", logs)
+    if cleared is None or not 0 < int(cleared[1]) < int(cleared[2]):
+        raise AssertionError("Lazy history initialization did not eliminate any native clears")
     return {"textures": int(match[1]), "units": int(match[2]), "attachments": int(match[3]),
-            "discardedFinalCopies": int(copies[1]), "applied": True}
+            "discardedFinalCopies": int(copies[1]), "initializedTextures": int(cleared[1]),
+            "totalTextures": int(cleared[2]), "applied": True}
 
 
 
@@ -130,8 +135,9 @@ def run_variant(label: str, index: int, stamp: str,
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_START", label, index, name, flush=True)
     env = os.environ.copy()
     env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "0"
-    env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1"
+    env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1" if label == "trial" else "0"
     env["SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"] = "1" if label == "trial" else "0"
+    env["SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR"] = "1" if label == "trial" else "0"
     result = subprocess.run(benchmark_command(label, name), cwd=ROOT, check=False, env=env)
     if result.returncode:
         raise RuntimeError(f"Native volumetric weight {label} {index} returned {result.returncode}")
@@ -155,7 +161,8 @@ def accept() -> dict:
         raise RuntimeError("Only the trusted private native GPU CI agent can run acceptance")
     # Fail before Minecraft FPS if actual-driver original/mip/filter isolation fails.
     preflight = [str(ROOT / "gradlew.bat"), "-Ptarget=common", ":common:shaderHistoryRedirectGlTest",
-                 "--no-daemon", "--max-workers=1", "-Dorg.gradle.jvmargs=-Xmx512m"]
+                 "--no-daemon", "--max-workers=1", "-Dorg.gradle.jvmargs=-Xmx512m",
+                 "-Dsimplymirrors.lazyHistoryClear=true"]
     preflight_env = os.environ.copy()
     preflight_env.pop("JAVA_TOOL_OPTIONS", None)
     subprocess.run(preflight, cwd=ROOT, env=preflight_env, check=True)

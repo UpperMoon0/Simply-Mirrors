@@ -52,6 +52,9 @@ public final class ShaderHistoryRedirectGlTest {
             for(int iteration=0;iteration<2;iteration++) {
                 int scratch;
                 try(GlHistoryTextureRedirect lease=GlHistoryTextureRedirect.acquire(new int[]{original})) {
+                    // Reused scratch must also initialize before its first FBO
+                    // write, even when no sampler has requested it yet.
+                    if(iteration==1)lease.framebuffer(fbo);
                     scratch=lease.texture(original);
                     if(scratch==original)throw new AssertionError("History not redirected");
                     glBindTexture(GL_TEXTURE_2D,scratch);
