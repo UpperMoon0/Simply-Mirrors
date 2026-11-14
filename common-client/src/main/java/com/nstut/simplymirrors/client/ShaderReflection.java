@@ -140,6 +140,21 @@ public final class ShaderReflection {
         }
     }
     private static boolean cloudRayReported;
+    private static boolean blurRejectionReported;
+    public static int beginReflectionBlurPass() {
+        if (MirrorRenderer.redirect==null || !Boolean.getBoolean("simplymirrors.shaderReflectionBlurRejection")) return -1;
+        int program=glGetInteger(GL_CURRENT_PROGRAM);
+        if(program==0)return -1;
+        int uniform=location(program,"simplymirrors_ReflectionBlurRejection");
+        if(uniform>=0) {
+            glUniform1i(uniform,1);
+            if(!blurRejectionReported) {
+                System.out.println("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION_ACTIVE");
+                blurRejectionReported=true;
+            }
+        }
+        return uniform;
+    }
     public static int beginCloudPass() {
         if (MirrorRenderer.redirect==null || !Boolean.getBoolean("simplymirrors.shaderCloudOcclusion")) return -1;
         int program=glGetInteger(GL_CURRENT_PROGRAM);

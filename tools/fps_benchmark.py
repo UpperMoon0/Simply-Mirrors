@@ -47,6 +47,7 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
             (" -Dsimplymirrors.frustumCrop=true" if frustum_crop else "") +
             (" -Dsimplymirrors.apertureCull=true" if aperture_cull else "") +
             (" -Dsimplymirrors.shaderVolumetricWeightReuse=true" if shader_volumetric_weight_reuse else "") +
+            (" -Dsimplymirrors.shaderReflectionBlurRejection=true" if os.environ.get("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION") == "1" else "") +
             (" -Dsimplymirrors.shaderCloudOcclusion=true" if os.environ.get("SIMPLY_MIRRORS_CLOUD_OCCLUSION") == "1" else "") +
             (" -Dsimplymirrors.historyTextureRedirect=true" if os.environ.get("SIMPLY_MIRRORS_HISTORY_REDIRECT") == "1" else "") +
             (" -Dsimplymirrors.discardFinalHistory=true" if os.environ.get("SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY") == "1" else "") +
@@ -598,6 +599,7 @@ def run_benchmark():
             "shaderFinalDualCropEnabled": args.shader_final_dual_crop,
             "shaderFinalFragmentGuardEnabled": args.shader_final_fragment_guard,
             "shaderVolumetricWeightReuseEnabled": args.shader_volumetric_weight_reuse,
+            "shaderReflectionBlurRejectionEnabled": os.environ.get("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION") == "1",
             "shaderCloudOcclusionEnabled": os.environ.get("SIMPLY_MIRRORS_CLOUD_OCCLUSION") == "1",
             "historyTextureRedirectEnabled": os.environ.get("SIMPLY_MIRRORS_HISTORY_REDIRECT") == "1",
             "discardFinalHistoryEnabled": os.environ.get("SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY") == "1",

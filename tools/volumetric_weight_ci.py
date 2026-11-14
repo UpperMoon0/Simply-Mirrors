@@ -1,4 +1,4 @@
-"""Strict native A/B for combined history redirection and monotonic cloud ray exit."""
+"""Strict native A/B for reflection blur rejection with the accepted history path."""
 from __future__ import annotations
 
 import json
@@ -26,7 +26,7 @@ def benchmark_command(label: str, name: str) -> list[str]:
         "--shader-cache", str((ROOT / "build/shader-dependencies").resolve()),
         "--run-name", name, "--shader-tail-crop", "--history-copy-image",
     ]
-    # Isolate the new ray-loop exit: both arms retain the winning history path.
+    # Isolate blur tap rejection: both arms retain the winning history path.
     # Rejected lazy clearing and volumetric arithmetic stay disabled.
     return result
 
@@ -38,7 +38,8 @@ def verify_settings(summary: dict, label: str) -> None:
         "historyCopyImageEnabled": True,
         "shaderFinalFragmentGuardEnabled": False,
         "shaderVolumetricWeightReuseEnabled": False,
-        "shaderCloudOcclusionEnabled": expected,
+        "shaderCloudOcclusionEnabled": False,
+        "shaderReflectionBlurRejectionEnabled": expected,
         "historyTextureRedirectEnabled": True,
         "discardFinalHistoryEnabled": True,
         "lazyHistoryClearEnabled": False,
@@ -66,11 +67,11 @@ def require_weight_reuse(logs: str) -> dict:
     copies = re.search(r"SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY copies=(\d+)", logs)
     if copies is None or int(copies[1]) <= 0:
         raise AssertionError("Native final-history copies were not discarded")
-    if ("SIMPLY_MIRRORS_CLOUD_OCCLUSION program=deferred1" not in logs or
-            "SIMPLY_MIRRORS_CLOUD_RAY_EXIT_ACTIVE" not in logs):
-        raise AssertionError("Native cloud-ray loop exit was not applied")
+    if ("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION program=composite1" not in logs or
+            "SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION_ACTIVE" not in logs):
+        raise AssertionError("Native reflection blur rejection was not applied")
     return {"textures": int(match[1]), "units": int(match[2]), "attachments": int(match[3]),
-            "discardedFinalCopies": int(copies[1]), "cloudRayExit": True, "applied": True}
+            "discardedFinalCopies": int(copies[1]), "reflectionBlurRejection": True, "applied": True}
 
 
 
@@ -135,7 +136,8 @@ def run_variant(label: str, index: int, stamp: str,
     name = f"fps-volumetric-weight-{stamp}-{label}-{index}{suffix}"
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_START", label, index, name, flush=True)
     env = os.environ.copy()
-    env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "1" if label == "trial" else "0"
+    env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "0"
+    env["SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION"] = "1" if label == "trial" else "0"
     env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1"
     env["SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"] = "1"
     env["SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR"] = "0"

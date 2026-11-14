@@ -25,6 +25,7 @@ public abstract class IrisFullscreenMixin {
     @Unique private int simplymirrors$finalFragmentGuardLocation = -1;
     @Unique private int simplymirrors$volumetricLocation = -1;
     @Unique private int simplymirrors$cloudLocation = -1;
+    @Unique private int simplymirrors$blurLocation = -1;
     @Unique private final int[] simplymirrors$scissorBox = new int[4];
     @Inject(method="renderQuad",at=@At("HEAD"),require=0)
     private void simplymirrors$screenQuad(CallbackInfo ci) {
@@ -32,11 +33,14 @@ public abstract class IrisFullscreenMixin {
         simplymirrors$finalFragmentGuardLocation=ReflectionScissor.beginFinalFragmentGuard();
         simplymirrors$volumetricLocation=ShaderReflection.beginVolumetricPass();
         simplymirrors$cloudLocation=ShaderReflection.beginCloudPass();
+        simplymirrors$blurLocation=ShaderReflection.beginReflectionBlurPass();
         ShaderQuadGpuProfiler.begin();
     }
     @Inject(method="renderQuad",at=@At("RETURN"),require=0)
     private void simplymirrors$quadGpuEnd(CallbackInfo ci) {
         ShaderQuadGpuProfiler.end();
+        ShaderReflection.endVolumetricPass(simplymirrors$blurLocation);
+        simplymirrors$blurLocation=-1;
         ShaderReflection.endVolumetricPass(simplymirrors$cloudLocation);
         simplymirrors$cloudLocation=-1;
         ShaderReflection.endVolumetricPass(simplymirrors$volumetricLocation);
