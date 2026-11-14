@@ -6,6 +6,13 @@ def port = providers.gradleProperty('visualPort').get()
 def visualWidth = providers.gradleProperty('visualWidth').orElse('960').get()
 def visualHeight = providers.gradleProperty('visualHeight').orElse('540').get()
 def runName = providers.gradleProperty('visualRunName').orElse('visual').get()
+def visualClientHeap = providers.gradleProperty('visualClientHeapMb').orElse('2048').get()
+def visualServerHeap = providers.gradleProperty('visualServerHeapMb').orElse('1024').get()
+for (heap in [visualClientHeap, visualServerHeap]) {
+    if (!(heap ==~ /[0-9]+/) || heap.toInteger() < 512 || heap.toInteger() > 8192) {
+        throw new GradleException('Visual heap must be between 512 and 8192 MiB')
+    }
+}
 if (!(runName ==~ /[a-z0-9-]+/)) throw new GradleException('Invalid visual run name')
 logger.lifecycle("Visual target: ${mc}/${loader}")
 layout.buildDirectory = file('build/visual')
@@ -72,13 +79,13 @@ if (mc == '1.16.5' && loader == 'forge') {
             runDir("run/${runName}-client")
             property 'simplymirrors.visualTest', 'true'
             property 'simplymirrors.visualPort', port
-            vmArg '-Xmx2048m'
+            vmArg "-Xmx${visualClientHeap}m"
             programArgs '--width', visualWidth, '--height', visualHeight
         }
         visualServer {
             server()
             runDir("run/${runName}-server")
-            vmArg '-Xmx1024m'
+            vmArg "-Xmx${visualServerHeap}m"
             programArg 'nogui'
         }
     }

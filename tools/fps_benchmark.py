@@ -362,10 +362,14 @@ def run_benchmark():
             f"-PvisualRunName={args.run_name}",
             f"-PvisualWidth={args.width}",
             f"-PvisualHeight={args.height}",
+            # Both A/B arms use identical heaps. Native #113 exhausted physical
+            # memory; reduce only benchmark-owned heaps, preserving the scene.
+            "-PvisualClientHeapMb=1536",
+            "-PvisualServerHeapMb=512",
             "--no-daemon", "--console=plain", "--max-workers=1",
-            # Two Gradle launchers remain alive beside the isolated game JVMs.
-            # Bound build-tool overhead on the 16 GiB native worker; keep both
-            # game heaps and all rendering/acceptance settings unchanged.
+            # Bound legacy Gradle launchers beside the isolated game JVMs.
+            # Bound build-tool overhead on the 16 GiB native worker; game heaps
+            # are configured above; rendering and acceptance settings stay fixed.
             "-Dorg.gradle.jvmargs=-Xmx512m",
         ]
         gradle = str(root / "gradlew.bat")
