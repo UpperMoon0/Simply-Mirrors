@@ -362,10 +362,10 @@ def run_benchmark():
             f"-PvisualRunName={args.run_name}",
             f"-PvisualWidth={args.width}",
             f"-PvisualHeight={args.height}",
-            # Both A/B arms use identical heaps. Native #113 exhausted physical
-            # memory; reduce only benchmark-owned heaps, preserving the scene.
+            # Both A/B arms use identical heaps. Retain the 1024 MiB server
+            # after native #115 exhausted 512 MiB during startup.
             "-PvisualClientHeapMb=1536",
-            "-PvisualServerHeapMb=512",
+            "-PvisualServerHeapMb=1024",
             "--no-daemon", "--console=plain", "--max-workers=1",
             # Bound legacy Gradle launchers beside the isolated game JVMs.
             # Bound build-tool overhead on the 16 GiB native worker; game heaps
