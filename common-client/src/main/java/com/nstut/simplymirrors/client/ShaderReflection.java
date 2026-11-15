@@ -147,6 +147,27 @@ public final class ShaderReflection {
         if(program==0)return -1;
         int uniform=location(program,"simplymirrors_ReflectionBlurRejection");
         if(uniform>=0) {
+            int samplerLocation=location(program,"colortex7");
+            if(samplerLocation<0)return -1;
+            int unit=glGetUniformi(program,samplerLocation);
+            int sampler=glGetIntegeri(GL_SAMPLER_BINDING,unit);
+            int filter, magnification;
+            if(sampler!=0) {
+                filter=glGetSamplerParameteri(sampler,GL_TEXTURE_MIN_FILTER);
+                magnification=glGetSamplerParameteri(sampler,GL_TEXTURE_MAG_FILTER);
+            }
+            else {
+                int activeTexture=glGetInteger(GL_ACTIVE_TEXTURE);
+                glActiveTexture(GL_TEXTURE0+unit);
+                try {
+                    filter=glGetTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER);
+                    magnification=glGetTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER);
+                }
+                finally { glActiveTexture(activeTexture); }
+            }
+            // Explicit level zero is equivalent only when min/mag filters agree
+            // and neither filter selects a mip level. Otherwise use the original.
+            if((filter!=GL_LINEAR && filter!=GL_NEAREST) || filter!=magnification)return -1;
             glUniform1i(uniform,1);
             if(!blurRejectionReported) {
                 System.out.println("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION_ACTIVE");

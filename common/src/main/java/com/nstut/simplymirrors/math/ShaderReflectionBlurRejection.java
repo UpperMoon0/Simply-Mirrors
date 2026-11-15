@@ -36,13 +36,12 @@ public final class ShaderReflectionBlurRejection {
         Matcher color=Pattern.compile("vec4\\s+sampleCol\\s*=\\s*texture(?:2D)?\\s*\\(\\s*colortex7\\s*,\\s*sampleCoord\\s*\\)\\s*;").matcher(body);
         Matcher sum=Pattern.compile("sum\\s*\\+=\\s*sampleCol\\s*\\*\\s*weight\\s*;").matcher(body);
         if(!color.find() || !sum.find() || color.end()>=sum.start() || !body.contains("texture1Sample") || !body.contains("continue;"))return source;
-        // Derivatives must be evaluated before divergent rejection, preserving
-        // the original implicit LOD even where adjacent lanes reject a tap.
+        // Enabled only when the draw's actual colortex7 sampler is non-mipmapped.
+        // Sampling level zero then preserves texture2D's result without gradients
+        // and removes the explicit gradient work suspected in native #120.
         String optimized=body.substring(0,color.start())
-            +"vec2 simplymirrors_TapDx = dFdx(sampleCoord);\n"
-            +"vec2 simplymirrors_TapDy = dFdy(sampleCoord);\n"
             +body.substring(color.end(),sum.start())
-            +"vec4 sampleCol = textureGrad(colortex7, sampleCoord, simplymirrors_TapDx, simplymirrors_TapDy);\n"
+            +"vec4 sampleCol = textureLod(colortex7, sampleCoord, 0.0);\n"
             +body.substring(sum.start());
         int optimizedOpen=optimized.indexOf('{');
         optimized=optimized.substring(0,optimizedOpen+1)
