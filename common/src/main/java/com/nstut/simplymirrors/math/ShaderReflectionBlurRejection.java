@@ -43,6 +43,7 @@ public final class ShaderReflectionBlurRejection {
             +body.substring(color.end(),sum.start())
             +"vec4 sampleCol = textureLod(colortex7, sampleCoord, 0.0);\n"
             +body.substring(sum.start());
+        optimized = unrollFixedTaps(optimized);
         int optimizedOpen=optimized.indexOf('{');
         optimized=optimized.substring(0,optimizedOpen+1)
             +"\nif (!"+UNIFORM+") return simplymirrors_MainReflectionBlur(centerCol,nViewPos,dither,z0);\n"
@@ -50,4 +51,27 @@ public final class ShaderReflectionBlurRejection {
         String baseline=body.replaceFirst("sampleBlurFilteredReflection","simplymirrors_MainReflectionBlur");
         return source.substring(0,start)+"uniform bool "+UNIFORM+";\n"+baseline+"\n"+optimized+source.substring(end);
     }
+    // Expand the pinned fixed kernel without changing sample order or count.
+    // A single-iteration loop keeps each tap's continue local to that tap.
+    private static String unrollFixedTaps(String body) {
+        Matcher loops=Pattern.compile("for\\s*\\(int dy = -k; dy <= k; dy\\+\\+\\)\\s*\\{\\s*for\\s*\\(int dx = -k; dx <= k; dx\\+\\+\\)\\s*\\{").matcher(body);
+        if (!body.contains("int k = 2;") || !loops.find()) return body;
+        int start=loops.start(), inner=loops.end(), end=inner, depth=1;
+        for (; end<body.length() && depth>0; end++) {
+            char c=body.charAt(end);
+            if(c=='{') depth++; else if(c=='}') depth--;
+        }
+        if(depth!=0) return body;
+        String tap=body.substring(inner,end-1);
+        int outer=end;
+        while(outer<body.length() && Character.isWhitespace(body.charAt(outer))) outer++;
+        if(outer>=body.length() || body.charAt(outer)!='}') return body;
+        StringBuilder expanded=new StringBuilder("\n// simplymirrors fixed 25-tap expansion\n");
+        for(int dy=-2;dy<=2;dy++) for(int dx=-2;dx<=2;dx++) {
+            expanded.append("{ const int dy=").append(dy).append("; const int dx=").append(dx)
+                .append("; do {\n").append(tap).append("\n} while(false); }\n");
+        }
+        return body.substring(0,start)+expanded+body.substring(outer+1);
+    }
+
 }
