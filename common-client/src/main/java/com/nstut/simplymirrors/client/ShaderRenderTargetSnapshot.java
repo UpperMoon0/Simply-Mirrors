@@ -9,12 +9,13 @@ import java.util.Map;
 /** Isolates Iris/Oculus color history without creating a second world pipeline. */
 final class ShaderRenderTargetSnapshot implements AutoCloseable {
     private final GlTextureSnapshot textures;
+    private final GlHistoryTextureRedirect redirected;
     private final List<Flag> flags;
     private final boolean[] shadowFlips, savedShadowFlips;
     private boolean closed;
 
-    private ShaderRenderTargetSnapshot(GlTextureSnapshot textures, List<Flag> flags, boolean[] shadowFlips) {
-        this.textures=textures; this.flags=flags; this.shadowFlips=shadowFlips;
+    private ShaderRenderTargetSnapshot(GlTextureSnapshot textures, GlHistoryTextureRedirect redirected, List<Flag> flags, boolean[] shadowFlips) {
+        this.textures=textures; this.redirected=redirected; this.flags=flags; this.shadowFlips=shadowFlips;
         this.savedShadowFlips=shadowFlips==null?null:shadowFlips.clone();
     }
 
@@ -64,7 +65,9 @@ final class ShaderRenderTargetSnapshot implements AutoCloseable {
         for (int i=0; i<textureIds.length; i++) textureIds[i]=ids.get(i);
         // Pinned Iris/Oculus flips are immutable construction-time sets. Final swap
         // passes COPY between fixed main/alt IDs; both images must be restored.
-        return new ShaderRenderTargetSnapshot(GlTextureSnapshot.capture(textureIds), flags, shadowFlips);
+        if(Boolean.getBoolean("simplymirrors.historyTextureRedirect") && org.lwjgl.opengl.GL.getCapabilities().OpenGL44)
+            return new ShaderRenderTargetSnapshot(null, GlHistoryTextureRedirect.acquire(textureIds), flags, shadowFlips);
+        return new ShaderRenderTargetSnapshot(GlTextureSnapshot.capture(textureIds), null, flags, shadowFlips);
     }
 
     private static void addTarget(Object target, List<Integer> ids, List<Flag> flags) throws ReflectiveOperationException {
@@ -91,7 +94,7 @@ final class ShaderRenderTargetSnapshot implements AutoCloseable {
     @Override public void close() {
         if (closed) return;
         closed=true;
-        try { textures.close(); }
+        try { if(redirected!=null)redirected.close(); else textures.close(); }
         finally {
             if (shadowFlips!=null) System.arraycopy(savedShadowFlips,0,shadowFlips,0,shadowFlips.length);
             for (Flag flag : flags) {
