@@ -5,6 +5,8 @@ import json
 import os
 import re
 import statistics
+import shutil
+import time
 import subprocess
 import sys
 import uuid
@@ -130,11 +132,61 @@ def evaluate_gpu_acceptance(pairs: list[dict]) -> dict:
     return summary
 
 
+MAX_PAIR_ATTEMPTS = 3
+
+
+def sample_host_load() -> dict:
+    """Record actual host load before starting a fresh benchmark arm."""
+    import psutil
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        raise RuntimeError("Native benchmark requires NVIDIA telemetry")
+    result = subprocess.run(
+        [smi, "--query-gpu=utilization.gpu,memory.free,temperature.gpu,clocks.gr",
+         "--format=csv,noheader,nounits"], capture_output=True, text=True,
+        check=True, timeout=15)
+    rows = result.stdout.strip().splitlines()
+    if len(rows) != 1:
+        raise RuntimeError("Expected one reviewed native GPU")
+    gpu, free, temp, clock = map(int, rows[0].split(","))
+    return {"gpuPct": gpu, "freeVramMiB": free, "temperatureC": temp,
+            "graphicsClockMHz": clock, "cpuPct": psutil.cpu_percent(interval=1),
+            "availableRamMiB": psutil.virtual_memory().available // (1024 ** 2)}
+
+
+def quiet_sample(sample: dict) -> bool:
+    # Admission only, not a substitute for the unchanged A/B acceptance gates.
+    return (sample["gpuPct"] <= 25 and sample["cpuPct"] <= 50
+            and sample["freeVramMiB"] >= 768 and sample["availableRamMiB"] >= 3072)
+
+
+def wait_for_quiet_host(timeout: int = 180) -> list[dict]:
+    """Require three consecutive quiet readings; never stop unrelated apps."""
+    deadline = time.monotonic() + timeout
+    consecutive = []
+    while time.monotonic() < deadline:
+        sample = sample_host_load()
+        print("SIMPLY_MIRRORS_HOST_LOAD", json.dumps(sample), flush=True)
+        if quiet_sample(sample):
+            consecutive.append(sample)
+            if len(consecutive) == 3:
+                return consecutive
+        else:
+            consecutive.clear()
+        time.sleep(5)
+    raise UnstableBenchmarkError("Host did not provide a quiet GPU/CPU window")
+
+
+def pair_order(index: int, attempt: int) -> tuple[str, str]:
+    return ("trial", "control") if (index + attempt) % 2 == 0 else ("control", "trial")
+
+
 def run_variant(label: str, index: int, stamp: str,
                 attempt: int = 0) -> tuple[dict, Path]:
     suffix = f"-retry{attempt}" if attempt else ""
     name = f"fps-volumetric-weight-{stamp}-{label}-{index}{suffix}"
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_START", label, index, name, flush=True)
+    preflight_samples = wait_for_quiet_host()
     env = os.environ.copy()
     env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "0"
     env["SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION"] = "1" if label == "trial" else "0"
@@ -146,6 +198,7 @@ def run_variant(label: str, index: int, stamp: str,
         raise RuntimeError(f"Native volumetric weight {label} {index} returned {result.returncode}")
     evidence = RUNS / f"{name}-evidence"
     summary = json.loads((evidence / "summary.json").read_text(encoding="utf-8"))
+    (evidence / "host-preflight.json").write_text(json.dumps(preflight_samples, indent=2) + "\n", encoding="utf-8")
     verify_settings(summary, label)
     logs = (evidence / "client.log").read_text(encoding="utf-8", errors="replace")
     summary["gpuProfilerMedians"] = profile_medians(logs)
@@ -172,23 +225,22 @@ def accept() -> dict:
     stamp = uuid.uuid4().hex[:8]
     accepted: list[dict] = []
     for index in range(3):
-        for attempt in range(2):
+        for attempt in range(MAX_PAIR_ATTEMPTS):
             variants = {}
-            # Prove the opt-in shader hook first. A missing/ineffective source
-            # transform fails after one trial without wasting a control launch.
-            # Reverse order on the middle pair to balance warmup effects.
-            for label in (("trial", "control") if index != 1 else ("control", "trial")):
-                variants[label] = run_variant(label, index, stamp, attempt)
-            control, control_images = variants["control"]
-            trial, trial_images = variants["trial"]
             try:
+                # Alternate both pairs and retries to avoid consistently
+                # assigning the same thermal/startup order to one variant.
+                for label in pair_order(index, attempt):
+                    variants[label] = run_variant(label, index, stamp, attempt)
+                control, control_images = variants["control"]
+                trial, trial_images = variants["trial"]
                 neutral = assert_stable_pair(control, trial, accepted)
             except UnstableBenchmarkError as noise:
                 print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_UNSTABLE",
                       json.dumps({"pair": index, "attempt": attempt,
-                                  "reason": str(noise), "retry": attempt == 0}),
+                                  "reason": str(noise), "retry": attempt + 1 < MAX_PAIR_ATTEMPTS}),
                       flush=True)
-                if attempt:
+                if attempt + 1 >= MAX_PAIR_ATTEMPTS:
                     raise
                 continue
             images = {label: compare_capture(

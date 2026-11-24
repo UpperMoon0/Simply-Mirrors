@@ -61,3 +61,24 @@ class VolumetricWeightTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
             ci.evaluate_gpu_acceptance(
                 self.acceptance_pairs((.72,9.0,.65),(.44,9.12,.017),2.99))
+
+    def test_quiet_host_gate_is_independent_of_fps_acceptance(self):
+        sample = dict(gpuPct=10, cpuPct=20, freeVramMiB=1024, availableRamMiB=4096)
+        self.assertTrue(ci.quiet_sample(sample))
+        for field, value in (("gpuPct", 26), ("cpuPct", 51),
+                             ("freeVramMiB", 767), ("availableRamMiB", 3071)):
+            self.assertFalse(ci.quiet_sample(dict(sample, **{field: value})))
+
+    def test_retry_reverses_arm_order(self):
+        self.assertEqual(ci.pair_order(0, 0), ("trial", "control"))
+        self.assertEqual(ci.pair_order(0, 1), ("control", "trial"))
+        self.assertEqual(ci.pair_order(1, 0), ("control", "trial"))
+        self.assertEqual(ci.MAX_PAIR_ATTEMPTS, 3)
+
+    def test_quiet_window_resets_after_load_spike(self):
+        good = dict(gpuPct=0, cpuPct=0, freeVramMiB=1024, availableRamMiB=4096)
+        noisy = dict(good, gpuPct=90)
+        with patch.object(ci, "sample_host_load", side_effect=[good, noisy, good, good, good]) as sample, \
+             patch.object(ci.time, "sleep"):
+            self.assertEqual(ci.wait_for_quiet_host(), [good, good, good])
+            self.assertEqual(sample.call_count, 5)
