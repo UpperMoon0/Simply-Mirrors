@@ -256,7 +256,8 @@ def accept() -> dict:
 
 
 if __name__ == "__main__":
-    # Centralized GPU pipeline retains its reviewed entrypoint. This experiment
-    # swaps only exact volumetric fog-weight reuse; legacy studies remain importable.
-    from volumetric_weight_ci import accept as volumetric_accept
-    volumetric_accept()
+    import argparse
+    parser = argparse.ArgumentParser(description="Reviewed native Simply Mirrors A/B")
+    parser.add_argument("--experiment", choices=("dependency-roi", "blur-rejection"), default="dependency-roi")
+    from volumetric_weight_ci import accept as native_accept
+    native_accept(parser.parse_args().experiment)

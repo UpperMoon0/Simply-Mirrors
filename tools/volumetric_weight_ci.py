@@ -17,7 +17,7 @@ from tail_crop_ci import (ROOT, TARGET, RUNS, SCENES, compare_capture,
                           profile_medians)
 
 
-def benchmark_command(label: str, name: str) -> list[str]:
+def benchmark_command(label: str, name: str, experiment="blur-rejection") -> list[str]:
     if label not in ("control", "trial"):
         raise ValueError("Expected control or trial")
     result = [
@@ -30,10 +30,14 @@ def benchmark_command(label: str, name: str) -> list[str]:
     ]
     # Isolate blur tap rejection: both arms retain the winning history path.
     # Rejected lazy clearing and volumetric arithmetic stay disabled.
+    if experiment == "dependency-roi":
+        result.remove("--shader-tail-crop")
+    elif experiment != "blur-rejection":
+        raise ValueError("Unknown GPU experiment")
     return result
 
 
-def verify_settings(summary: dict, label: str) -> None:
+def verify_settings(summary: dict, label: str, experiment="blur-rejection") -> None:
     expected = label == "trial"
     required = {
         "shaderTailCropEnabled": True,
@@ -56,10 +60,45 @@ def verify_settings(summary: dict, label: str) -> None:
         "movingCameraEnabled": True,
         "directGameLaunchEnabled": True,
     }
+    if experiment == "dependency-roi":
+        required.update(shaderTailCropEnabled=False, shaderReflectionBlurRejectionEnabled=False,
+                        shaderDependencyRoiEnabled=expected, deterministicMotionParityEnabled=True,
+                        postProcessScissorEnabled=False, reflectionOutputScissorEnabled=False)
     mismatch = {key: (summary.get(key), value)
                 for key, value in required.items() if summary.get(key) != value}
     if mismatch:
         raise AssertionError(f"Incorrect volumetric weight A/B settings for {label}: {mismatch}")
+
+
+def require_roi_activation(logs: str, label: str) -> dict:
+    counts=[tuple(map(int,m)) for m in re.findall(
+        r"SIMPLY_MIRRORS_DEPENDENCY_ROI draws=(\d+) pixelsSaved=(\d+)",logs)]
+    profile="SIMPLY_MIRRORS_DEPENDENCY_ROI_PROFILE accepted=true" in logs
+    if label=="control":
+        if profile or any(draws or pixels for draws,pixels in counts):
+            raise AssertionError("Control unexpectedly activated dependency ROI")
+        return {"active":False}
+    if not profile or not any(draws>0 and pixels>0 for draws,pixels in counts):
+        raise AssertionError("Dependency ROI did not execute a verified native cropped draw")
+    return {"active":True,"draws":max(x[0] for x in counts),"pixelsSaved":max(x[1] for x in counts)}
+
+
+def roi_shader_timings(logs: str) -> dict:
+    by_program={}
+    for name,samples,median in re.findall(
+            r"SIMPLY_MIRRORS_SHADER_QUAD_PROFILE program=(\S+) samples=(\d+) gpuMedianMs=([\d.]+)",logs):
+        if int(samples)>0:
+            by_program.setdefault(name,[]).append(float(median))
+    if "final" not in by_program:
+        raise AssertionError("Missing native final-pass GPU timing")
+    return {name:statistics.median(values) for name,values in by_program.items()}
+
+
+def compare_roi_captures(control, trial):
+    return {label:{suffix or "static":compare_capture(
+        control/f"scene-{scene}{suffix}.png",trial/f"scene-{scene}{suffix}.png",scene)
+        for suffix in ("","-parity-motion-a","-parity-motion-b")}
+        for scene,label in SCENES}
 
 
 def require_weight_reuse(logs: str) -> dict:
@@ -182,37 +221,49 @@ def pair_order(index: int, attempt: int) -> tuple[str, str]:
 
 
 def run_variant(label: str, index: int, stamp: str,
-                attempt: int = 0) -> tuple[dict, Path]:
+                attempt: int = 0, experiment="blur-rejection") -> tuple[dict, Path]:
     suffix = f"-retry{attempt}" if attempt else ""
-    name = f"fps-volumetric-weight-{stamp}-{label}-{index}{suffix}"
+    prefix = "dependency-roi" if experiment=="dependency-roi" else "volumetric-weight"
+    name = f"fps-{prefix}-{stamp}-{label}-{index}{suffix}"
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_START", label, index, name, flush=True)
     preflight_samples = wait_for_quiet_host()
     env = os.environ.copy()
     env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "0"
-    env["SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION"] = "1" if label == "trial" else "0"
+    env["SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION"] = "1" if label == "trial" and experiment=="blur-rejection" else "0"
+    env["SIMPLY_MIRRORS_DEPENDENCY_ROI"] = "1" if label=="trial" and experiment=="dependency-roi" else "0"
+    env["SIMPLY_MIRRORS_DETERMINISTIC_MOTION_PARITY"] = "1" if experiment=="dependency-roi" else "0"
+    env.pop("JAVA_TOOL_OPTIONS",None)
     env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1"
     env["SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"] = "1"
     env["SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR"] = "0"
-    result = subprocess.run(benchmark_command(label, name), cwd=ROOT, check=False, env=env)
+    result = subprocess.run(benchmark_command(label, name, experiment), cwd=ROOT, check=False, env=env)
     if result.returncode:
         raise RuntimeError(f"Native volumetric weight {label} {index} returned {result.returncode}")
     evidence = RUNS / f"{name}-evidence"
     summary = json.loads((evidence / "summary.json").read_text(encoding="utf-8"))
     (evidence / "host-preflight.json").write_text(json.dumps(preflight_samples, indent=2) + "\n", encoding="utf-8")
-    verify_settings(summary, label)
+    verify_settings(summary, label, experiment)
     logs = (evidence / "client.log").read_text(encoding="utf-8", errors="replace")
     summary["gpuProfilerMedians"] = profile_medians(logs)
     if not {"gpuCaptureMs", "gpuWorldMs", "gpuFinalizeMs", "gpuRestoreMs"}.issubset(
             summary["gpuProfilerMedians"]):
         raise AssertionError("Native per-stage GPU timestamp evidence missing")
-    if label == "trial":
+    if experiment=="dependency-roi":
+        summary["dependencyRoiActivation"]=require_roi_activation(logs,label)
+        summary["shaderGpuMedians"]=roi_shader_timings(logs)
+        for marker in ("SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE","SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"):
+            if marker not in logs:
+                raise AssertionError(f"Missing native history isolation evidence: {marker}")
+    elif label == "trial":
         summary["volumetricWeightReuse"] = require_weight_reuse(logs)
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_RUN", label, index,
           json.dumps(fps_values(summary)), flush=True)
     return summary, RUNS / f"{name}-client" / "fps-evidence"
 
 
-def accept() -> dict:
+def accept(experiment="blur-rejection") -> dict:
+    if experiment not in ("blur-rejection","dependency-roi"):
+        raise ValueError("Unknown GPU experiment")
     if os.name != "nt" or os.environ.get("CI_GRAPHICS_AGENT") != "1":
         raise RuntimeError("Only the trusted private native GPU CI agent can run acceptance")
     # Fail before Minecraft FPS if actual-driver original/mip/filter isolation fails.
@@ -231,7 +282,7 @@ def accept() -> dict:
                 # Alternate both pairs and retries to avoid consistently
                 # assigning the same thermal/startup order to one variant.
                 for label in pair_order(index, attempt):
-                    variants[label] = run_variant(label, index, stamp, attempt)
+                    variants[label] = run_variant(label, index, stamp, attempt, experiment)
                 control, control_images = variants["control"]
                 trial, trial_images = variants["trial"]
                 neutral = assert_stable_pair(control, trial, accepted)
@@ -243,7 +294,7 @@ def accept() -> dict:
                 if attempt + 1 >= MAX_PAIR_ATTEMPTS:
                     raise
                 continue
-            images = {label: compare_capture(
+            images = compare_roi_captures(control_images,trial_images) if experiment=="dependency-roi" else {label: compare_capture(
                 control_images / f"scene-{scene}.png",
                 trial_images / f"scene-{scene}.png", scene)
                 for scene, label in SCENES}
@@ -256,7 +307,9 @@ def accept() -> dict:
                 "control": fps_values(control), "trial": fps_values(trial),
                 "neutralFpsDeltaPct": neutral,
                 "fpsChangePct": fps_changes, "pixelComparisons": images,
-                "volumetricWeightReuse": trial["volumetricWeightReuse"],
+                **({"dependencyRoiActivation":trial["dependencyRoiActivation"],
+                    "shaderGpuMedians":{label:variants[label][0]["shaderGpuMedians"] for label in ("control","trial")}}
+                   if experiment=="dependency-roi" else {"volumetricWeightReuse":trial["volumetricWeightReuse"]}),
                 "gpuStageSavingsMs": stage_savings_ms(
                     control["gpuProfilerMedians"], trial["gpuProfilerMedians"]),
                 "stagesMs": {
@@ -268,10 +321,12 @@ def accept() -> dict:
                   json.dumps(accepted[-1]), flush=True)
             break
     summary = evaluate_gpu_acceptance(accepted)
-    path = RUNS / f"fps-volumetric-weight-{stamp}-acceptance-evidence/summary.json"
+    summary["experiment"]=experiment
+    prefix="dependency-roi" if experiment=="dependency-roi" else "volumetric-weight"
+    path = RUNS / f"fps-{prefix}-{stamp}-acceptance-evidence/summary.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_ACCEPTANCE_PASS",
+    print("SIMPLY_MIRRORS_DEPENDENCY_ROI_ACCEPTANCE_PASS" if experiment=="dependency-roi" else "SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_ACCEPTANCE_PASS",
           json.dumps(summary), flush=True)
     # Centralized CI owns this legacy compatibility marker.
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_PASS",

@@ -92,7 +92,12 @@ public final class FpsBenchmarkProbe {
         // Static fixtures remain the default for historical comparability.
         boolean moving = Boolean.getBoolean("simplymirrors.fpsCameraMotion");
         double[] eye = VisualScene.eye(0);
-        double phase = finished ? 0 : (now - entered) * (2.0 * Math.PI / 6_000_000_000.0);
+        boolean deterministicParity = moving && kind != 7 &&
+                Boolean.getBoolean("simplymirrors.fpsDeterministicMotionParity");
+        // Frame-index path only after timed FPS measurement.
+        double phase = finished ? (deterministicParity && parityFrames >= 64 && parityFrames < 184
+                ? (parityFrames-64)*(2.0*Math.PI/120.0) : 0)
+                : (now - entered) * (2.0 * Math.PI / 6_000_000_000.0);
         double x = eye[0] + (moving ? 0.15 * Math.sin(phase) : 0);
         double y = eye[1] - 1.62;
         double z = eye[2] + (moving ? 0.05 * Math.cos(phase) : 0);
@@ -115,7 +120,19 @@ public final class FpsBenchmarkProbe {
             // Freeze only the disposable fixture's animation after timed motion
             // measurement. A/B captures must not compare different idle-arm poses.
             mc.player.tickCount = 0;
-            if (pendingCaptureJson != null && ++parityFrames >= 64) {
+            if (pendingCaptureJson != null) {
+                ++parityFrames;
+                if (deterministicParity && (parityFrames == 95 || parityFrames == 155)) {
+                    int motionError=glGetError();
+                    if (motionError != GL_NO_ERROR)
+                        throw new IllegalStateException("Motion parity OpenGL error: "+motionError);
+                    Path evidence=home.resolve("fps-evidence");
+                    VisualCapture.save(mc.getMainRenderTarget().getColorTextureId(),
+                            mc.getMainRenderTarget().width,mc.getMainRenderTarget().height,
+                            evidence.resolve("scene-"+scene+"-parity-motion-"+(parityFrames==95?"a":"b")+".png"));
+                }
+            }
+            if (pendingCaptureJson != null && parityFrames >= (deterministicParity ? 248 : 64)) {
                 int parityError=glGetError();
                 if (parityError != GL_NO_ERROR)
                     throw new IllegalStateException("Parity OpenGL error: " + parityError);
