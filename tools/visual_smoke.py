@@ -83,7 +83,7 @@ def disconnected_during_login(log_path, offset=0):
     return "SIMPLY_MIRRORS_VISUAL_STAGE net.minecraft.client.gui.screens.DisconnectedScreen" in fresh
 
 
-def activate_scene(rcon,client_dir,scene,client,timeout=600,client_log_path=None,log_offset=0):
+def activate_scene(rcon,client_dir,scene,client,timeout=600,client_log_path=None,log_offset=0,reset_player=False):
     # Do not let the client pose a new scene until the server has authorized its
     # position. Client-only teleports can trigger movement corrections mid-capture.
     command="tp @a "+" ".join(map(str,POSES[scene]))
@@ -92,6 +92,11 @@ def activate_scene(rcon,client_dir,scene,client,timeout=600,client_log_path=None
         if client.poll() is not None:raise RuntimeError("Client exited before scene activation")
         reply=rcon.command(command)
         if "Teleported" in reply:
+            if reset_player:
+                for reset_command in ("clear @a", "effect clear @a", "gamemode creative @a"):
+                    reset_reply=rcon.command(reset_command)
+                    if "Unknown" in reset_reply or "Incorrect" in reset_reply:
+                        raise RuntimeError(f"Player reset failed: {reset_command}: {reset_reply}")
             scene_file(client_dir,scene)
             return
         if "Incorrect" in reply or "Unknown" in reply:raise RuntimeError(f"Scene teleport failed: {reply}")
@@ -105,7 +110,7 @@ def activate_scene(rcon,client_dir,scene,client,timeout=600,client_log_path=None
 
 
 def launch_initial_visual_client(rcon, client_dir, command, cwd, client_log,
-                                 client_env, creation, evidence, log_path):
+                                 client_env, creation, evidence, log_path, reset_player=False):
     """Retry exactly one explicit *login* disconnection, never a render failure.
 
     Each attempt is a new test-owned child under the same restricted graphics
@@ -121,7 +126,7 @@ def launch_initial_visual_client(rcon, client_dir, command, cwd, client_log,
               " pid="+str(client.pid), flush=True)
         try:
             activate_scene(rcon,client_dir,0,client,client_log_path=log_path,
-                           log_offset=offset)
+                           log_offset=offset, reset_player=reset_player)
             return client
         except VisualClientDisconnected:
             print("SIMPLY_MIRRORS_VISUAL_LOGIN_DISCONNECTED attempt="+str(attempt+1),
@@ -514,11 +519,18 @@ def main():
     # The native GPU FPS experiment is a separate centrally reviewed Jenkins
     # tier. Never couple six benchmark client launches to a routine shader
     # visual smoke test: that caused repeated work on every PR commit.
-    with exclusive_graphics_lane():
-        return run_visual()
+    def cancelled(signum, frame):
+        raise SystemExit(128+signum)
+    previous=signal.signal(signal.SIGTERM,cancelled)
+    try:
+        with exclusive_graphics_lane():
+            return run_visual()
+    finally:
+        signal.signal(signal.SIGTERM,previous)
 
 def run_visual():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--target",choices=TARGETS,required=True)
+    parser.add_argument("--combined-visual",action="store_true",help="Run vanilla and shader clients against one disposable server")
     parser.add_argument("--shaders",action="store_true",help="Enable and verify the locked Complementary shader stack")
     parser.add_argument("--run-name",help="Isolated test directory prefix")
     parser.add_argument("--shader-pack", type=Path, help="Use an exact local shaderpack ZIP instead of the pinned default")
@@ -539,6 +551,10 @@ def run_visual():
                         help="Copy one optional rendering/modpack JAR into the isolated client only (repeatable)")
 
     args=parser.parse_args()
+    if args.combined_visual and args.shaders:
+        parser.error("--combined-visual and --shaders are mutually exclusive")
+    if args.combined_visual and (args.shader_pack or args.check_motion or args.check_camera_motion or args.force_stencil or args.require_entity or args.extra_client_mod):
+        parser.error("Combined acceptance uses standard vanilla and pinned shader fixtures; use standalone modes for custom regressions")
     if args.interactive_offscreen and (os.name != "nt" or os.environ.get("CI_GRAPHICS_AGENT") != "1"):
         parser.error("--interactive-offscreen requires a reviewed native Windows graphics agent")
     if args.check_motion and (args.target!="neoforge-1.21.1" or not args.enclosed or not args.shaders):
@@ -552,15 +568,30 @@ def run_visual():
     t=TARGETS[args.target];module=ROOT/args.target;cwd=ROOT/t["build_root"]
     run_name=args.run_name or ("shader" if args.shaders else "visual")
     if not __import__('re').fullmatch('[a-z0-9-]+',run_name):raise ValueError('Invalid run name')
-    client_dir=module/f"run/{run_name}-client"
     if args.shader_pack and not args.shaders:
         parser.error("--shader-pack requires --shaders")
+    run_session(args, t, module, cwd, run_name)
+
+
+def phase_args(args, run_name):
+    """Keep existing artifact names for the default combined CI invocation."""
+    if not args.combined_visual:
+        return [(args, run_name)]
+    import copy
+    vanilla, shader = copy.copy(args), copy.copy(args)
+    shader.shaders = True
+    return [(vanilla, run_name if args.run_name else "visual"),
+            (shader, run_name+"-shader" if args.run_name else "shader")]
+
+
+def prepare_phase(args, t, module, cwd, run_name, port):
+    client_dir=module/f"run/{run_name}-client"
     if args.shaders:
         from shader_stack import prepare, install_pack
         _,pinned_pack=prepare(args.target,args.shader_cache.resolve())
         pack=args.shader_pack.resolve(strict=True) if args.shader_pack else pinned_pack
         if pack.suffix.lower() != ".zip":
-            parser.error("--shader-pack must be a shaderpack ZIP")
+            raise ValueError("--shader-pack must be a shaderpack ZIP")
         install_pack(client_dir,pack,loader=t['loader'])
         if args.check_camera_motion:
             # A disposable shaderpack profile, never applied to the user's game.
@@ -571,11 +602,6 @@ def run_visual():
     # Native mods are copied only into the disposable client profile, never
     # the production game directory or server. Keep a reproducible hash ledger.
     extra_mods=install_extra_client_mods(client_dir,args.extra_client_mod)
-    port=free_port();rcon_port=free_port();server_dir=module/f"run/{run_name}-server";server_dir.mkdir(parents=True,exist_ok=True)
-    if (server_dir/"visual-world").exists():raise SystemExit("Existing test world found; use a fresh checkout or preserve/rename the old test world before retrying")
-    (server_dir/"eula.txt").write_text("eula=true\n")
-    props={"server-ip":"127.0.0.1","server-port":port,"enable-rcon":"true","rcon.port":rcon_port,"rcon.password":"simply-mirrors-disposable-test","online-mode":"false","gamemode":"creative","force-gamemode":"true","allow-flight":"true","spawn-protection":0,"view-distance":4,"simulation-distance":4,"level-name":"visual-world","level-type":"flat" if t["minecraft"]=="1.16.5" else "minecraft:flat","max-players":2}
-    (server_dir/"server.properties").write_text("\n".join(f"{k}={v}" for k,v in props.items())+"\n")
     command=[str(cwd/"gradlew.bat")] if os.name=="nt" else ["./gradlew"]
     if t["build_root"]==".":command.append(f"-Ptarget={args.target}")
     command += ["-PvisualTest",f"-PvisualMc={t['minecraft']}",f"-PvisualLoader={t['loader']}",f"-PvisualPort={port}","--no-daemon","--console=plain","-Dorg.gradle.jvmargs=-Xmx1024m","--max-workers=2"]
@@ -590,27 +616,33 @@ def run_visual():
     if args.shaders:
         import hashlib
         (evidence/"shaderpack.json").write_text(json.dumps({"name":pack.name,"sha256":hashlib.sha256(pack.read_bytes()).hexdigest()},indent=2))
-    creation={"creationflags":subprocess.CREATE_NO_WINDOW} if os.name=="nt" else {"start_new_session":True}
-    server=client=rcon=None
-    server_command=["-PmirrorsShaderStack=off" if item.startswith("-PmirrorsShaderStack=") else item for item in command]
-    prepare_visual_server_build(server_command,task_prefix+"classes",cwd,evidence)
-    with (evidence/"server.log").open("w") as server_log,(evidence/"client.log").open("w") as client_log:
+    return client_dir, command, task_prefix, evidence
+
+
+def reset_fixture(rcon, t, args):
+    """Rebuild the scene before each independent client joins."""
+    clock_rule="advance_time" if t["minecraft"]=="26.1.2" else "doDaylightCycle"
+    weather_rule="advance_weather" if t["minecraft"]=="26.1.2" else "doWeatherCycle"
+    commands=[f"gamerule {clock_rule} false",f"gamerule {weather_rule} false","forceload add -16 -16 16 16","time set noon","weather clear","fill -12 53 -12 12 53 12 stone","setworldspawn 0 65 -4"]+fixture(0,args.enclosed)
+    for text in commands:
+        reply=rcon.command(text)
+        if "Unknown" in reply or "Incorrect" in reply:raise RuntimeError(f"Fixture command failed: {text}: {reply}")
+
+
+def wait_for_empty_server(rcon, timeout=30):
+    deadline = time.monotonic()+timeout
+    while time.monotonic()<deadline:
+        if re.search(r"\b0\s+of\s+a\s+max", rcon.command("list"), re.I):
+            return
+        time.sleep(1)
+    raise TimeoutError("Previous visual client did not disconnect from fixture server")
+
+
+def run_client_phase(args, rcon, cwd, creation, prepared):
+    client_dir, command, task_prefix, evidence = prepared
+    client = None
+    with (evidence/"client.log").open("w") as client_log:
         try:
-            server=subprocess.Popen(server_command+[task_prefix+"runVisualServer"],cwd=cwd,stdout=server_log,stderr=subprocess.STDOUT,**creation)
-            print("Starting disposable server",args.target,flush=True)
-            deadline=time.monotonic()+360
-            while time.monotonic()<deadline:
-                if server.poll() is not None:raise RuntimeError(f"Server exited: {evidence/'server.log'}")
-                try:rcon=Rcon(rcon_port);break
-                except (OSError,ConnectionError):time.sleep(1)
-            else:raise TimeoutError("Server startup timeout: "+(evidence/"server.log").read_text(errors="replace")[-8000:])
-            print("Server and RCON ready",args.target,flush=True)
-            clock_rule="advance_time" if t["minecraft"]=="26.1.2" else "doDaylightCycle"
-            weather_rule="advance_weather" if t["minecraft"]=="26.1.2" else "doWeatherCycle"
-            commands=[f"gamerule {clock_rule} false",f"gamerule {weather_rule} false","forceload add -16 -16 16 16","time set noon","weather clear","fill -12 53 -12 12 53 12 stone","setworldspawn 0 65 -4"]+fixture(0,args.enclosed)
-            for text in commands:
-                reply=rcon.command(text)
-                if "Unknown" in reply or "Incorrect" in reply:raise RuntimeError(f"Fixture command failed: {text}: {reply}")
             print("Fixture ready; starting client",args.target,flush=True)
             client_dir.mkdir(parents=True,exist_ok=True);scene_file(client_dir,-1)
             client_env=os.environ.copy()
@@ -641,7 +673,8 @@ def run_visual():
             # identity, rather than brokering the logged-in user's WTS token.
             client=launch_initial_visual_client(
                 rcon,client_dir,command+[task_prefix+"runVisualClient"],cwd,
-                client_log,client_env,creation,evidence,evidence/"client.log")
+                client_log,client_env,creation,evidence,evidence/"client.log",
+                reset_player=args.combined_visual and args.shaders)
             if args.interactive_offscreen:
                 print("SIMPLY_MIRRORS_VISUAL_ACTIVE_GPU_CLIENT pid="+str(client.pid),flush=True)
             results={};failures={}
@@ -688,16 +721,64 @@ def run_visual():
             raise
         finally:
             stop(client)
-            if rcon:
-                try:rcon.command("stop")
-                except OSError:pass
-                rcon.close()
-                if server:
-                    try:server.wait(timeout=30)
-                    except subprocess.TimeoutExpired:pass
-            stop(server)
-            if args.interactive_offscreen:
-                from fps_benchmark import cleanup_owned_gradle_servers
-                cleanup_owned_gradle_servers(cwd,run_name)
+
+
+def run_session(args, t, module, cwd, run_name):
+    phases = phase_args(args, run_name)
+    # Refuse stale capture output before either phase is prepared.
+    for _, name in phases:
+        for path in (module/f"run/{name}-client/visual-evidence", module/f"run/{name}-evidence",
+                     *((module/f"run/{name}-client",) if args.combined_visual else ())):
+            if path.exists():
+                raise SystemExit("Existing visual profile/evidence found; use a fresh run name")
+    port=free_port();rcon_port=free_port();server_dir=module/f"run/{run_name}-server";server_dir.mkdir(parents=True,exist_ok=True)
+    if (server_dir/"visual-world").exists():raise SystemExit("Existing test world found; use a fresh checkout or preserve/rename the old test world before retrying")
+    (server_dir/"eula.txt").write_text("eula=true\n")
+    props={"server-ip":"127.0.0.1","server-port":port,"enable-rcon":"true","rcon.port":rcon_port,"rcon.password":"simply-mirrors-disposable-test","online-mode":"false","gamemode":"creative","force-gamemode":"true","allow-flight":"true","spawn-protection":0,"view-distance":4,"simulation-distance":4,"level-name":"visual-world","level-type":"flat" if t["minecraft"]=="1.16.5" else "minecraft:flat","max-players":2}
+    (server_dir/"server.properties").write_text("\n".join(f"{k}={v}" for k,v in props.items())+"\n")
+    prepared = [(phase, prepare_phase(phase,t,module,cwd,name,port)) for phase,name in phases]
+    _, command, task_prefix, evidence = prepared[0][1]
+    creation={"creationflags":subprocess.CREATE_NO_WINDOW} if os.name=="nt" else {"start_new_session":True}
+    server=rcon=None
+    server_command=["-PmirrorsShaderStack=off" if item.startswith("-PmirrorsShaderStack=") else item for item in command]
+    prepare_visual_server_build(server_command,task_prefix+"classes",cwd,evidence)
+    with (evidence/"server.log").open("w") as server_log:
+        try:
+            server=subprocess.Popen(server_command+[task_prefix+"runVisualServer"],cwd=cwd,stdout=server_log,stderr=subprocess.STDOUT,**creation)
+            print("Starting disposable server",args.target,flush=True)
+            deadline=time.monotonic()+360
+            while time.monotonic()<deadline:
+                if server.poll() is not None:raise RuntimeError(f"Server exited: {evidence/'server.log'}")
+                try:rcon=Rcon(rcon_port);break
+                except (OSError,ConnectionError):time.sleep(1)
+            else:raise TimeoutError("Server startup timeout: "+(evidence/"server.log").read_text(errors="replace")[-8000:])
+            print("Server and RCON ready",args.target,flush=True)
+            for index, (phase, phase_prepared) in enumerate(prepared):
+                if index:
+                    wait_for_empty_server(rcon)
+                reset_fixture(rcon,t,phase)
+                run_client_phase(phase,rcon,cwd,creation,phase_prepared)
+        except BaseException as error:
+            (evidence/"session-failure.txt").write_text(f"{type(error).__name__}: {error}\n")
+            raise
+        finally:
+            try:
+                if rcon:
+                    try:rcon.command("stop")
+                    except (OSError,ConnectionError):pass
+                    finally:rcon.close()
+                    if server:
+                        try:server.wait(timeout=30)
+                        except subprocess.TimeoutExpired:pass
+            finally:
+                stop(server)
+                if args.interactive_offscreen:
+                    from fps_benchmark import cleanup_owned_gradle_servers
+                    for _, name in phases:
+                        cleanup_owned_gradle_servers(cwd,name)
+                server_log.flush()
+                for _, phase_prepared in prepared[1:]:
+                    shutil.copyfile(evidence/"server.log",phase_prepared[3]/"server.log")
+
 
 if __name__=="__main__":main()
