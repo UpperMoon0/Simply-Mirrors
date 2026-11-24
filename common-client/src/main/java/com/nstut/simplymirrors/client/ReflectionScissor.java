@@ -36,6 +36,9 @@ public final class ReflectionScissor implements AutoCloseable {
     private static final boolean SHADER_POSTPROCESS_CROP =
         Boolean.getBoolean("simplymirrors.shaderPostProcessCrop");
     // r5.9.3 HIGH GPU experiment only: never enabled in production by default.
+    private static final boolean SHADER_DEPENDENCY_ROI = Boolean.getBoolean("simplymirrors.shaderDependencyRoi");
+    private static final boolean GPU_PROFILE = Boolean.getBoolean("simplymirrors.gpuProfile");
+    private static long dependencyRoiDraws, dependencyRoiPixels;
     private static final boolean SHADER_TAIL_CROP =
         Boolean.getBoolean("simplymirrors.shaderTailCrop");
     // Separate opt-in experiment: the pinned shader's final pass performs an
@@ -60,7 +63,7 @@ public final class ReflectionScissor implements AutoCloseable {
     private static final java.util.Map<Integer,String> PROGRAM_NAMES =
         new java.util.HashMap<Integer,String>();
     public static void registerShaderProgram(int program, String name) {
-        if ((SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP || SHADER_FINAL_DUAL_CROP || FINAL_FRAGMENT_GUARD) && program > 0 && name != null)
+        if ((GPU_PROFILE || SHADER_DEPENDENCY_ROI || SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP || SHADER_FINAL_DUAL_CROP || FINAL_FRAGMENT_GUARD) && program > 0 && name != null)
             { PROGRAM_NAMES.put(program, name); FINAL_GUARD_UNIFORMS.remove(program); }
     }
     public static String profileProgramName(int program) {
@@ -104,6 +107,7 @@ public final class ReflectionScissor implements AutoCloseable {
                 ShaderEarlyCompositeCrop.isEligible(
                     PROGRAM_NAMES.get(glGetInteger(GL_CURRENT_PROGRAM))))
             return true;
+        if (SHADER_DEPENDENCY_ROI) return inFinalStage && scope.dependencyRoiEligible;
         return inFinalStage && (SHADER_POSTPROCESS_CROP || SHADER_TAIL_CROP ||
                 SHADER_FINAL_ORIGIN_CROP || SHADER_FINAL_DUAL_CROP);
     }
@@ -116,19 +120,23 @@ public final class ReflectionScissor implements AutoCloseable {
     private final int mirrorFrameBuffer, mirrorColorTexture, frameWidth, frameHeight;
     private final int x, y, width, height;
     private final boolean cropWorthwhile;
+    private final boolean dependencyRoiEligible;
     private static int clipped, skipped;
 
     private ReflectionScissor() {
         active=false;oldEnabled=false;oldX=oldY=oldWidth=oldHeight=0;
         mirrorFrameBuffer=mirrorColorTexture=frameWidth=frameHeight=x=y=width=height=0;
         cropWorthwhile=false;
+        dependencyRoiEligible=false;
     }
 
     private ReflectionScissor(int x, int y, int width, int height, int frameWidth, int frameHeight) {
         active=true;
         this.x=x;this.y=y;this.width=width;this.height=height;
         this.frameWidth=frameWidth;this.frameHeight=frameHeight;
-        cropWorthwhile=(SHADER_POSTPROCESS_CROP &&
+        dependencyRoiEligible=SHADER_DEPENDENCY_ROI && PinnedShaderRegionProfile.eligible();
+        cropWorthwhile=(dependencyRoiEligible && ShaderViewportCrop.rectangle(x,y,width,height,frameWidth,frameHeight,
+                0,0,frameWidth,frameHeight,0)!=null) || (SHADER_POSTPROCESS_CROP &&
             ShaderViewportCrop.rectangle(x,y,width,height,frameWidth,frameHeight,
                 0,0,frameWidth,frameHeight,SHADER_CROP_PAD)!=null) ||
             (SHADER_TAIL_CROP &&
@@ -290,6 +298,7 @@ public final class ReflectionScissor implements AutoCloseable {
     public static boolean constrainPostProcessQuad() {
         ReflectionScissor scope=current;
         if(!postProcessCropPossible())return false;
+        if(SHADER_DEPENDENCY_ROI) return constrainDependencyQuad(scope);
         int padding=SHADER_CROP_PAD;
         String program=null;
         boolean finalOrigin=false;
@@ -389,6 +398,40 @@ public final class ReflectionScissor implements AutoCloseable {
         return true;
     }
 
+    /** Native-size only, pinned default shaderpack, no global side effects in
+     * the final program. Existing experimental switches remain independent. */
+    private static boolean constrainDependencyQuad(ReflectionScissor scope) {
+        if (!scope.dependencyRoiEligible || MirrorRenderer.redirect == null) return false;
+        int program=glGetInteger(GL_CURRENT_PROGRAM);
+        String name=PROGRAM_NAMES.get(program);
+        int padding=PinnedShaderRegionProfile.padding(name);
+        if (padding<0 || glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)==0 ||
+                glGetInteger(GL_DRAW_BUFFER)!=GL_COLOR_ATTACHMENT0 ||
+                glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                    GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE)!=GL_TEXTURE) return false;
+        IntBuffer viewport=BufferUtils.createIntBuffer(4);
+        glGetIntegerv(GL_VIEWPORT,viewport);
+        if(viewport.get(0)!=0 || viewport.get(1)!=0 ||
+                viewport.get(2)!=scope.frameWidth || viewport.get(3)!=scope.frameHeight) return false;
+        if ("final".equalsIgnoreCase(name)) {
+            if (!org.lwjgl.opengl.GL.getCapabilities().OpenGL43 ||
+                org.lwjgl.opengl.GL43.glGetProgramInterfacei(program,
+                    org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BLOCK,
+                    org.lwjgl.opengl.GL43.GL_ACTIVE_RESOURCES)!=0 ||
+                glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                    GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME)!=MirrorRenderer.redirect.getColorTextureId())
+                return false;
+        }
+        int[] box=ShaderViewportCrop.rectangle(scope.x,scope.y,scope.width,scope.height,
+                scope.frameWidth,scope.frameHeight,0,0,scope.frameWidth,scope.frameHeight,padding);
+        if(box==null) return false;
+        glScissor(box[0],box[1],box[2],box[3]);
+        glEnable(GL_SCISSOR_TEST);
+        dependencyRoiDraws++;
+        dependencyRoiPixels+=(long)scope.frameWidth*scope.frameHeight-(long)box[2]*box[3];
+        return true;
+    }
+
     /**
      * Called from the pinned Iris/Oculus 1.20.1 fullscreen quad after its
      * first cropped draw but before polygon-mode restoration. The same shader,
@@ -426,6 +469,8 @@ public final class ReflectionScissor implements AutoCloseable {
         if(!active)return;
         if(current==this) current=null;
         inFinalStage=false;
+        if(SHADER_DEPENDENCY_ROI && GPU_PROFILE && clipped>0 && clipped%180==0)
+            System.out.println("SIMPLY_MIRRORS_DEPENDENCY_ROI draws="+dependencyRoiDraws+" pixelsSaved="+dependencyRoiPixels);
         if(OUTPUT_SCISSOR && Boolean.getBoolean("simplymirrors.gpuProfile") &&
            clipped>0 && clipped%180==0)
             System.out.println("SIMPLY_MIRRORS_OUTPUT_SCISSOR quadsChecked="+

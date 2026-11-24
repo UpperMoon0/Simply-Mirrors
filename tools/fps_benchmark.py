@@ -58,6 +58,7 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
             (" -Dsimplymirrors.historyCopyImage=true" if history_copy_image else "") +
             (" -Dsimplymirrors.shaderPostProcessCrop=true" if postprocess_scissor else "") +
             (" -Dsimplymirrors.shaderTailCrop=true" if shader_tail_crop else "") +
+            (" -Dsimplymirrors.shaderDependencyRoi=true" if os.environ.get("SIMPLY_MIRRORS_DEPENDENCY_ROI") == "1" else "") +
             (" -Dsimplymirrors.shaderFinalOriginCrop=true" if shader_final_origin_crop else "") +
             (" -Dsimplymirrors.shaderEarlyCompositeCrop=true" if shader_early_composite_crop else "") +
             (" -Dsimplymirrors.shaderFinalDualCrop=true" if shader_final_dual_crop else "") +
