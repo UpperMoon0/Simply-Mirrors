@@ -6,12 +6,12 @@ import static org.junit.Assert.*;
 import static com.nstut.simplymirrors.math.ShaderRegionPlan.*;
 
 public class ShaderRegionPlanTest {
-    @Test public void defaultTailPropagatesBoundedHalosAndKeepsGlobalProducers() {
+    @Test public void defaultProfileKeepsHistoryMipmapsAndUnprovenFinalInputsFull() {
         ShaderRegionPlan plan = complementaryDefault();
         assertEquals(0, plan.padding("final"));
-        assertEquals(8, plan.padding("COMPOSITE7"));
-        assertEquals(48, plan.padding("composite6"));
-        assertEquals(52, plan.padding("composite5"));
+        assertEquals(FULL, plan.padding("COMPOSITE7"));
+        assertEquals(FULL, plan.padding("composite6"));
+        assertEquals(FULL, plan.padding("composite5"));
         for (String name : new String[]{"composite","composite1","composite2",
                 "composite3","composite4","unknown",null})
             assertEquals(FULL, plan.padding(name));
@@ -42,8 +42,22 @@ public class ShaderRegionPlanTest {
         assertEquals(FULL,plan.padding("a"));
         assertEquals(1,plan.padding("b"));
     }
+    @Test public void conflictingExperimentFlagsFailClosed() {
+        requireExclusiveExperiment(false, true);
+        requireExclusiveExperiment(true, false, false);
+        try {
+            requireExclusiveExperiment(true, false, true);
+            fail("Conflicting experimental crop was accepted");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("Dependency ROI"));
+        }
+    }
     @Test public void nativeViewportPlanContainsAllRequiredPixels() {
-        ShaderRegionPlan plan=complementaryDefault();
+        ShaderRegionPlan plan=build(Arrays.asList(
+            new Pass("composite5",false),
+            new Pass("composite6",false,new Input("composite5",4)),
+            new Pass("composite7",false,new Input("composite6",40)),
+            new Pass("final",false,new Input("composite7",8))),"final");
         int last=Integer.MAX_VALUE;
         for(String name:new String[]{"composite5","composite6","composite7","final"}) {
             int p=plan.padding(name);

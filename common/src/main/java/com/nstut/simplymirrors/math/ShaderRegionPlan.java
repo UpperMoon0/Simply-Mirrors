@@ -72,18 +72,22 @@ public final class ShaderRegionPlan {
         }
         return new ShaderRegionPlan(result);
     }
+    /** A requested dependency experiment must not silently overlap another crop. */
+    public static void requireExclusiveExperiment(boolean requested, boolean... conflicting) {
+        if (requested) for (boolean enabled : conflicting)
+            if (enabled) throw new IllegalArgumentException("Dependency ROI cannot be combined with other shader crop or rewrite experiments");
+    }
+
     private static ShaderRegionPlan invalid() {
         return new ShaderRegionPlan(Collections.<String,Integer>emptyMap());
     }
 
     /**
-     * Experimental contract for the unmodified r5.9.3 default Overworld
-     * pipeline only. Keep bloom/mipmap/SSR producers full. FXAA's edge
-     * walk is bounded by its 12-step quality table; 40 pixels includes
-     * interpolation and derivative slack. TAA samples current color in
-     * a local 3x3 neighborhood and reads the isolated previous history.
-     * Include direct edges for optional disabled composite stages.
-     * Coverage already includes >=96 pixels of geometric padding.
+     * Only the terminal draw is eligible until the runtime attachment graph
+     * can be attested before execution. composite5 feeds a mipmapped input;
+     * composite6 writes persistent colortex2 TAA history; composite7 cannot
+     * assume that the later final draw will pass its independent GL guard.
+     * A full fallback therefore never consumes partially rendered inputs.
      */
     public static ShaderRegionPlan complementaryDefault() {
         return build(Arrays.asList(
@@ -92,9 +96,9 @@ public final class ShaderRegionPlan {
             new Pass("composite2", true, new Input("composite1", FULL)),
             new Pass("composite3", true, new Input("composite2", FULL)),
             new Pass("composite4", true, new Input("composite3", FULL)),
-            new Pass("composite5", false, new Input("composite4", FULL)),
-            new Pass("composite6", false, new Input("composite5", 4)),
-            new Pass("composite7", false, new Input("composite6", 40),
+            new Pass("composite5", true, new Input("composite4", FULL)),
+            new Pass("composite6", true, new Input("composite5", 4)),
+            new Pass("composite7", true, new Input("composite6", 40),
                 new Input("composite5", 40)),
             new Pass("final", false, new Input("composite7", 8),
                 new Input("composite6", 8), new Input("composite5", 8))

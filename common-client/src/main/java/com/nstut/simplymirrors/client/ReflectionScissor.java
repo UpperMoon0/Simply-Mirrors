@@ -4,6 +4,7 @@ import com.nstut.simplymirrors.math.MirrorCoverage;
 import com.nstut.simplymirrors.math.MirrorSurface;
 import com.nstut.simplymirrors.math.ReflectionOutputGuard;
 import com.nstut.simplymirrors.math.ShaderViewportCrop;
+import com.nstut.simplymirrors.math.ShaderRegionPlan;
 import com.nstut.simplymirrors.math.ShaderTailCrop;
 import com.nstut.simplymirrors.math.ShaderFinalOriginCrop;
 import com.nstut.simplymirrors.math.ShaderEarlyCompositeCrop;
@@ -55,6 +56,16 @@ public final class ReflectionScissor implements AutoCloseable {
     // These shader IDs are GL-context scoped and removed on program destruction.
     private static final boolean FINAL_FRAGMENT_GUARD =
         Boolean.getBoolean("simplymirrors.shaderFinalFragmentGuard");
+    static {
+        ShaderRegionPlan.requireExclusiveExperiment(SHADER_DEPENDENCY_ROI,
+            OUTPUT_SCISSOR, SHADER_POSTPROCESS_CROP, SHADER_TAIL_CROP,
+            SHADER_FINAL_ORIGIN_CROP, SHADER_EARLY_COMPOSITE_CROP,
+            SHADER_FINAL_DUAL_CROP, FINAL_FRAGMENT_GUARD,
+            Boolean.getBoolean("simplymirrors.shaderReflectionBlurRejection"),
+            Boolean.getBoolean("simplymirrors.shaderCloudOcclusion"),
+            Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse"),
+            Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay"));
+    }
     private static long finalFragmentAttempts, finalFragmentActive, finalFragmentMissingUniform;
     private static long finalFragmentTargetRejected, finalFragmentViewportRejected, finalFragmentBoundsRejected;
     // Uniform locations are stable for a linked program; invalidate on deletion/relink.
@@ -413,14 +424,26 @@ public final class ReflectionScissor implements AutoCloseable {
         glGetIntegerv(GL_VIEWPORT,viewport);
         if(viewport.get(0)!=0 || viewport.get(1)!=0 ||
                 viewport.get(2)!=scope.frameWidth || viewport.get(3)!=scope.frameHeight) return false;
-        if ("final".equalsIgnoreCase(name)) {
-            if (!org.lwjgl.opengl.GL.getCapabilities().OpenGL43 ||
+        // No producer may rely on this late guard: history and mipmap
+        // producers render full-size. Only the actual terminal target may crop.
+        if (!"final".equalsIgnoreCase(name) ||
+                !org.lwjgl.opengl.GL.getCapabilities().OpenGL43 ||
                 org.lwjgl.opengl.GL43.glGetProgramInterfacei(program,
                     org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BLOCK,
                     org.lwjgl.opengl.GL43.GL_ACTIVE_RESOURCES)!=0 ||
+                glGetProgrami(program, org.lwjgl.opengl.GL42.GL_ACTIVE_ATOMIC_COUNTER_BUFFERS)!=0 ||
                 glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                     GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME)!=MirrorRenderer.redirect.getColorTextureId())
-                return false;
+            return false;
+        for (int i=1;i<glGetInteger(GL_MAX_DRAW_BUFFERS);i++)
+            if (glGetInteger(GL_DRAW_BUFFER0+i)!=GL_NONE) return false;
+        // Image uniforms can write global state without an SSBO. The image
+        // uniform enum range is contiguous in OpenGL 4.2.
+        IntBuffer size=BufferUtils.createIntBuffer(1), type=BufferUtils.createIntBuffer(1);
+        for (int i=0;i<glGetProgrami(program, GL_ACTIVE_UNIFORMS);i++) {
+            glGetActiveUniform(program,i,size,type);
+            int uniformType=type.get(0);
+            if (uniformType>=0x904C && uniformType<=0x906C) return false;
         }
         int[] box=ShaderViewportCrop.rectangle(scope.x,scope.y,scope.width,scope.height,
                 scope.frameWidth,scope.frameHeight,0,0,scope.frameWidth,scope.frameHeight,padding);
