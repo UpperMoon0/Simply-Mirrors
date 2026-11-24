@@ -639,4 +639,69 @@ class CILaneIsolationTests(unittest.TestCase):
         visual.assert_called_once_with()
         process.assert_not_called()
 
+
+
+class CombinedVisualLifecycleTests(unittest.TestCase):
+    def test_phase_names_and_modes(self):
+        import argparse
+        args=argparse.Namespace(combined_visual=True,shaders=False,run_name=None)
+        phases=visual_smoke.phase_args(args,"visual")
+        self.assertEqual([(False,"visual"),(True,"shader")],[(a.shaders,n) for a,n in phases])
+        self.assertFalse(args.shaders)
+
+    def test_single_server_two_clients_and_cleanup(self):
+        self.exercise_session(False)
+
+    def test_failure_propagates_and_server_is_stopped(self):
+        self.exercise_session(True)
+
+    def test_reset_player_before_shader_capture(self):
+        with tempfile.TemporaryDirectory() as temp:
+            rcon=Mock()
+            rcon.command.side_effect=["Teleported player", "Removed items", "No effects", "Already creative"]
+            client=Mock();client.poll.return_value=None
+            visual_smoke.activate_scene(rcon,Path(temp),0,client,reset_player=True)
+            self.assertEqual(["clear @a","effect clear @a","gamemode creative @a"],
+                             [call.args[0] for call in rcon.command.call_args_list[1:]])
+            self.assertEqual("0",(Path(temp)/"visual-scene.txt").read_text())
+
+    def exercise_session(self, fail):
+        import argparse
+        with tempfile.TemporaryDirectory() as temp:
+            module=Path(temp)
+            args=argparse.Namespace(target="forge-1.20.1",combined_visual=True,
+                shaders=False,run_name=None,interactive_offscreen=False)
+            target={"minecraft":"1.20.1"}
+            server=Mock();server.poll.return_value=None
+            rcon=Mock()
+            rcon.command.return_value="There are 0 of a max of 2 players online:"
+            events=[]
+            def prepare(phase,t,module,cwd,name,port):
+                evidence=module/"run"/(name+"-evidence")
+                evidence.mkdir(parents=True)
+                return (module/name,["gradle"],"",evidence)
+            def run(phase,*unused):
+                events.append(phase.shaders)
+                if fail and phase.shaders:
+                    raise RuntimeError("shader failed")
+            with patch.object(visual_smoke,"prepare_phase",side_effect=prepare), \
+                 patch.object(visual_smoke,"prepare_visual_server_build"), \
+                 patch.object(visual_smoke,"Rcon",return_value=rcon), \
+                 patch.object(visual_smoke,"reset_fixture") as reset, \
+                 patch.object(visual_smoke,"run_client_phase",side_effect=run), \
+                 patch.object(visual_smoke.subprocess,"Popen",return_value=server) as launch, \
+                 patch.object(visual_smoke,"stop") as stop:
+                if fail:
+                    with self.assertRaisesRegex(RuntimeError,"shader failed"):
+                        visual_smoke.run_session(args,target,module,module,"visual")
+                else:
+                    visual_smoke.run_session(args,target,module,module,"visual")
+            launch.assert_called_once()
+            self.assertEqual([False,True],events)
+            self.assertEqual(2,reset.call_count)
+            rcon.command.assert_any_call("stop")
+            stop.assert_called_once_with(server)
+            self.assertTrue((module/"run/shader-evidence/server.log").exists())
+
+
 if __name__=="__main__":unittest.main()
