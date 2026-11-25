@@ -79,7 +79,8 @@ def require_roi_activation(logs: str, label: str) -> dict:
             raise AssertionError("Control unexpectedly activated dependency ROI")
         return {"active":False}
     if not profile or not any(draws>0 and pixels>0 for draws,pixels in counts):
-        raise AssertionError("Dependency ROI did not execute a verified native cropped draw")
+        denials=sorted(set(re.findall(r"SIMPLY_MIRRORS_DEPENDENCY_ROI_(?:DENIED|PROFILE accepted=false) reason=(\S+)",logs)))
+        raise AssertionError(f"Dependency ROI did not execute a verified native cropped draw; profile={profile}, denials={denials}")
     return {"active":True,"draws":max(x[0] for x in counts),"pixelsSaved":max(x[1] for x in counts)}
 
 

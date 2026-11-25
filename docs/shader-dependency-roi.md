@@ -9,3 +9,7 @@ Profile-only runs now register program labels. Compare exact same revision with 
 A fully rejected final crop produces no activation evidence; such a trial is a failed optimization, not a pass. Native FPS improvement remains unproven.
 
 Follow-up: generalize profile metadata to actual compiled source/attachment signatures, verify active graph including flips and custom images, then evaluate shadow reuse based on measured shadow timings. No unknown pack is eligible.
+
+## Build #136 diagnosis
+
+Oculus 1.8.0 `NamespacedId.toString()` emits `NamespacedId{namespace='minecraft', name='overworld'}` rather than `minecraft:overworld`. The old check rejected every Overworld frame before archive verification. The corrected profile inspects the actual namespace and name (or ResourceLocation path) and logs explicit fail-closed rejection reasons. Native GL resource metadata is cached per registered linked program; target and viewport are still checked each draw. The native final-pass median in #136 was about 0.168 ms; eliminating all of that alone cannot be expected to deliver the 3% whole-frame acceptance target at ~40 FPS. Retain the throughput gate and do not promote a merely activated terminal crop. History/mipmap producers remain full until their actual dependencies can be proven.

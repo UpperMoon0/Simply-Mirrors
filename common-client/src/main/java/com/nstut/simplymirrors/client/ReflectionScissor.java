@@ -40,6 +40,13 @@ public final class ReflectionScissor implements AutoCloseable {
     private static final boolean SHADER_DEPENDENCY_ROI = Boolean.getBoolean("simplymirrors.shaderDependencyRoi");
     private static final boolean GPU_PROFILE = Boolean.getBoolean("simplymirrors.gpuProfile");
     private static long dependencyRoiDraws, dependencyRoiPixels;
+    private static final java.util.Set<String> dependencyDenials = new java.util.HashSet<String>();
+    private static final java.util.Map<Integer,String> dependencyProgramResources = new java.util.HashMap<Integer,String>();
+    private static boolean dependencyDenied(String reason) {
+        if (GPU_PROFILE && dependencyDenials.add(reason))
+            System.out.println("SIMPLY_MIRRORS_DEPENDENCY_ROI_DENIED reason="+reason);
+        return false;
+    }
     private static final boolean SHADER_TAIL_CROP =
         Boolean.getBoolean("simplymirrors.shaderTailCrop");
     // Separate opt-in experiment: the pinned shader's final pass performs an
@@ -75,7 +82,7 @@ public final class ReflectionScissor implements AutoCloseable {
         new java.util.HashMap<Integer,String>();
     public static void registerShaderProgram(int program, String name) {
         if ((GPU_PROFILE || SHADER_DEPENDENCY_ROI || SHADER_TAIL_CROP || SHADER_FINAL_ORIGIN_CROP || SHADER_EARLY_COMPOSITE_CROP || SHADER_FINAL_DUAL_CROP || FINAL_FRAGMENT_GUARD) && program > 0 && name != null)
-            { PROGRAM_NAMES.put(program, name); FINAL_GUARD_UNIFORMS.remove(program); }
+            { PROGRAM_NAMES.put(program, name); FINAL_GUARD_UNIFORMS.remove(program); dependencyProgramResources.remove(program); }
     }
     public static String profileProgramName(int program) {
         return PROGRAM_NAMES.get(program);
@@ -83,6 +90,7 @@ public final class ReflectionScissor implements AutoCloseable {
     public static void unregisterShaderProgram(int program) {
         PROGRAM_NAMES.remove(program);
         FINAL_GUARD_UNIFORMS.remove(program);
+        dependencyProgramResources.remove(program);
     }
     private static final int SHADER_CROP_PAD =
         Math.max(256,Math.min(1024,Integer.getInteger("simplymirrors.shaderCropPad",512)));
@@ -409,49 +417,74 @@ public final class ReflectionScissor implements AutoCloseable {
         return true;
     }
 
+    /** Resource metadata is immutable for a linked program. Invalidate on
+     * program registration/disposal, not on every reflection draw. */
+    private static String dependencyResourceVerdict(int program) {
+        String cached=dependencyProgramResources.get(program);
+        if(cached!=null) return cached;
+        String reason="safe";
+        if (!org.lwjgl.opengl.GL.getCapabilities().OpenGL43) reason="gl43-unavailable";
+        else if (org.lwjgl.opengl.GL43.glGetProgramInterfacei(program,
+                org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BLOCK,
+                org.lwjgl.opengl.GL43.GL_ACTIVE_RESOURCES)!=0) reason="active-ssbo";
+        else if (glGetProgrami(program, org.lwjgl.opengl.GL42.GL_ACTIVE_ATOMIC_COUNTER_BUFFERS)!=0)
+            reason="active-atomic-counter";
+        else {
+            IntBuffer size=BufferUtils.createIntBuffer(1), type=BufferUtils.createIntBuffer(1);
+            for (int i=0;i<glGetProgrami(program, GL_ACTIVE_UNIFORMS);i++) {
+                glGetActiveUniform(program,i,size,type);
+                int uniformType=type.get(0);
+                if (uniformType>=0x904C && uniformType<=0x906C) {
+                    reason="active-image-uniform";
+                    break;
+                }
+            }
+        }
+        dependencyProgramResources.put(program,reason);
+        return reason;
+    }
+
     /** Native-size only, pinned default shaderpack, no global side effects in
      * the final program. Existing experimental switches remain independent. */
     private static boolean constrainDependencyQuad(ReflectionScissor scope) {
-        if (!scope.dependencyRoiEligible || MirrorRenderer.redirect == null) return false;
+        if (!scope.dependencyRoiEligible || MirrorRenderer.redirect == null)
+            return dependencyDenied("profile-or-redirect");
         int program=glGetInteger(GL_CURRENT_PROGRAM);
         String name=PROGRAM_NAMES.get(program);
         int padding=PinnedShaderRegionProfile.padding(name);
-        if (padding<0 || glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)==0 ||
+        if (padding<0) {
+            if (name==null) dependencyDenied("unregistered-program");
+            return false; // Full-frame producers are intentional.
+        }
+        if (!"final".equalsIgnoreCase(name)) return dependencyDenied("not-terminal");
+        if (glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)==0 ||
                 glGetInteger(GL_DRAW_BUFFER)!=GL_COLOR_ATTACHMENT0 ||
                 glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                    GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE)!=GL_TEXTURE) return false;
+                    GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE)!=GL_TEXTURE)
+            return dependencyDenied("invalid-framebuffer");
         IntBuffer viewport=BufferUtils.createIntBuffer(4);
         glGetIntegerv(GL_VIEWPORT,viewport);
         if(viewport.get(0)!=0 || viewport.get(1)!=0 ||
-                viewport.get(2)!=scope.frameWidth || viewport.get(3)!=scope.frameHeight) return false;
-        // No producer may rely on this late guard: history and mipmap
-        // producers render full-size. Only the actual terminal target may crop.
-        if (!"final".equalsIgnoreCase(name) ||
-                !org.lwjgl.opengl.GL.getCapabilities().OpenGL43 ||
-                org.lwjgl.opengl.GL43.glGetProgramInterfacei(program,
-                    org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BLOCK,
-                    org.lwjgl.opengl.GL43.GL_ACTIVE_RESOURCES)!=0 ||
-                glGetProgrami(program, org.lwjgl.opengl.GL42.GL_ACTIVE_ATOMIC_COUNTER_BUFFERS)!=0 ||
-                glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                viewport.get(2)!=scope.frameWidth || viewport.get(3)!=scope.frameHeight)
+            return dependencyDenied("non-native-viewport");
+        if (glGetFramebufferAttachmentParameteri(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                     GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME)!=MirrorRenderer.redirect.getColorTextureId())
-            return false;
-        for (int i=1;i<glGetInteger(GL_MAX_DRAW_BUFFERS);i++)
-            if (glGetInteger(GL_DRAW_BUFFER0+i)!=GL_NONE) return false;
-        // Image uniforms can write global state without an SSBO. The image
-        // uniform enum range is contiguous in OpenGL 4.2.
-        IntBuffer size=BufferUtils.createIntBuffer(1), type=BufferUtils.createIntBuffer(1);
-        for (int i=0;i<glGetProgrami(program, GL_ACTIVE_UNIFORMS);i++) {
-            glGetActiveUniform(program,i,size,type);
-            int uniformType=type.get(0);
-            if (uniformType>=0x904C && uniformType<=0x906C) return false;
-        }
+            return dependencyDenied("not-reflection-output");
+        int maxBuffers=glGetInteger(GL_MAX_DRAW_BUFFERS);
+        for (int i=1;i<maxBuffers;i++)
+            if (glGetInteger(GL_DRAW_BUFFER0+i)!=GL_NONE)
+                return dependencyDenied("additional-draw-attachment");
+        String verdict=dependencyResourceVerdict(program);
+        if (!"safe".equals(verdict)) return dependencyDenied(verdict);
         int[] box=ShaderViewportCrop.rectangle(scope.x,scope.y,scope.width,scope.height,
                 scope.frameWidth,scope.frameHeight,0,0,scope.frameWidth,scope.frameHeight,padding);
-        if(box==null) return false;
+        if(box==null) return dependencyDenied("coverage-too-large");
         glScissor(box[0],box[1],box[2],box[3]);
         glEnable(GL_SCISSOR_TEST);
         dependencyRoiDraws++;
         dependencyRoiPixels+=(long)scope.frameWidth*scope.frameHeight-(long)box[2]*box[3];
+        if (GPU_PROFILE && dependencyRoiDraws==1)
+            System.out.println("SIMPLY_MIRRORS_DEPENDENCY_ROI draws="+dependencyRoiDraws+" pixelsSaved="+dependencyRoiPixels);
         return true;
     }
 

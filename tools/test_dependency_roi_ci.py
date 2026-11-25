@@ -21,6 +21,10 @@ class DependencyRoiAcceptanceTests(unittest.TestCase):
             ci.require_roi_activation(active,"control")
         self.assertFalse(ci.require_roi_activation("","control")["active"])
 
+    def test_native_denial_is_reported(self):
+        with self.assertRaisesRegex(AssertionError,"active-ssbo"):
+            ci.require_roi_activation("SIMPLY_MIRRORS_DEPENDENCY_ROI_PROFILE accepted=true\nSIMPLY_MIRRORS_DEPENDENCY_ROI_DENIED reason=active-ssbo","trial")
+
     def test_all_static_and_moving_images_compared(self):
         with patch.object(ci,"compare_capture",return_value={"meanRgbError":0}) as compare:
             result=ci.compare_roi_captures(Path("control"),Path("trial"))

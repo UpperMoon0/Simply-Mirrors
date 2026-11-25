@@ -1,6 +1,7 @@
 package com.nstut.simplymirrors.client;
 
 import com.nstut.simplymirrors.math.ShaderRegionPlan;
+import com.nstut.simplymirrors.math.ShaderRegionProfileIdentity;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -17,6 +18,14 @@ final class PinnedShaderRegionProfile {
     private static Object checkedPack;
     private static boolean accepted;
     private static Class<?> iris;
+    private static String lastRejection;
+    private static boolean deny(String reason) {
+        if (Boolean.getBoolean("simplymirrors.gpuProfile") && !reason.equals(lastRejection)) {
+            System.out.println("SIMPLY_MIRRORS_DEPENDENCY_ROI_PROFILE accepted=false reason="+reason);
+            lastRejection=reason;
+        }
+        return false;
+    }
     private PinnedShaderRegionProfile() {}
 
     static boolean eligible() {
@@ -24,33 +33,35 @@ final class PinnedShaderRegionProfile {
             if (iris == null) iris=Class.forName("net.irisshaders.iris.Iris",false,
                     PinnedShaderRegionProfile.class.getClassLoader());
             Object dimension=iris.getMethod("getCurrentDimension").invoke(null);
-            if (!"minecraft:overworld".equals(String.valueOf(dimension))) return false;
+            if (!ShaderRegionProfileIdentity.isOverworld(dimension)) return deny("dimension");
             Optional<?> active=(Optional<?>)iris.getMethod("getCurrentPack").invoke(null);
             Object pack=active.orElse(null);
-            if (pack == null) { checkedPack=null; accepted=false; return false; }
+            if (pack == null) { checkedPack=null; accepted=false; return deny("no-pack"); }
             if (pack != checkedPack) {
                 checkedPack=pack;
                 accepted=false;
                 String name=(String)iris.getMethod("getCurrentPackName").invoke(null);
-                if (!PACK_NAME.equals(name)) return false;
+                if (!PACK_NAME.equals(name)) return deny("pack-name");
                 Object options=pack.getClass().getMethod("getShaderPackOptions").invoke(pack);
                 Object values=options.getClass().getMethod("getOptionValues").invoke(options);
-                if (((Number)values.getClass().getMethod("getOptionsChanged").invoke(values)).intValue()!=0)
-                    return false;
+                int changed=((Number)values.getClass().getMethod("getOptionsChanged").invoke(values)).intValue();
+                if (changed!=0) return deny("changed-options-"+changed);
                 Path directory=(Path)iris.getMethod("getShaderpacksDirectory").invoke(null);
                 Path archive=directory.resolve(PACK_NAME);
-                if (!Files.isRegularFile(archive) || Files.size(archive)!=553397L) return false;
+                if (!Files.isRegularFile(archive) || Files.size(archive)!=553397L) return deny("archive-size");
                 byte[] digest=MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(archive));
                 StringBuilder hex=new StringBuilder(64);
                 for(byte b:digest) hex.append(Character.forDigit((b>>>4)&15,16)).append(Character.forDigit(b&15,16));
                 accepted=SHA256.equals(hex.toString());
+                if (!accepted) return deny("archive-digest");
+                lastRejection=null;
                 if (Boolean.getBoolean("simplymirrors.gpuProfile"))
-                    System.out.println("SIMPLY_MIRRORS_DEPENDENCY_ROI_PROFILE accepted="+accepted);
+                    System.out.println("SIMPLY_MIRRORS_DEPENDENCY_ROI_PROFILE accepted=true");
             }
             return accepted;
         } catch (Exception | LinkageError unavailable) {
             accepted=false;
-            return false;
+            return deny("api-"+unavailable.getClass().getSimpleName());
         }
     }
 
