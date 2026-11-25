@@ -25,6 +25,18 @@ class DependencyRoiAcceptanceTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError,"active-ssbo"):
             ci.require_roi_activation("SIMPLY_MIRRORS_DEPENDENCY_ROI_PROFILE accepted=true\nSIMPLY_MIRRORS_DEPENDENCY_ROI_DENIED reason=active-ssbo","trial")
 
+    def test_zero_density_must_compile_and_activate_only_on_trial(self):
+        marker="SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY program=composite1\n"
+        active="SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY_ACTIVE program=composite1\n"
+        pinned="SIMPLY_MIRRORS_DEPENDENCY_ROI_PROFILE accepted=true\n"
+        for log in ("",marker,marker+active):
+            with self.assertRaises(AssertionError):
+                ci.require_zero_density_activation(log,"trial")
+        self.assertTrue(ci.require_zero_density_activation(marker+active+pinned,"trial")["active"])
+        with self.assertRaises(AssertionError):
+            ci.require_zero_density_activation(marker+active+pinned,"control")
+        self.assertFalse(ci.require_zero_density_activation("","control")["active"])
+
     def test_all_static_and_moving_images_compared(self):
         with patch.object(ci,"compare_capture",return_value={"meanRgbError":0}) as compare:
             result=ci.compare_roi_captures(Path("control"),Path("trial"))

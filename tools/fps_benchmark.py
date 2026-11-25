@@ -58,6 +58,7 @@ def graphics_java_options(gpu_profile: bool = False, coverage_scissor: bool = Tr
             (" -Dsimplymirrors.historyCopyImage=true" if history_copy_image else "") +
             (" -Dsimplymirrors.shaderPostProcessCrop=true" if postprocess_scissor else "") +
             (" -Dsimplymirrors.shaderTailCrop=true" if shader_tail_crop else "") +
+            (" -Dsimplymirrors.shaderVolumetricZeroDensity=true" if os.environ.get("SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY") == "1" else "") +
             (" -Dsimplymirrors.shaderDependencyRoi=true" if os.environ.get("SIMPLY_MIRRORS_DEPENDENCY_ROI") == "1" else "") +
             (" -Dsimplymirrors.fpsDeterministicMotionParity=true" if os.environ.get("SIMPLY_MIRRORS_DETERMINISTIC_MOTION_PARITY") == "1" else "") +
             (" -Dsimplymirrors.shaderFinalOriginCrop=true" if shader_final_origin_crop else "") +
@@ -596,6 +597,7 @@ def run_benchmark():
             "historyCopyImageEnabled": args.history_copy_image,
             "postProcessScissorEnabled": args.postprocess_scissor,
             "shaderTailCropEnabled": args.shader_tail_crop,
+            "shaderVolumetricZeroDensityEnabled": os.environ.get("SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY") == "1",
             "shaderDependencyRoiEnabled": os.environ.get("SIMPLY_MIRRORS_DEPENDENCY_ROI") == "1",
             "deterministicMotionParityEnabled": os.environ.get("SIMPLY_MIRRORS_DETERMINISTIC_MOTION_PARITY") == "1",
             "shaderFinalOriginCropEnabled": args.shader_final_origin_crop,

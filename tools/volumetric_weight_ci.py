@@ -30,7 +30,7 @@ def benchmark_command(label: str, name: str, experiment="blur-rejection") -> lis
     ]
     # Isolate blur tap rejection: both arms retain the winning history path.
     # Rejected lazy clearing and volumetric arithmetic stay disabled.
-    if experiment == "dependency-roi":
+    if experiment in ("dependency-roi","zero-density"):
         result.remove("--shader-tail-crop")
     elif experiment != "blur-rejection":
         raise ValueError("Unknown GPU experiment")
@@ -60,10 +60,14 @@ def verify_settings(summary: dict, label: str, experiment="blur-rejection") -> N
         "movingCameraEnabled": True,
         "directGameLaunchEnabled": True,
     }
-    if experiment == "dependency-roi":
+    if experiment in ("dependency-roi","zero-density"):
         required.update(shaderTailCropEnabled=False, shaderReflectionBlurRejectionEnabled=False,
-                        shaderDependencyRoiEnabled=expected, deterministicMotionParityEnabled=True,
+                        shaderDependencyRoiEnabled=expected and experiment=="dependency-roi", deterministicMotionParityEnabled=True,
                         postProcessScissorEnabled=False, reflectionOutputScissorEnabled=False)
+    if experiment=="zero-density":
+        required["shaderVolumetricZeroDensityEnabled"]=expected
+    elif summary.get("shaderVolumetricZeroDensityEnabled",False):
+        raise AssertionError("Unrelated zero-density experiment enabled")
     mismatch = {key: (summary.get(key), value)
                 for key, value in required.items() if summary.get(key) != value}
     if mismatch:
@@ -82,6 +86,16 @@ def require_roi_activation(logs: str, label: str) -> dict:
         denials=sorted(set(re.findall(r"SIMPLY_MIRRORS_DEPENDENCY_ROI_(?:DENIED|PROFILE accepted=false) reason=(\S+)",logs)))
         raise AssertionError(f"Dependency ROI did not execute a verified native cropped draw; profile={profile}, denials={denials}")
     return {"active":True,"draws":max(x[0] for x in counts),"pixelsSaved":max(x[1] for x in counts)}
+
+
+def require_zero_density_activation(logs: str, label: str) -> dict:
+    compiled="SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY program=composite1" in logs
+    active="SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY_ACTIVE program=composite1" in logs
+    if label=="trial" and not (compiled and active and "SIMPLY_MIRRORS_DEPENDENCY_ROI_PROFILE accepted=true" in logs):
+        raise AssertionError("Zero-density shader was not transformed and enabled on the pinned native reflection draw")
+    if label=="control" and (compiled or active):
+        raise AssertionError("Control unexpectedly enabled zero-density shader")
+    return {"compiled":compiled,"active":active}
 
 
 def roi_shader_timings(logs: str) -> dict:
@@ -224,7 +238,7 @@ def pair_order(index: int, attempt: int) -> tuple[str, str]:
 def run_variant(label: str, index: int, stamp: str,
                 attempt: int = 0, experiment="blur-rejection") -> tuple[dict, Path]:
     suffix = f"-retry{attempt}" if attempt else ""
-    prefix = "dependency-roi" if experiment=="dependency-roi" else "volumetric-weight"
+    prefix = experiment if experiment!="blur-rejection" else "volumetric-weight"
     name = f"fps-{prefix}-{stamp}-{label}-{index}{suffix}"
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_START", label, index, name, flush=True)
     preflight_samples = wait_for_quiet_host()
@@ -232,7 +246,8 @@ def run_variant(label: str, index: int, stamp: str,
     env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "0"
     env["SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION"] = "1" if label == "trial" and experiment=="blur-rejection" else "0"
     env["SIMPLY_MIRRORS_DEPENDENCY_ROI"] = "1" if label=="trial" and experiment=="dependency-roi" else "0"
-    env["SIMPLY_MIRRORS_DETERMINISTIC_MOTION_PARITY"] = "1" if experiment=="dependency-roi" else "0"
+    env["SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY"] = "1" if label=="trial" and experiment=="zero-density" else "0"
+    env["SIMPLY_MIRRORS_DETERMINISTIC_MOTION_PARITY"] = "1" if experiment in ("dependency-roi","zero-density") else "0"
     env.pop("JAVA_TOOL_OPTIONS",None)
     env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1"
     env["SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"] = "1"
@@ -249,8 +264,11 @@ def run_variant(label: str, index: int, stamp: str,
     if not {"gpuCaptureMs", "gpuWorldMs", "gpuFinalizeMs", "gpuRestoreMs"}.issubset(
             summary["gpuProfilerMedians"]):
         raise AssertionError("Native per-stage GPU timestamp evidence missing")
-    if experiment=="dependency-roi":
-        summary["dependencyRoiActivation"]=require_roi_activation(logs,label)
+    if experiment in ("dependency-roi","zero-density"):
+        if experiment=="dependency-roi":
+            summary["dependencyRoiActivation"]=require_roi_activation(logs,label)
+        else:
+            summary["zeroDensityActivation"]=require_zero_density_activation(logs,label)
         summary["shaderGpuMedians"]=roi_shader_timings(logs)
         for marker in ("SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE","SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"):
             if marker not in logs:
@@ -263,7 +281,7 @@ def run_variant(label: str, index: int, stamp: str,
 
 
 def accept(experiment="blur-rejection") -> dict:
-    if experiment not in ("blur-rejection","dependency-roi"):
+    if experiment not in ("blur-rejection","dependency-roi","zero-density"):
         raise ValueError("Unknown GPU experiment")
     if os.name != "nt" or os.environ.get("CI_GRAPHICS_AGENT") != "1":
         raise RuntimeError("Only the trusted private native GPU CI agent can run acceptance")
@@ -295,7 +313,7 @@ def accept(experiment="blur-rejection") -> dict:
                 if attempt + 1 >= MAX_PAIR_ATTEMPTS:
                     raise
                 continue
-            images = compare_roi_captures(control_images,trial_images) if experiment=="dependency-roi" else {label: compare_capture(
+            images = compare_roi_captures(control_images,trial_images) if experiment in ("dependency-roi","zero-density") else {label: compare_capture(
                 control_images / f"scene-{scene}.png",
                 trial_images / f"scene-{scene}.png", scene)
                 for scene, label in SCENES}
@@ -310,7 +328,10 @@ def accept(experiment="blur-rejection") -> dict:
                 "fpsChangePct": fps_changes, "pixelComparisons": images,
                 **({"dependencyRoiActivation":trial["dependencyRoiActivation"],
                     "shaderGpuMedians":{label:variants[label][0]["shaderGpuMedians"] for label in ("control","trial")}}
-                   if experiment=="dependency-roi" else {"volumetricWeightReuse":trial["volumetricWeightReuse"]}),
+                   if experiment=="dependency-roi" else
+                   {"zeroDensityActivation":trial["zeroDensityActivation"],
+                    "shaderGpuMedians":{label:variants[label][0]["shaderGpuMedians"] for label in ("control","trial")}}
+                   if experiment=="zero-density" else {"volumetricWeightReuse":trial["volumetricWeightReuse"]}),
                 "gpuStageSavingsMs": stage_savings_ms(
                     control["gpuProfilerMedians"], trial["gpuProfilerMedians"]),
                 "stagesMs": {
@@ -323,11 +344,16 @@ def accept(experiment="blur-rejection") -> dict:
             break
     summary = evaluate_gpu_acceptance(accepted)
     summary["experiment"]=experiment
-    prefix="dependency-roi" if experiment=="dependency-roi" else "volumetric-weight"
+    if experiment=="zero-density":
+        medians={label:statistics.median(p["shaderGpuMedians"][label]["composite1"] for p in accepted) for label in ("control","trial")}
+        if medians["trial"]>=medians["control"]:
+            raise AssertionError(f"Zero-density composite1 GPU time did not improve: {medians}")
+        summary["medianComposite1GpuMs"]=medians
+    prefix=experiment if experiment!="blur-rejection" else "volumetric-weight"
     path = RUNS / f"fps-{prefix}-{stamp}-acceptance-evidence/summary.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print("SIMPLY_MIRRORS_DEPENDENCY_ROI_ACCEPTANCE_PASS" if experiment=="dependency-roi" else "SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_ACCEPTANCE_PASS",
+    print("SIMPLY_MIRRORS_DEPENDENCY_ROI_ACCEPTANCE_PASS" if experiment=="dependency-roi" else "SIMPLY_MIRRORS_ZERO_DENSITY_ACCEPTANCE_PASS" if experiment=="zero-density" else "SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_ACCEPTANCE_PASS",
           json.dumps(summary), flush=True)
     # Centralized CI owns this legacy compatibility marker.
     print("SIMPLY_MIRRORS_TAIL_ACCEPTANCE_PASS",
