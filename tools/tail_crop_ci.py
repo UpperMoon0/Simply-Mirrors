@@ -53,6 +53,29 @@ def fps_values(summary: dict) -> dict:
     return {name: stage["medianAvgFps"] for name, stage in summary["stages"].items()}
 
 
+def assert_stable_arm(label: str, run: dict, accepted: list[dict]) -> None:
+    """An arm with frame-time bursts or reference drift is already unusable."""
+    import math
+    for scene in ("no-mirror", "one-mirror", "nine-coplanar-mirrors"):
+        values = run["stages"][scene]
+        fps, p95, p99 = (values["medianAvgFps"], values["medianP95FrameMs"],
+                         values["medianP99FrameMs"])
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                   and math.isfinite(v) and v > 0 for v in (fps, p95, p99)):
+            raise AssertionError(f"Invalid native frame timing: {label} {scene}")
+        if p99 > 1.5 * p95:
+            raise UnstableBenchmarkError(
+                f"{label} {scene} frame-time bursts: p99={p99:.3f}ms "
+                f"exceeds 1.5 x p95={p95:.3f}ms")
+        if accepted:
+            original = accepted[0][label][scene]
+            drift = 100 * (fps / original - 1)
+            if abs(drift) > 8.0:
+                raise UnstableBenchmarkError(
+                    f"{label} {scene} drift {drift:.3f}% exceeds 8% "
+                    "against the first accepted pair")
+
+
 def assert_stable_pair(control: dict, trial: dict, accepted: list[dict]) -> float:
     """Reject noise that could manufacture an apparent mirror optimization gain.
 
@@ -64,27 +87,8 @@ def assert_stable_pair(control: dict, trial: dict, accepted: list[dict]) -> floa
     neutral = 100 * (trial_fps["no-mirror"] / control_fps["no-mirror"] - 1)
     if abs(neutral) > 4.5:
         raise UnstableBenchmarkError(f"No-mirror A/B drift {neutral:.3f}% exceeds 4.5%")
-    # Build 95 control-0 had p99=101.987 ms vs p95=32.424 ms.
-    # Its neutral scene passed, but using that stalled arm as the initial
-    # reference manufactured a +12.82% gain and rejected subsequent clean arms.
-    # Reject bursty arms BEFORE selecting the first reference; no thresholds relax.
     for variant, run in (("control", control), ("trial", trial)):
-        for scene, values in run["stages"].items():
-            p95, p99 = values["medianP95FrameMs"], values["medianP99FrameMs"]
-            if p99 > 1.5 * p95:
-                raise UnstableBenchmarkError(
-                    f"{variant} {scene} frame-time bursts: p99={p99:.3f}ms "
-                    f"exceeds 1.5 x p95={p95:.3f}ms")
-    if accepted:
-        reference = accepted[0]
-        for variant, current in (("control", control_fps), ("trial", trial_fps)):
-            for scene in ("no-mirror", "one-mirror", "nine-coplanar-mirrors"):
-                original = reference[variant][scene]
-                drift = 100 * (current[scene] / original - 1)
-                if abs(drift) > 8.0:
-                    raise UnstableBenchmarkError(
-                        f"{variant} {scene} drift {drift:.3f}% exceeds 8% "
-                        "against the first accepted pair")
+        assert_stable_arm(variant, run, accepted)
     return round(neutral, 3)
 
 

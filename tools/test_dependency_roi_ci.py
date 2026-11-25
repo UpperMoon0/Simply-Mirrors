@@ -37,6 +37,29 @@ class DependencyRoiAcceptanceTests(unittest.TestCase):
             ci.require_zero_density_activation(marker+active+pinned,"control")
         self.assertFalse(ci.require_zero_density_activation("","control")["active"])
 
+    def test_reject_bursty_arm_without_launching_counterpart(self):
+        from tail_crop_ci import assert_stable_arm, UnstableBenchmarkError
+        good={"medianAvgFps":72.0,"medianP95FrameMs":14.0,"medianP99FrameMs":18.0}
+        stages={label:dict(good) for label in ("no-mirror","one-mirror","nine-coplanar-mirrors")}
+        assert_stable_arm("trial",{"stages":stages},[])
+        stages["no-mirror"]["medianP99FrameMs"]=158.0
+        with self.assertRaisesRegex(UnstableBenchmarkError,"frame-time bursts"):
+            assert_stable_arm("trial",{"stages":stages},[])
+
+    def test_raw_capture_archive_is_bounded(self):
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as folder:
+            root=Path(folder)
+            source=root/"client"/"fps-evidence"
+            source.mkdir(parents=True)
+            for name in ("scene-7.json","scene-8-parity-motion-a.png","scene-9.png","unrelated.txt"):
+                (source/name).write_bytes(b"fixture")
+            evidence=root/"run-evidence"
+            result=ci.archive_raw_captures(source,evidence)
+            self.assertEqual({"captures/scene-7.json","captures/scene-8-parity-motion-a.png","captures/scene-9.png"},set(result))
+            self.assertTrue((evidence/"capture-index.json").is_file())
+            self.assertFalse((evidence/"captures"/"unrelated.txt").exists())
+
     def test_all_static_and_moving_images_compared(self):
         with patch.object(ci,"compare_capture",return_value={"meanRgbError":0}) as compare:
             result=ci.compare_roi_captures(Path("control"),Path("trial"))

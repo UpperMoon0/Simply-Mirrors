@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 
 from tail_crop_ci import (ROOT, TARGET, RUNS, SCENES, compare_capture,
-                          assert_stable_pair, UnstableBenchmarkError, fps_values,
+                          assert_stable_pair, assert_stable_arm, UnstableBenchmarkError, fps_values,
                           profile_medians)
 
 
@@ -235,12 +235,36 @@ def pair_order(index: int, attempt: int) -> tuple[str, str]:
     return ("trial", "control") if (index + attempt) % 2 == 0 else ("control", "trial")
 
 
+def archive_raw_captures(source: Path, evidence: Path) -> list[str]:
+    """Preserve benchmark-owned frame samples and PNGs even on rejected arms.
+    Central artifact collection already includes the *-evidence directory.
+    Do not follow symlinks or copy arbitrary files from a client workspace.
+    """
+    if not source.is_dir() or source.is_symlink():
+        return []
+    destination = evidence / "captures"
+    files = []
+    for path in sorted(source.iterdir()):
+        if (path.is_symlink() or not path.is_file() or not
+                re.fullmatch(r"scene-\d+(?:-(?:parity-)?motion-[ab])?\.(?:png|json)", path.name)):
+            continue
+        destination.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, destination / path.name)
+        files.append("captures/" + path.name)
+    if files:
+        (evidence / "capture-index.json").write_text(
+            json.dumps(files, indent=2) + "\n", encoding="utf-8")
+    return files
+
+
 def run_variant(label: str, index: int, stamp: str,
                 attempt: int = 0, experiment="blur-rejection") -> tuple[dict, Path]:
     suffix = f"-retry{attempt}" if attempt else ""
     prefix = experiment if experiment!="blur-rejection" else "volumetric-weight"
     name = f"fps-{prefix}-{stamp}-{label}-{index}{suffix}"
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_START", label, index, name, flush=True)
+    evidence = RUNS / f"{name}-evidence"
+    images = RUNS / f"{name}-client" / "fps-evidence"
     preflight_samples = wait_for_quiet_host()
     env = os.environ.copy()
     env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "0"
@@ -253,10 +277,14 @@ def run_variant(label: str, index: int, stamp: str,
     env["SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"] = "1"
     env["SIMPLY_MIRRORS_LAZY_HISTORY_CLEAR"] = "0"
     result = subprocess.run(benchmark_command(label, name, experiment), cwd=ROOT, check=False, env=env)
+    archived = archive_raw_captures(images, evidence)
     if result.returncode:
         raise RuntimeError(f"Native volumetric weight {label} {index} returned {result.returncode}")
-    evidence = RUNS / f"{name}-evidence"
     summary = json.loads((evidence / "summary.json").read_text(encoding="utf-8"))
+    if not archived:
+        raise AssertionError("Missing native frame samples and captures")
+    summary["archivedCaptures"]=archived
+    (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     (evidence / "host-preflight.json").write_text(json.dumps(preflight_samples, indent=2) + "\n", encoding="utf-8")
     verify_settings(summary, label, experiment)
     logs = (evidence / "client.log").read_text(encoding="utf-8", errors="replace")
@@ -302,6 +330,7 @@ def accept(experiment="blur-rejection") -> dict:
                 # assigning the same thermal/startup order to one variant.
                 for label in pair_order(index, attempt):
                     variants[label] = run_variant(label, index, stamp, attempt, experiment)
+                    assert_stable_arm(label, variants[label][0], accepted)
                 control, control_images = variants["control"]
                 trial, trial_images = variants["trial"]
                 neutral = assert_stable_pair(control, trial, accepted)
