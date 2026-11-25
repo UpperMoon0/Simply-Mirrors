@@ -8,7 +8,7 @@ import volumetric_weight_ci as ci
 class DependencyRoiAcceptanceTests(unittest.TestCase):
     def test_roi_excludes_legacy_tail(self):
         self.assertNotIn("--shader-tail-crop",ci.benchmark_command("trial","test","dependency-roi"))
-        self.assertIn("--shader-tail-crop",ci.benchmark_command("trial","test"))
+        self.assertNotIn("--shader-tail-crop",ci.benchmark_command("trial","test"))
 
     def test_requires_positive_native_activation(self):
         prefix="SIMPLY_MIRRORS_DEPENDENCY_ROI_PROFILE accepted=true\n"

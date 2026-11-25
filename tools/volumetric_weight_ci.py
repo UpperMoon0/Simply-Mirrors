@@ -30,17 +30,16 @@ def benchmark_command(label: str, name: str, experiment="blur-rejection") -> lis
     ]
     # Isolate blur tap rejection: both arms retain the winning history path.
     # Rejected lazy clearing and volumetric arithmetic stay disabled.
-    if experiment in ("dependency-roi","zero-density"):
-        result.remove("--shader-tail-crop")
-    elif experiment != "blur-rejection":
+    if experiment not in ("dependency-roi", "zero-density", "blur-rejection"):
         raise ValueError("Unknown GPU experiment")
+    result.remove("--shader-tail-crop")
     return result
 
 
 def verify_settings(summary: dict, label: str, experiment="blur-rejection") -> None:
     expected = label == "trial"
     required = {
-        "shaderTailCropEnabled": True,
+        "shaderTailCropEnabled": False,
         "historyCopyImageEnabled": True,
         "shaderFinalFragmentGuardEnabled": False,
         "shaderVolumetricWeightReuseEnabled": False,
@@ -60,10 +59,9 @@ def verify_settings(summary: dict, label: str, experiment="blur-rejection") -> N
         "movingCameraEnabled": True,
         "directGameLaunchEnabled": True,
     }
-    if experiment in ("dependency-roi","zero-density"):
-        required.update(shaderTailCropEnabled=False, shaderReflectionBlurRejectionEnabled=False,
-                        shaderDependencyRoiEnabled=expected and experiment=="dependency-roi", deterministicMotionParityEnabled=True,
-                        postProcessScissorEnabled=False, reflectionOutputScissorEnabled=False)
+    required.update(shaderDependencyRoiEnabled=expected and experiment=="dependency-roi",
+                    deterministicMotionParityEnabled=True,
+                    postProcessScissorEnabled=False, reflectionOutputScissorEnabled=False)
     if experiment=="zero-density":
         required["shaderVolumetricZeroDensityEnabled"]=expected
     elif summary.get("shaderVolumetricZeroDensityEnabled",False):
@@ -271,7 +269,7 @@ def run_variant(label: str, index: int, stamp: str,
     env["SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION"] = "1" if label == "trial" and experiment=="blur-rejection" else "0"
     env["SIMPLY_MIRRORS_DEPENDENCY_ROI"] = "1" if label=="trial" and experiment=="dependency-roi" else "0"
     env["SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY"] = "1" if label=="trial" and experiment=="zero-density" else "0"
-    env["SIMPLY_MIRRORS_DETERMINISTIC_MOTION_PARITY"] = "1" if experiment in ("dependency-roi","zero-density") else "0"
+    env["SIMPLY_MIRRORS_DETERMINISTIC_MOTION_PARITY"] = "1"
     env.pop("JAVA_TOOL_OPTIONS",None)
     env["SIMPLY_MIRRORS_HISTORY_REDIRECT"] = "1"
     env["SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"] = "1"
@@ -301,14 +299,39 @@ def run_variant(label: str, index: int, stamp: str,
         for marker in ("SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE","SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY"):
             if marker not in logs:
                 raise AssertionError(f"Missing native history isolation evidence: {marker}")
-    elif label == "trial":
-        summary["volumetricWeightReuse"] = require_weight_reuse(logs)
+    else:
+        summary["shaderGpuMedians"] = roi_shader_timings(logs)
+        if label == "trial":
+            summary["volumetricWeightReuse"] = require_weight_reuse(logs)
+        elif ("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION program=composite1" in logs or
+              "SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION_ACTIVE" in logs):
+            raise AssertionError("Control unexpectedly activated blur rejection")
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_RUN", label, index,
           json.dumps(fps_values(summary)), flush=True)
     return summary, RUNS / f"{name}-client" / "fps-evidence"
 
 
-def accept(experiment="blur-rejection") -> dict:
+def evaluate_screening(pair: dict) -> dict:
+    """One valid pair can reject a clear loser, never grant full acceptance."""
+    import math
+    one = pair["fpsChangePct"]["one-mirror"]
+    nine = pair["fpsChangePct"]["nine-coplanar-mirrors"]
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+               and math.isfinite(v) for v in (one, nine)):
+        raise AssertionError("Invalid native screening FPS")
+    savings = stage_savings_ms(pair["stagesMs"]["control"], pair["stagesMs"]["trial"])
+    total = sum(savings[key] for key in ("gpuCaptureMs", "gpuWorldMs", "gpuRestoreMs"))
+    # Do not discard a borderline candidate solely on one noisy estimate.
+    # Reject only where FPS and disjoint GPU timers corroborate a clear loss.
+    decision = ("reject" if (one <= -2.0 or nine < -2.0) and total <= 0
+                else "promising" if one >= 3.0 and nine >= -2.0 and total > 0
+                else "inconclusive")
+    return {"tier": "screening", "productionAccepted": False, "decision": decision,
+            "oneMirrorImprovementPct": one, "nineMirrorImprovementPct": nine,
+            "gpuDisjointSavingsMs": round(total, 4), "pair": pair}
+
+
+def accept(experiment="blur-rejection", *, screening_only=False) -> dict:
     if experiment not in ("blur-rejection","dependency-roi","zero-density"):
         raise ValueError("Unknown GPU experiment")
     if os.name != "nt" or os.environ.get("CI_GRAPHICS_AGENT") != "1":
@@ -322,7 +345,7 @@ def accept(experiment="blur-rejection") -> dict:
     subprocess.run(preflight, cwd=ROOT, env=preflight_env, check=True)
     stamp = uuid.uuid4().hex[:8]
     accepted: list[dict] = []
-    for index in range(3):
+    for index in range(1 if screening_only else 3):
         for attempt in range(MAX_PAIR_ATTEMPTS):
             variants = {}
             try:
@@ -342,10 +365,7 @@ def accept(experiment="blur-rejection") -> dict:
                 if attempt + 1 >= MAX_PAIR_ATTEMPTS:
                     raise
                 continue
-            images = compare_roi_captures(control_images,trial_images) if experiment in ("dependency-roi","zero-density") else {label: compare_capture(
-                control_images / f"scene-{scene}.png",
-                trial_images / f"scene-{scene}.png", scene)
-                for scene, label in SCENES}
+            images = compare_roi_captures(control_images, trial_images)
             fps_changes = {label: round(100 * (
                 trial["stages"][label]["medianAvgFps"]
                 / control["stages"][label]["medianAvgFps"] - 1), 3)
@@ -360,7 +380,8 @@ def accept(experiment="blur-rejection") -> dict:
                    if experiment=="dependency-roi" else
                    {"zeroDensityActivation":trial["zeroDensityActivation"],
                     "shaderGpuMedians":{label:variants[label][0]["shaderGpuMedians"] for label in ("control","trial")}}
-                   if experiment=="zero-density" else {"volumetricWeightReuse":trial["volumetricWeightReuse"]}),
+                   if experiment=="zero-density" else {"volumetricWeightReuse":trial["volumetricWeightReuse"],
+                    "shaderGpuMedians":{label:variants[label][0]["shaderGpuMedians"] for label in ("control","trial")}}),
                 "gpuStageSavingsMs": stage_savings_ms(
                     control["gpuProfilerMedians"], trial["gpuProfilerMedians"]),
                 "stagesMs": {
@@ -370,13 +391,24 @@ def accept(experiment="blur-rejection") -> dict:
             })
             print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_PAIR",
                   json.dumps(accepted[-1]), flush=True)
+            if index == 0:
+                screening = evaluate_screening(accepted[0])
+                screening["experiment"] = experiment
+                path = RUNS / f"fps-{experiment}-{stamp}-screening-evidence/summary.json"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(screening, indent=2) + "\n", encoding="utf-8")
+                print("SIMPLY_MIRRORS_SCREENING_RESULT", json.dumps(screening), flush=True)
+                if screening["decision"] == "reject":
+                    raise AssertionError("Native screening rejected a corroborated performance loss")
+                if screening_only:
+                    return screening
             break
     summary = evaluate_gpu_acceptance(accepted)
     summary["experiment"]=experiment
-    if experiment=="zero-density":
+    if experiment in ("zero-density", "blur-rejection"):
         medians={label:statistics.median(p["shaderGpuMedians"][label]["composite1"] for p in accepted) for label in ("control","trial")}
         if medians["trial"]>=medians["control"]:
-            raise AssertionError(f"Zero-density composite1 GPU time did not improve: {medians}")
+            raise AssertionError(f"{experiment} composite1 GPU time did not improve: {medians}")
         summary["medianComposite1GpuMs"]=medians
     prefix=experiment if experiment!="blur-rejection" else "volumetric-weight"
     path = RUNS / f"fps-{prefix}-{stamp}-acceptance-evidence/summary.json"
