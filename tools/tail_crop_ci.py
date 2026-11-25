@@ -262,6 +262,6 @@ def accept() -> dict:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Reviewed native Simply Mirrors A/B")
-    parser.add_argument("--experiment", choices=("dependency-roi", "blur-rejection", "zero-density"), default="dependency-roi")
+    parser.add_argument("--experiment", choices=("dependency-roi", "blur-rejection", "zero-density"), default="zero-density")
     from volumetric_weight_ci import accept as native_accept
     native_accept(parser.parse_args().experiment)
