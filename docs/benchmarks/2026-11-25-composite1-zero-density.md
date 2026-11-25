@@ -5,3 +5,7 @@ Build #136 measured native median composite1 ~3.3 ms, deferred1 ~2.55 ms, final 
 ## Benchmark reliability
 
 #138 confirmed native final ROI activation, but its first pair had -19.448% neutral FPS drift and severe frame stalls. Controller queue protection was active; all three sibling Jenkins agents were idle throughout the sampled graphics lane. Raw frame intervals show 451.3 ms maximum in the first trial. Do not conflate this environmental failure with shader parity. The staged harness now rejects invalid individual arms before launching the counterpart, without changing the 4.5% neutral, 8% reference, or 1.5x p99/p95 gates. Native JSON and PNG evidence is copied into the existing archived evidence directory even on failed arms, and non-evidence files are excluded.
+
+## Terminal ROI result — Jenkins #138
+
+Three stable pairs were accepted after two rejected attempts on pair 0. One-mirror gains: +0.707%, +1.061%, +1.255% (median +1.061%); nine-mirror gains: +0.571%, +0.480%, +0.038% (median +0.480%). No-mirror deltas: -0.141%, +0.204%, -0.058%. Worst observed mean RGB error 0.4034, peak 32x32 RGB error 2.04. Native ROI draw activation and parity passed; final pass median fell from ~0.169 ms to ~0.020 ms. Build ended FAILURE because the 3% one-mirror gate was not met. The ROI experiment remains off; this is useful diagnostic evidence, not an accepted production optimization. The initial stall cause remains unproven. Next experiment: zero-density, on the same pinned settings and unchanged gates.
