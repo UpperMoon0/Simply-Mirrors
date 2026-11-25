@@ -191,14 +191,24 @@ public final class ShaderReflection {
         return uniform;
     }
     /** Own injected uniform is false for the main camera and restored after each quad. */
+    private static boolean zeroDensityActiveLogged;
     public static int beginVolumetricPass() {
         if (MirrorRenderer.redirect==null ||
                 !(Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse") ||
-                  Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay"))) return -1;
+                  Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay") ||
+                  Boolean.getBoolean("simplymirrors.shaderVolumetricZeroDensity"))) return -1;
+        boolean zeroDensity=Boolean.getBoolean("simplymirrors.shaderVolumetricZeroDensity");
+        if(zeroDensity && !PinnedShaderRegionProfile.eligible()) return -1;
         int program=glGetInteger(GL_CURRENT_PROGRAM);
         if(program==0)return -1;
         int location=location(program,"simplymirrors_VolumetricReflection");
-        if(location>=0)glUniform1i(location,1);
+        if(location>=0) {
+            glUniform1i(location,1);
+            if(zeroDensity && !zeroDensityActiveLogged && Boolean.getBoolean("simplymirrors.gpuProfile")) {
+                zeroDensityActiveLogged=true;
+                System.out.println("SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY_ACTIVE program=composite1");
+            }
+        }
         return location;
     }
     public static void endVolumetricPass(int location) {

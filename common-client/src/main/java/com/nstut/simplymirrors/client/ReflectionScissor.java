@@ -64,6 +64,13 @@ public final class ReflectionScissor implements AutoCloseable {
     private static final boolean FINAL_FRAGMENT_GUARD =
         Boolean.getBoolean("simplymirrors.shaderFinalFragmentGuard");
     static {
+        ShaderRegionPlan.requireExclusiveExperiment(Boolean.getBoolean("simplymirrors.shaderVolumetricZeroDensity"),
+            SHADER_DEPENDENCY_ROI, OUTPUT_SCISSOR, SHADER_POSTPROCESS_CROP, SHADER_TAIL_CROP,
+            SHADER_FINAL_ORIGIN_CROP, SHADER_EARLY_COMPOSITE_CROP, SHADER_FINAL_DUAL_CROP, FINAL_FRAGMENT_GUARD,
+            Boolean.getBoolean("simplymirrors.shaderReflectionBlurRejection"),
+            Boolean.getBoolean("simplymirrors.shaderCloudOcclusion"),
+            Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse"),
+            Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay"));
         ShaderRegionPlan.requireExclusiveExperiment(SHADER_DEPENDENCY_ROI,
             OUTPUT_SCISSOR, SHADER_POSTPROCESS_CROP, SHADER_TAIL_CROP,
             SHADER_FINAL_ORIGIN_CROP, SHADER_EARLY_COMPOSITE_CROP,
@@ -71,7 +78,8 @@ public final class ReflectionScissor implements AutoCloseable {
             Boolean.getBoolean("simplymirrors.shaderReflectionBlurRejection"),
             Boolean.getBoolean("simplymirrors.shaderCloudOcclusion"),
             Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse"),
-            Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay"));
+            Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay"),
+            Boolean.getBoolean("simplymirrors.shaderVolumetricZeroDensity"));
     }
     private static long finalFragmentAttempts, finalFragmentActive, finalFragmentMissingUniform;
     private static long finalFragmentTargetRejected, finalFragmentViewportRejected, finalFragmentBoundsRejected;

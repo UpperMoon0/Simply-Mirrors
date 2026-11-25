@@ -6,6 +6,7 @@ import com.nstut.simplymirrors.math.ShaderFinalFragmentGuard;
 import com.nstut.simplymirrors.math.ShaderVolumetricWeightReuse;
 import com.nstut.simplymirrors.math.ShaderVolumetricShadowRay;
 import com.nstut.simplymirrors.math.ShaderVolumetricReflectionScope;
+import com.nstut.simplymirrors.math.ShaderVolumetricZeroDensity;
 import java.util.LinkedHashMap;
 import com.llamalad7.mixinextras.sugar.Local;
 import java.util.Map;
@@ -50,6 +51,21 @@ public abstract class IrisTransformMixin {
                 if(reused!=transformed)
                     System.out.println("SIMPLY_MIRRORS_VOLUMETRIC_SHADOW_RAY program="+name);
                 transformed=reused;
+            }
+            if(Boolean.getBoolean("simplymirrors.shaderVolumetricZeroDensity") && "composite1".equals(name)) {
+                Map candidate=new LinkedHashMap(transformed);
+                for(Object key:transformed.keySet()) {
+                    if(key instanceof Enum && "FRAGMENT".equals(((Enum)key).name())) {
+                        String old=(String)transformed.get(key);
+                        String optimized=ShaderVolumetricZeroDensity.transformFragment(old);
+                        if(!old.equals(optimized)) {
+                            candidate.put(key,optimized);
+                            transformed=candidate;
+                            System.out.println("SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY program="+name);
+                            break;
+                        }
+                    }
+                }
             }
             if(transformed!=originalVolumetric && "composite1".equals(name)) {
                 Map scoped=new LinkedHashMap(transformed);
