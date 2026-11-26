@@ -248,3 +248,61 @@ jobs:
             neoforge-1.21.1/run/euphoria-compat-client/logs/**
             neoforge-1.21.1/run/euphoria-compat-client/crash-reports/**
           if-no-files-found: warn
+
+  scaled-target-parity:
+    # Never execute untrusted fork PR code on private worker machines.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: Complementary 50%-buffer visual parity (${{ matrix.target }})
+    runs-on: [self-hosted, linux, x64, nstut-linux-pool, on-prem-1, nstut-profile-minecraft-ci]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: forge-1.20.1, java: '17', gradle_java: '21', artifact: mirror-scaled-forge1201}
+          - {target: fabric-1.20.1, java: '17', gradle_java: '21', artifact: mirror-scaled-fabric1201}
+          - {target: neoforge-1.21.1, java: '21', gradle_java: '21', artifact: mirror-scaled-neoforge1211}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            ${{ matrix.java }}
+            ${{ matrix.gradle_java }}
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare preinstalled Mesa/Xvfb runner image
+        run: |
+          command -v Xvfb
+          command -v xvfb-run
+          test -f /usr/lib/x86_64-linux-gnu/libGLX_mesa.so.0
+          python -m pip install pillow
+          chmod +x gradlew
+      - name: Compare mirrored images with half-size Iris targets, scissor on vs off
+        env:
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+          ALSOFT_DRIVERS: 'null'
+        run: >-
+          xvfb-run -a -s '-screen 0 1280x720x24'
+          python tools/scaled_shader_acceptance.py
+          --target ${{ matrix.target }}
+      - uses: ./.github/actions/r2-artifact
+        if: always()
+        with:
+          operation: upload
+          workflow: shaders
+          endpoint: ${{ vars.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.target }}/run/scaled-coverage-*-evidence/**
+            ${{ matrix.target }}/run/scaled-coverage-*-client/visual-evidence/**
+            ${{ matrix.target }}/run/scaled-coverage-*-client/logs/**
+            ${{ matrix.target }}/run/scaled-coverage-comparison.json
+          if-no-files-found: warn

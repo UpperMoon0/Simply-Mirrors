@@ -1,0 +1,156 @@
+{
+  "minecraft": "1.20.1",
+  "loader": "Forge",
+  "shader": "ComplementaryReimagined_r5.9.3.zip",
+  "shaderSha256": "fed6c879e732cf7fc7bc6570ebb1def43235aa7e96f62859fbdbdbfa0b484b38",
+  "modBranch": "fe141dbdfbd1a22ff147dcd2c9a4b459d2872851",
+  "resolution": "1280x720",
+  "stages": {
+    "no-mirror": {
+      "medianAvgFps": 156.336,
+      "medianP95FrameMs": 6.767,
+      "fpsChangePctVsPairedBaseline": 0.0,
+      "trialAvgFps": [
+        156.336,
+        156.746,
+        155.8
+      ],
+      "samples": [
+        2346,
+        2352,
+        2338
+      ],
+      "reflectionPasses": [
+        0,
+        0,
+        0
+      ]
+    },
+    "one-mirror": {
+      "medianAvgFps": 73.545,
+      "medianP95FrameMs": 14.0,
+      "fpsChangePctVsPairedBaseline": -53.08,
+      "trialAvgFps": [
+        74.386,
+        73.545,
+        72.677
+      ],
+      "samples": [
+        1117,
+        1104,
+        1091
+      ],
+      "reflectionPasses": [
+        1117,
+        1104,
+        1091
+      ]
+    },
+    "nine-coplanar-mirrors": {
+      "medianAvgFps": 73.22,
+      "medianP95FrameMs": 14.073,
+      "fpsChangePctVsPairedBaseline": -53.29,
+      "trialAvgFps": [
+        73.29,
+        73.22,
+        72.309
+      ],
+      "samples": [
+        1100,
+        1099,
+        1085
+      ],
+      "reflectionPasses": [
+        1100,
+        1099,
+        1085
+      ]
+    }
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "fpsChangePct": {
+        "no-mirror": 0.0,
+        "one-mirror": -52.42,
+        "nine-coplanar-mirrors": -53.12
+      }
+    },
+    {
+      "round": 1,
+      "fpsChangePct": {
+        "no-mirror": 0.0,
+        "one-mirror": -53.08,
+        "nine-coplanar-mirrors": -53.29
+      }
+    },
+    {
+      "round": 2,
+      "fpsChangePct": {
+        "no-mirror": 0.0,
+        "one-mirror": -53.35,
+        "nine-coplanar-mirrors": -53.59
+      }
+    }
+  ],
+  "imageChecks": {
+    "0": {
+      "singleMirrorChangedPixels": 15558,
+      "nineMirrorColorMarkers": {
+        "pixels": {
+          "red": 29265,
+          "green": 24011,
+          "blue": 27165
+        },
+        "redMeanX": 758.9974030411755,
+        "blueMeanX": 510.975483158476
+      }
+    },
+    "1": {
+      "singleMirrorChangedPixels": 15566,
+      "nineMirrorColorMarkers": {
+        "pixels": {
+          "red": 29267,
+          "green": 23982,
+          "blue": 27166
+        },
+        "redMeanX": 759.0336556531247,
+        "blueMeanX": 510.9778031362733
+      }
+    },
+    "2": {
+      "singleMirrorChangedPixels": 15570,
+      "nineMirrorColorMarkers": {
+        "pixels": {
+          "red": 29268,
+          "green": 23990,
+          "blue": 27167
+        },
+        "redMeanX": 759.0564438977723,
+        "blueMeanX": 510.9801229432768
+      }
+    }
+  },
+  "rawData": [
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-7.json",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-8.json",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-9.json",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-19.json",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-18.json",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-17.json",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-27.json",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-28.json",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-29.json"
+  ],
+  "capturePaths": [
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-7.png",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-8.png",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-9.png",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-19.png",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-18.png",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-17.png",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-27.png",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-28.png",
+    "forge-1.20.1\\run\\fps-20261105-o3-client\\fps-evidence\\scene-29.png"
+  ]
+}

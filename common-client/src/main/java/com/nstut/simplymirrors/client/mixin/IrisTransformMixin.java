@@ -1,5 +1,14 @@
 package com.nstut.simplymirrors.client.mixin;
 import com.nstut.simplymirrors.math.ShaderClippingTransformation;
+import com.nstut.simplymirrors.math.ShaderCloudOcclusion;
+import com.nstut.simplymirrors.math.ShaderReflectionBlurRejection;
+import com.nstut.simplymirrors.math.ShaderReflectionCenterReuse;
+import com.nstut.simplymirrors.math.ShaderFinalFragmentGuard;
+import com.nstut.simplymirrors.math.ShaderVolumetricWeightReuse;
+import com.nstut.simplymirrors.math.ShaderVolumetricShadowRay;
+import com.nstut.simplymirrors.math.ShaderVolumetricReflectionScope;
+import com.nstut.simplymirrors.math.ShaderVolumetricZeroDensity;
+import java.util.LinkedHashMap;
 import com.llamalad7.mixinextras.sugar.Local;
 import java.util.Map;
 import org.spongepowered.asm.mixin.*;
@@ -14,6 +23,71 @@ public abstract class IrisTransformMixin {
     @Inject(method="transform",at=@At("RETURN"),cancellable=true,require=0)
     private static void simplymirrors$clip(CallbackInfoReturnable<Map> ci,
                                             @Local(argsOnly=true,ordinal=0) String name){
-        if(name!=null)ci.setReturnValue(ShaderClippingTransformation.transformProgram(name.startsWith("gbuffers_")?"SODIUM":"VANILLA",name,ci.getReturnValue()));
+        if(name!=null) {
+            Map transformed=ShaderClippingTransformation.transformProgram(
+                    name.startsWith("gbuffers_")?"SODIUM":"VANILLA",name,ci.getReturnValue());
+            if(Boolean.getBoolean("simplymirrors.shaderFinalFragmentGuard"))
+                transformed=ShaderFinalFragmentGuard.transformProgram(name,transformed);
+            if(Boolean.getBoolean("simplymirrors.shaderCloudOcclusion")) {
+                Map culled=ShaderCloudOcclusion.transformProgram(name,transformed);
+                if(culled!=transformed)
+                    System.out.println("SIMPLY_MIRRORS_CLOUD_OCCLUSION program="+name);
+                transformed=culled;
+            }
+            if(Boolean.getBoolean("simplymirrors.shaderReflectionBlurRejection")) {
+                Map rejected=ShaderReflectionBlurRejection.transformProgram(name,transformed);
+                if(rejected!=transformed)
+                    System.out.println("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION program="+name);
+                transformed=rejected;
+            }
+            if(Boolean.getBoolean("simplymirrors.shaderReflectionCenterReuse")) {
+                Map reused=ShaderReflectionCenterReuse.transformProgram(name,transformed);
+                if(reused!=transformed)
+                    System.out.println("SIMPLY_MIRRORS_REFLECTION_CENTER_REUSE program="+name);
+                transformed=reused;
+            }
+            Map originalVolumetric=transformed;
+            if(Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse")) {
+                Map reused=ShaderVolumetricWeightReuse.transformProgram(name,transformed);
+                if(reused!=transformed)
+                    System.out.println("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_REUSE program="+name);
+                transformed=reused;
+            }
+            if(Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay")) {
+                Map reused=ShaderVolumetricShadowRay.transformProgram(name,transformed);
+                if(reused!=transformed)
+                    System.out.println("SIMPLY_MIRRORS_VOLUMETRIC_SHADOW_RAY program="+name);
+                transformed=reused;
+            }
+            if(Boolean.getBoolean("simplymirrors.shaderVolumetricZeroDensity") && "composite1".equals(name)) {
+                Map candidate=new LinkedHashMap(transformed);
+                for(Object key:transformed.keySet()) {
+                    if(key instanceof Enum && "FRAGMENT".equals(((Enum)key).name())) {
+                        String old=(String)transformed.get(key);
+                        String optimized=ShaderVolumetricZeroDensity.transformFragment(old);
+                        if(!old.equals(optimized)) {
+                            candidate.put(key,optimized);
+                            transformed=candidate;
+                            System.out.println("SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY program="+name);
+                            break;
+                        }
+                    }
+                }
+            }
+            if(transformed!=originalVolumetric && "composite1".equals(name)) {
+                Map scoped=new LinkedHashMap(transformed);
+                for(Object key:transformed.keySet()) {
+                    if(key instanceof Enum && "FRAGMENT".equals(((Enum)key).name())) {
+                        String source=ShaderVolumetricReflectionScope.scope(
+                            (String)originalVolumetric.get(key),(String)transformed.get(key));
+                        if(source.contains(ShaderVolumetricReflectionScope.UNIFORM))
+                            System.out.println("SIMPLY_MIRRORS_VOLUMETRIC_REFLECTION_SCOPE program="+name);
+                        scoped.put(key,source);
+                    }
+                }
+                transformed=scoped;
+            }
+            ci.setReturnValue(transformed);
+        }
     }
 }

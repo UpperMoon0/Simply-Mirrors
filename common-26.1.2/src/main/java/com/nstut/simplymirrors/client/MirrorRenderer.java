@@ -118,14 +118,17 @@ public final class MirrorRenderer {
                 RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(target.getColorTexture(),0xff9db7ca,target.getDepthTexture(),1.0);
                 int oldFront=glGetInteger(GL_FRONT_FACE);
                 var mv=RenderSystem.getModelViewStack();mv.pushMatrix();mv.identity();
+                ReflectionScissor clipped=null;
                 try(GpuBuffer globals=globals(reflectedEye,main.width,main.height,mc,partial)) {
                     redirect=target;
+                    clipped=ReflectionScissor.begin(vp,eye.x,eye.y,eye.z,main.width,main.height,surfaces);
                     if(shaders)ShaderReflection.begin(proj,reflectedView.get(new float[16]),s.nx,s.ny,s.nz,s.cx-reflected[0],s.cy-reflected[1],s.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected,priorFrame.reflect(s));
                     RenderSystem.setGlobalSettingsUniform(globals);
                     RenderSystem.setProjectionMatrix(projectionBuffer.getBuffer(projection),ProjectionType.PERSPECTIVE);glFrontFace(GL_CW);
                     mc.levelRenderer.renderLevel(allocator,delta,false,state.cameraRenderState,reflectedView,fog,new Vector4f(color),sky,state.chunkSectionsToRender);
                 } finally {
-                    if(shaders)ShaderReflection.end();
+                    try { if(shaders)ShaderReflection.end(); }
+                    finally { if(clipped!=null)clipped.close(); }
                     reflectionProjection=null;
                     glFrontFace(oldFront);redirect=null;mv.popMatrix();
                     RenderSystem.setGlobalSettingsUniform(savedGlobals);RenderSystem.setProjectionMatrix(savedProj,savedType);RenderSystem.setShaderFog(savedFog);
@@ -185,6 +188,6 @@ public final class MirrorRenderer {
     }
     public static void release() {
         if(target!=null)target.destroyBuffers();target=null;if(projectionBuffer!=null)projectionBuffer.close();projectionBuffer=null;
-        if(compositeFbo!=0)glDeleteFramebuffers(compositeFbo);compositeFbo=0;COMPOSITE.close();TEMPORAL.reset();redirect=null;cached.clear();lastLevel=null;failed=false;frame=0;
+        if(compositeFbo!=0)glDeleteFramebuffers(compositeFbo);compositeFbo=0;COMPOSITE.close();TEMPORAL.reset();GlTextureSnapshot.releaseScratch();redirect=null;cached.clear();lastLevel=null;failed=false;frame=0;
     }
 }

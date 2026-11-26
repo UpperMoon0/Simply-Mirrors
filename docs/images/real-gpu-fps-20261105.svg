@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="630" viewBox="0 0 1320 630" role="img" aria-label="Simply Mirrors real Minecraft 1.20.1 complementary shader median FPS: no mirror 156.34, one mirror 73.55, nine coplanar mirrors 73.22. Three alternating trial rounds on GTX 1050 Ti.">
+<rect width="1320" height="630" fill="#121e2b"/>
+<text x="76" y="70" font-family="Arial, sans-serif" font-size="41" font-weight="800" fill="#f4f8ff">Simply Mirrors · real GPU FPS</text>
+<text x="76" y="114" font-family="Arial, sans-serif" font-size="22" fill="#b8c6d4">Minecraft 1.20.1 / Forge · Complementary r5.9.3 HIGH · Oculus 1.8.0 · Embeddium 0.3.31</text>
+<text x="76" y="147" font-family="Arial, sans-serif" font-size="22" fill="#b8c6d4">GTX 1050 Ti (driver 581.15) · 1280×720 · 3 alternating rounds · median FPS, higher is better</text>
+<g font-family="Arial, sans-serif"><line x1="330" y1="174" x2="330" y2="515" stroke="#45576a" stroke-dasharray="2 7"/><text x="330" y="549" text-anchor="middle" font-size="18" fill="#a1b0be">0</text>
+<line x1="520" y1="174" x2="520" y2="515" stroke="#45576a" stroke-dasharray="2 7"/><text x="520" y="549" text-anchor="middle" font-size="18" fill="#a1b0be">40</text>
+<line x1="710" y1="174" x2="710" y2="515" stroke="#45576a" stroke-dasharray="2 7"/><text x="710" y="549" text-anchor="middle" font-size="18" fill="#a1b0be">80</text>
+<line x1="900" y1="174" x2="900" y2="515" stroke="#45576a" stroke-dasharray="2 7"/><text x="900" y="549" text-anchor="middle" font-size="18" fill="#a1b0be">120</text>
+<line x1="1090" y1="174" x2="1090" y2="515" stroke="#45576a" stroke-dasharray="2 7"/><text x="1090" y="549" text-anchor="middle" font-size="18" fill="#a1b0be">160</text><text x="76" y="238" font-size="28" font-weight="700" fill="#ecf3fb">No mirror</text>
+<rect x="330" y="196" width="760" height="59" rx="10" fill="#203043"/>
+<rect x="330" y="196" width="742.60" height="59" rx="10" fill="#73bddd"/>
+<text x="1091.596" y="237" font-size="27" font-weight="800" fill="#f8fbff">156.34 FPS</text>
+<text x="76" y="269" font-size="20" fill="#aebbc8">p95 6.77 ms · baseline</text>
+<text x="76" y="350" font-size="28" font-weight="700" fill="#ecf3fb">1 mirror</text>
+<rect x="330" y="308" width="760" height="59" rx="10" fill="#203043"/>
+<rect x="330" y="308" width="349.34" height="59" rx="10" fill="#edb977"/>
+<text x="698.33875" y="349" font-size="27" font-weight="800" fill="#f8fbff">73.55 FPS</text>
+<text x="76" y="381" font-size="20" fill="#aebbc8">p95 14.00 ms · -53.08% vs baseline</text>
+<text x="76" y="462" font-size="28" font-weight="700" fill="#ecf3fb">9 coplanar mirrors</text>
+<rect x="330" y="420" width="760" height="59" rx="10" fill="#203043"/>
+<rect x="330" y="420" width="347.79" height="59" rx="10" fill="#edb977"/>
+<text x="696.795" y="461" font-size="27" font-weight="800" fill="#f8fbff">73.22 FPS</text>
+<text x="76" y="493" font-size="20" fill="#aebbc8">p95 14.07 ms · -53.29% vs baseline</text></g>
+<line x1="76" y1="575" x2="1244" y2="575" stroke="#3c4c5f"/>
+<text x="76" y="607" font-family="Arial, sans-serif" font-size="18" fill="#b8c6d4">Each stage: 8 s warmup + 15 s measured frames · complete shader-world pass per visible mirror plane</text>
+</svg>

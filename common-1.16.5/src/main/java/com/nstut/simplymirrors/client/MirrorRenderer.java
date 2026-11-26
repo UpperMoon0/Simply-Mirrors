@@ -82,16 +82,19 @@ public final class MirrorRenderer {
                 // The virtual camera is behind the wall; portal clipping replaces ordinary wall occlusion.
                 mc.smartCull=false;
                 redirect=target;
+                ReflectionScissor clipped=null;
                 try {
                     // Iris final compositing leaves depth writes disabled; clears obey that mask.
                     RenderSystem.depthMask(true);
                     target.setClearColor(0.615f,0.718f,0.792f,1);target.clear(Minecraft.ON_OSX);target.bindWrite(true);
+                    clipped=ReflectionScissor.begin(vp,eye.x,eye.y,eye.z,main.width,main.height,surfaces);
                     if(shaders)ShaderReflection.begin(proj,array(reflectedView),surface.nx,surface.ny,surface.nz,surface.cx-reflected[0],surface.cy-reflected[1],surface.cz-reflected[2],virtual,view,new double[]{eye.x,eye.y,eye.z},reflected,priorFrame.reflect(surface));
                     game.resetProjectionMatrix(projection);glFrontFace(GL_CW);
                     
                     mc.levelRenderer.renderLevel(pose,partial,deadline,false,virtual,game,light,projection);
                 } finally {
-                    if(shaders)ShaderReflection.end();
+                    try { if(shaders)ShaderReflection.end(); }
+                    finally { if(clipped!=null)clipped.close(); }
                     RenderSystem.depthMask(oldDepthMask);
                     mc.smartCull=oldSmartCull;glFrontFace(oldFront);redirect=null;main.bindWrite(true);game.resetProjectionMatrix(mainProjectionMatrix);
                     
@@ -124,7 +127,7 @@ public final class MirrorRenderer {
         return surfaces;
     }
     public static void release() {
-        if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;TEMPORAL.reset();COMPOSITE.close();
+        if(target!=null)target.destroyBuffers();target=null;redirect=null;cached.clear();lastLevel=null;frame=0;failed=false;TEMPORAL.reset();COMPOSITE.close();GlTextureSnapshot.releaseScratch();
     }
     private static float[] array(Matrix4f matrix) { FloatBuffer buffer=BufferUtils.createFloatBuffer(16);matrix.store(buffer);float[] result=new float[16];for(int i=0;i<16;i++)result[i]=buffer.get(i);return result; }
     private static Matrix4f matrix(float[] a) {

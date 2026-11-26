@@ -104,25 +104,46 @@ def extract(archive, output):
 
 
 def download(client, bucket, prefix, pattern, output, merge=False, expected=None):
-    manifests = []
-    for page in client.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
+    # Run attempts are isolated for immutable writes, but a rerun of *only*
+    # release-package must be able to consume successful producers from attempt 1.
+    # Restrict fallback to the exact repository/workflow/run/commit and never
+    # accept artifacts from a newer attempt than the current consumer.
+    scope = prefix.rstrip("/").split("/")
+    if len(scope) != 6 or not re.fullmatch(r"[1-9][0-9]*", scope[4]) \
+            or not re.fullmatch(r"[0-9a-f]{40}", scope[5]):
+        raise ValueError("Invalid R2 run-attempt namespace")
+    run_prefix = "/".join(scope[:4]) + "/"
+    requested_attempt, sha = int(scope[4]), scope[5]
+    selected = {}
+    for page in client.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=run_prefix):
         for obj in page.get("Contents", []):
-            suffix = obj["Key"][len(prefix):]
-            if suffix.count("/") == 1 and suffix.endswith("/manifest.json"):
-                name = suffix.split("/")[0]
-                if fnmatch.fnmatchcase(name, pattern):
-                    manifests.append((component(name), obj["Key"]))
-    names = {name for name, _ in manifests}
+            key = obj["Key"]
+            suffix = key[len(run_prefix):].split("/")
+            if len(suffix) != 4 or suffix[3] != "manifest.json":
+                continue
+            producer_attempt, producer_sha, name, _ = suffix
+            if producer_sha != sha or not re.fullmatch(r"[1-9][0-9]*", producer_attempt) \
+                    or int(producer_attempt) > requested_attempt:
+                continue
+            if not fnmatch.fnmatchcase(name, pattern):
+                continue
+            component(name)
+            producer_attempt = int(producer_attempt)
+            if name not in selected or producer_attempt > selected[name][0]:
+                producer_prefix = run_prefix + str(producer_attempt) + "/" + sha + "/"
+                selected[name] = (producer_attempt, key, producer_prefix)
+
+    names = set(selected)
     if not names or (expected is not None and names != set(expected)):
-        raise ValueError("Missing or expired R2 artifacts; rerun the original workflow")
+        raise ValueError("Missing or expired R2 artifacts for this run/commit")
     with tempfile.TemporaryDirectory() as temp:
         staged = Path(temp) / "staged"
-        for index, (name, key) in enumerate(sorted(manifests)):
+        for index, (name, (_, key, producer_prefix)) in enumerate(sorted(selected.items())):
             response = client.get_object(Bucket=bucket, Key=key)
             m = json.loads(response["Body"].read(65537))
             if (m.get("schema") != 1 or m.get("name") != name
                     or not re.fullmatch(r"[0-9a-f]{64}", m.get("sha256", ""))
-                    or m.get("key") != prefix + name + "/" + m["sha256"] + ".zip"):
+                    or m.get("key") != producer_prefix + name + "/" + m["sha256"] + ".zip"):
                 raise ValueError("Invalid R2 artifact manifest")
             archive = Path(temp) / f"{index}.zip"
             client.download_file(bucket, m["key"], str(archive))
@@ -133,7 +154,7 @@ def download(client, bucket, prefix, pattern, output, merge=False, expected=None
         if any(output.iterdir()):
             raise ValueError("Download destination must be empty")
         shutil.copytree(staged, output, dirs_exist_ok=True)
-    print(f"Downloaded and verified {len(manifests)} R2 artifacts")
+    print(f"Downloaded and verified {len(selected)} R2 artifacts")
 
 
 def main():
