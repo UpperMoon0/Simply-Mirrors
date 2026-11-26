@@ -64,10 +64,19 @@ public final class ReflectionScissor implements AutoCloseable {
     private static final boolean FINAL_FRAGMENT_GUARD =
         Boolean.getBoolean("simplymirrors.shaderFinalFragmentGuard");
     static {
+        ShaderRegionPlan.requireExclusiveExperiment(Boolean.getBoolean("simplymirrors.shaderReflectionCenterReuse"),
+            Boolean.getBoolean("simplymirrors.shaderReflectionBlurRejection"),
+            Boolean.getBoolean("simplymirrors.shaderCloudOcclusion"),
+            Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse"),
+            Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay"),
+            Boolean.getBoolean("simplymirrors.shaderVolumetricZeroDensity"),
+            SHADER_DEPENDENCY_ROI, OUTPUT_SCISSOR, SHADER_POSTPROCESS_CROP, SHADER_TAIL_CROP,
+            SHADER_FINAL_ORIGIN_CROP, SHADER_EARLY_COMPOSITE_CROP, SHADER_FINAL_DUAL_CROP, FINAL_FRAGMENT_GUARD);
         ShaderRegionPlan.requireExclusiveExperiment(Boolean.getBoolean("simplymirrors.shaderVolumetricZeroDensity"),
             SHADER_DEPENDENCY_ROI, OUTPUT_SCISSOR, SHADER_POSTPROCESS_CROP, SHADER_TAIL_CROP,
             SHADER_FINAL_ORIGIN_CROP, SHADER_EARLY_COMPOSITE_CROP, SHADER_FINAL_DUAL_CROP, FINAL_FRAGMENT_GUARD,
             Boolean.getBoolean("simplymirrors.shaderReflectionBlurRejection"),
+            Boolean.getBoolean("simplymirrors.shaderReflectionCenterReuse"),
             Boolean.getBoolean("simplymirrors.shaderCloudOcclusion"),
             Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse"),
             Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay"));
@@ -76,6 +85,7 @@ public final class ReflectionScissor implements AutoCloseable {
             SHADER_FINAL_ORIGIN_CROP, SHADER_EARLY_COMPOSITE_CROP,
             SHADER_FINAL_DUAL_CROP, FINAL_FRAGMENT_GUARD,
             Boolean.getBoolean("simplymirrors.shaderReflectionBlurRejection"),
+            Boolean.getBoolean("simplymirrors.shaderReflectionCenterReuse"),
             Boolean.getBoolean("simplymirrors.shaderCloudOcclusion"),
             Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse"),
             Boolean.getBoolean("simplymirrors.shaderVolumetricShadowRay"),

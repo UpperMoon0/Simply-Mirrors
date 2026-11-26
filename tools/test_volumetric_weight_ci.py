@@ -27,6 +27,14 @@ class VolumetricWeightTest(unittest.TestCase):
         with self.assertRaises(AssertionError): ci.require_weight_reuse(copied)
         with self.assertRaises(AssertionError): ci.require_weight_reuse(copied+"\nSIMPLY_MIRRORS_LAZY_HISTORY_CLEAR initialized=10 total=10")
         self.assertTrue(ci.require_weight_reuse(copied+"\nSIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION program=composite1\nSIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION_ACTIVE")["reflectionBlurRejection"])
+    def test_center_reuse_has_distinct_activation_and_switch(self):
+        history="SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE textures=8 units=8 attachments=12\nSIMPLY_MIRRORS_DISCARD_FINAL_HISTORY copies=3"
+        center=history+"\nSIMPLY_MIRRORS_REFLECTION_CENTER_REUSE program=composite1\nSIMPLY_MIRRORS_REFLECTION_CENTER_REUSE_ACTIVE"
+        self.assertTrue(ci.require_weight_reuse(center,"center-reuse")["reflectionCenterReuse"])
+        with self.assertRaises(AssertionError): ci.require_weight_reuse(center,"blur-rejection")
+        with patch.dict(os.environ,{"SIMPLY_MIRRORS_REFLECTION_CENTER_REUSE":"1","SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION":"0"}):
+            self.assertIn("shaderReflectionCenterReuse=true",fps_benchmark.graphics_java_options())
+            self.assertNotIn("shaderReflectionBlurRejection=true",fps_benchmark.graphics_java_options())
     def test_final_history_discard_is_opt_in(self):
         with patch.dict(os.environ,{"SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY":"0"}):
             self.assertNotIn("discardFinalHistory=true",fps_benchmark.graphics_java_options())

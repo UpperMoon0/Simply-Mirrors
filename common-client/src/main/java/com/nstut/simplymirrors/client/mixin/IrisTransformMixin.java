@@ -2,6 +2,7 @@ package com.nstut.simplymirrors.client.mixin;
 import com.nstut.simplymirrors.math.ShaderClippingTransformation;
 import com.nstut.simplymirrors.math.ShaderCloudOcclusion;
 import com.nstut.simplymirrors.math.ShaderReflectionBlurRejection;
+import com.nstut.simplymirrors.math.ShaderReflectionCenterReuse;
 import com.nstut.simplymirrors.math.ShaderFinalFragmentGuard;
 import com.nstut.simplymirrors.math.ShaderVolumetricWeightReuse;
 import com.nstut.simplymirrors.math.ShaderVolumetricShadowRay;
@@ -38,6 +39,12 @@ public abstract class IrisTransformMixin {
                 if(rejected!=transformed)
                     System.out.println("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION program="+name);
                 transformed=rejected;
+            }
+            if(Boolean.getBoolean("simplymirrors.shaderReflectionCenterReuse")) {
+                Map reused=ShaderReflectionCenterReuse.transformProgram(name,transformed);
+                if(reused!=transformed)
+                    System.out.println("SIMPLY_MIRRORS_REFLECTION_CENTER_REUSE program="+name);
+                transformed=reused;
             }
             Map originalVolumetric=transformed;
             if(Boolean.getBoolean("simplymirrors.shaderVolumetricWeightReuse")) {

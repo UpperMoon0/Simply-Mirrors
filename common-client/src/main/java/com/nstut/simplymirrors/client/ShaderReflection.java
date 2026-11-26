@@ -140,41 +140,46 @@ public final class ShaderReflection {
         }
     }
     private static boolean cloudRayReported;
-    private static boolean blurRejectionReported;
+    private static boolean blurRejectionReported, centerReuseReported;
     public static int beginReflectionBlurPass() {
-        if (MirrorRenderer.redirect==null || !Boolean.getBoolean("simplymirrors.shaderReflectionBlurRejection")) return -1;
+        boolean center=Boolean.getBoolean("simplymirrors.shaderReflectionCenterReuse");
+        boolean rejection=Boolean.getBoolean("simplymirrors.shaderReflectionBlurRejection");
+        if (MirrorRenderer.redirect==null || center==rejection) return -1;
         int program=glGetInteger(GL_CURRENT_PROGRAM);
         if(program==0)return -1;
-        int uniform=location(program,"simplymirrors_ReflectionBlurRejection");
-        if(uniform>=0) {
-            int samplerLocation=location(program,"colortex7");
-            if(samplerLocation<0)return -1;
-            int unit=glGetUniformi(program,samplerLocation);
-            int sampler=glGetIntegeri(GL_SAMPLER_BINDING,unit);
-            int filter, magnification;
-            if(sampler!=0) {
-                filter=glGetSamplerParameteri(sampler,GL_TEXTURE_MIN_FILTER);
-                magnification=glGetSamplerParameteri(sampler,GL_TEXTURE_MAG_FILTER);
-            }
-            else {
-                int activeTexture=glGetInteger(GL_ACTIVE_TEXTURE);
-                glActiveTexture(GL_TEXTURE0+unit);
-                try {
-                    filter=glGetTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER);
-                    magnification=glGetTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER);
-                }
-                finally { glActiveTexture(activeTexture); }
-            }
-            // Explicit level zero is equivalent only when min/mag filters agree
-            // and neither filter selects a mip level. Otherwise use the original.
-            if((filter!=GL_LINEAR && filter!=GL_NEAREST) || filter!=magnification)return -1;
-            glUniform1i(uniform,1);
-            if(!blurRejectionReported) {
-                System.out.println("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION_ACTIVE");
-                blurRejectionReported=true;
-            }
+        int uniform=location(program,center?"simplymirrors_ReflectionCenterReuse":"simplymirrors_ReflectionBlurRejection");
+        if(uniform<0 || !baseLevelSampler(program,"colortex7")
+                || (center && !baseLevelSampler(program,"colortex4"))) return -1;
+        glUniform1i(uniform,1);
+        if(center && !centerReuseReported) {
+            System.out.println("SIMPLY_MIRRORS_REFLECTION_CENTER_REUSE_ACTIVE");
+            centerReuseReported=true;
+        } else if(!center && !blurRejectionReported) {
+            System.out.println("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION_ACTIVE");
+            blurRejectionReported=true;
         }
         return uniform;
+    }
+    private static boolean baseLevelSampler(int program,String name) {
+        int samplerLocation=location(program,name);
+        if(samplerLocation<0)return false;
+        int unit=glGetUniformi(program,samplerLocation);
+        int sampler=glGetIntegeri(GL_SAMPLER_BINDING,unit);
+        int filter, magnification;
+        if(sampler!=0) {
+            filter=glGetSamplerParameteri(sampler,GL_TEXTURE_MIN_FILTER);
+            magnification=glGetSamplerParameteri(sampler,GL_TEXTURE_MAG_FILTER);
+        } else {
+            int activeTexture=glGetInteger(GL_ACTIVE_TEXTURE);
+            glActiveTexture(GL_TEXTURE0+unit);
+            try {
+                if(glGetInteger(GL_TEXTURE_BINDING_2D)==0)return false;
+                filter=glGetTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER);
+                magnification=glGetTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER);
+            } finally { glActiveTexture(activeTexture); }
+        }
+        // Matching non-mip filters make derivative/LOD differences immaterial.
+        return (filter==GL_LINEAR || filter==GL_NEAREST) && filter==magnification;
     }
     public static int beginCloudPass() {
         if (MirrorRenderer.redirect==null || !Boolean.getBoolean("simplymirrors.shaderCloudOcclusion")) return -1;

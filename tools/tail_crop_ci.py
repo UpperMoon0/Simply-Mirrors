@@ -262,7 +262,7 @@ def accept() -> dict:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Reviewed native Simply Mirrors A/B")
-    parser.add_argument("--experiment", choices=("dependency-roi", "blur-rejection", "zero-density"), default="blur-rejection")
+    parser.add_argument("--experiment", choices=("dependency-roi", "blur-rejection", "zero-density", "center-reuse"), default="center-reuse")
     parser.add_argument("--screen-only", action="store_true",
                         help="One valid native pair; never emits full acceptance markers")
     args = parser.parse_args()

@@ -30,7 +30,7 @@ def benchmark_command(label: str, name: str, experiment="blur-rejection") -> lis
     ]
     # Isolate blur tap rejection: both arms retain the winning history path.
     # Rejected lazy clearing and volumetric arithmetic stay disabled.
-    if experiment not in ("dependency-roi", "zero-density", "blur-rejection"):
+    if experiment not in ("dependency-roi", "zero-density", "blur-rejection", "center-reuse"):
         raise ValueError("Unknown GPU experiment")
     result.remove("--shader-tail-crop")
     return result
@@ -44,7 +44,8 @@ def verify_settings(summary: dict, label: str, experiment="blur-rejection") -> N
         "shaderFinalFragmentGuardEnabled": False,
         "shaderVolumetricWeightReuseEnabled": False,
         "shaderCloudOcclusionEnabled": False,
-        "shaderReflectionBlurRejectionEnabled": expected,
+        "shaderReflectionBlurRejectionEnabled": expected and experiment=="blur-rejection",
+        "shaderReflectionCenterReuseEnabled": expected and experiment=="center-reuse",
         "historyTextureRedirectEnabled": True,
         "discardFinalHistoryEnabled": True,
         "lazyHistoryClearEnabled": False,
@@ -114,18 +115,20 @@ def compare_roi_captures(control, trial):
         for scene,label in SCENES}
 
 
-def require_weight_reuse(logs: str) -> dict:
+def require_weight_reuse(logs: str, experiment="blur-rejection") -> dict:
     match = re.search(r"SIMPLY_MIRRORS_HISTORY_REDIRECT_ACTIVE textures=(\d+) units=(\d+) attachments=(\d+)", logs)
     if match is None or any(int(x) <= 0 for x in match.groups()):
         raise AssertionError("Native history texture redirection did not map samplers and cached FBOs")
     copies = re.search(r"SIMPLY_MIRRORS_DISCARD_FINAL_HISTORY copies=(\d+)", logs)
     if copies is None or int(copies[1]) <= 0:
         raise AssertionError("Native final-history copies were not discarded")
-    if ("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION program=composite1" not in logs or
-            "SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION_ACTIVE" not in logs):
-        raise AssertionError("Native reflection blur rejection was not applied")
+    marker = ("SIMPLY_MIRRORS_REFLECTION_CENTER_REUSE" if experiment=="center-reuse"
+              else "SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION")
+    if marker+" program=composite1" not in logs or marker+"_ACTIVE" not in logs:
+        raise AssertionError(f"Native {experiment} was not applied")
     return {"textures": int(match[1]), "units": int(match[2]), "attachments": int(match[3]),
-            "discardedFinalCopies": int(copies[1]), "reflectionBlurRejection": True, "applied": True}
+            "discardedFinalCopies": int(copies[1]), "reflectionBlurRejection": experiment=="blur-rejection",
+            "reflectionCenterReuse": experiment=="center-reuse", "applied": True}
 
 
 
@@ -266,6 +269,7 @@ def run_variant(label: str, index: int, stamp: str,
     preflight_samples = wait_for_quiet_host()
     env = os.environ.copy()
     env["SIMPLY_MIRRORS_CLOUD_OCCLUSION"] = "0"
+    env["SIMPLY_MIRRORS_REFLECTION_CENTER_REUSE"] = "1" if label=="trial" and experiment=="center-reuse" else "0"
     env["SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION"] = "1" if label == "trial" and experiment=="blur-rejection" else "0"
     env["SIMPLY_MIRRORS_DEPENDENCY_ROI"] = "1" if label=="trial" and experiment=="dependency-roi" else "0"
     env["SIMPLY_MIRRORS_VOLUMETRIC_ZERO_DENSITY"] = "1" if label=="trial" and experiment=="zero-density" else "0"
@@ -302,9 +306,10 @@ def run_variant(label: str, index: int, stamp: str,
     else:
         summary["shaderGpuMedians"] = roi_shader_timings(logs)
         if label == "trial":
-            summary["volumetricWeightReuse"] = require_weight_reuse(logs)
+            summary["volumetricWeightReuse"] = require_weight_reuse(logs, experiment)
         elif ("SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION program=composite1" in logs or
-              "SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION_ACTIVE" in logs):
+              "SIMPLY_MIRRORS_REFLECTION_BLUR_REJECTION_ACTIVE" in logs or
+              "SIMPLY_MIRRORS_REFLECTION_CENTER_REUSE" in logs):
             raise AssertionError("Control unexpectedly activated blur rejection")
     print("SIMPLY_MIRRORS_VOLUMETRIC_WEIGHT_RUN", label, index,
           json.dumps(fps_values(summary)), flush=True)
@@ -332,7 +337,7 @@ def evaluate_screening(pair: dict) -> dict:
 
 
 def accept(experiment="blur-rejection", *, screening_only=False) -> dict:
-    if experiment not in ("blur-rejection","dependency-roi","zero-density"):
+    if experiment not in ("blur-rejection","dependency-roi","zero-density","center-reuse"):
         raise ValueError("Unknown GPU experiment")
     if os.name != "nt" or os.environ.get("CI_GRAPHICS_AGENT") != "1":
         raise RuntimeError("Only the trusted private native GPU CI agent can run acceptance")
@@ -405,7 +410,7 @@ def accept(experiment="blur-rejection", *, screening_only=False) -> dict:
             break
     summary = evaluate_gpu_acceptance(accepted)
     summary["experiment"]=experiment
-    if experiment in ("zero-density", "blur-rejection"):
+    if experiment in ("zero-density", "blur-rejection", "center-reuse"):
         medians={label:statistics.median(p["shaderGpuMedians"][label]["composite1"] for p in accepted) for label in ("control","trial")}
         if medians["trial"]>=medians["control"]:
             raise AssertionError(f"{experiment} composite1 GPU time did not improve: {medians}")
