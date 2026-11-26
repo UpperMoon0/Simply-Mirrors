@@ -165,21 +165,24 @@ public final class ShaderReflection {
         if(samplerLocation<0)return false;
         int unit=glGetUniformi(program,samplerLocation);
         int sampler=glGetIntegeri(GL_SAMPLER_BINDING,unit);
-        int filter, magnification;
-        if(sampler!=0) {
-            filter=glGetSamplerParameteri(sampler,GL_TEXTURE_MIN_FILTER);
-            magnification=glGetSamplerParameteri(sampler,GL_TEXTURE_MAG_FILTER);
-        } else {
-            int activeTexture=glGetInteger(GL_ACTIVE_TEXTURE);
-            glActiveTexture(GL_TEXTURE0+unit);
-            try {
-                if(glGetInteger(GL_TEXTURE_BINDING_2D)==0)return false;
+        boolean anisotropic=org.lwjgl.opengl.GL.getCapabilities().GL_EXT_texture_filter_anisotropic;
+        int activeTexture=glGetInteger(GL_ACTIVE_TEXTURE);
+        glActiveTexture(GL_TEXTURE0+unit);
+        try {
+            if(glGetInteger(GL_TEXTURE_BINDING_2D)==0)return false;
+            int filter, magnification;
+            if(sampler!=0) {
+                filter=glGetSamplerParameteri(sampler,GL_TEXTURE_MIN_FILTER);
+                magnification=glGetSamplerParameteri(sampler,GL_TEXTURE_MAG_FILTER);
+                if(anisotropic && glGetSamplerParameterf(sampler,0x84FE)>1.0f)return false;
+            } else {
                 filter=glGetTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER);
                 magnification=glGetTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER);
-            } finally { glActiveTexture(activeTexture); }
-        }
-        // Matching non-mip filters make derivative/LOD differences immaterial.
-        return (filter==GL_LINEAR || filter==GL_NEAREST) && filter==magnification;
+                if(anisotropic && glGetTexParameterf(GL_TEXTURE_2D,0x84FE)>1.0f)return false;
+            }
+            // Matching non-mip, non-anisotropic filters make LOD differences immaterial.
+            return (filter==GL_LINEAR || filter==GL_NEAREST) && filter==magnification;
+        } finally { glActiveTexture(activeTexture); }
     }
     public static int beginCloudPass() {
         if (MirrorRenderer.redirect==null || !Boolean.getBoolean("simplymirrors.shaderCloudOcclusion")) return -1;
